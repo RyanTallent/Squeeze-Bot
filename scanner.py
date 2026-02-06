@@ -766,15 +766,40 @@ small {{ color: #777; }}
         f.write(html)
 
     return str(html_path).replace("\\", "/")
+# ============================================================
+# ORTEX TIME GATE
+# - Use ORTEX only 7:00 AM to 4:00 PM CT (weekdays)
+# - Outside that window: Polygon-only mode
+# ============================================================
+ORTEX_ON_START_CT = (7, 0)   # 7:00 AM CT
+ORTEX_ON_END_CT   = (16, 0)  # 4:00 PM CT (16:00)
+
+def ortex_allowed_now(dt: datetime) -> bool:
+    # weekdays only
+    if dt.weekday() >= 5:
+        return False
+
+    start = dt.replace(hour=ORTEX_ON_START_CT[0], minute=ORTEX_ON_START_CT[1], second=0, microsecond=0)
+    end   = dt.replace(hour=ORTEX_ON_END_CT[0],   minute=ORTEX_ON_END_CT[1],   second=0, microsecond=0)
+
+    return start <= dt <= end
+
 
 # ============================================================
 # SCAN (one pass)
 # ============================================================
 def run_single_scan(date_str: str, end_local: datetime, log_fn=None):
     snap_all = get_snapshot_all_tickers()
-
     meta = {"date": date_str, "end_ct": end_local.strftime("%Y-%m-%d %H:%M:%S %Z")}
-    rows = []
+
+    allow_ortex = ortex_allowed_now(end_local)
+    if log_fn:
+        log_fn(f"ORTEX mode: {'ON' if allow_ortex else 'OFF'} (ON only 7:00AM–4:00PM CT)")
+
+    # -----------------------------
+    # PASS 1: Polygon-only gather
+    # -----------------------------
+    pre_rows = []
 
     for pmin, pmax in PRICE_TIERS:
         candidates = pick_candidates_from_snapshot(
@@ -808,17 +833,7 @@ def run_single_scan(date_str: str, end_local: datetime, log_fn=None):
                 avg_vol_10d = get_avg_daily_volume_10d(t, date_str)
                 relv = compute_rel_vol(pm["pm_vol"], avg_vol_10d, pm["pm_minutes"])
 
-                si_feat = ortex_short_interest_features(t, log_fn=log_fn)
-                if not si_feat or si_feat.get("si_pct_ff") is None:
-                    continue
-
-                ctb = ortex_ctb_latest(t, log_fn=log_fn)
-                util = ortex_utilization_latest(t, log_fn=log_fn)  # always None
-                avail = ortex_availability_latest(t, log_fn=log_fn)
-
                 float_poly = polygon_shares_outstanding_best_effort(t)
-                float_est = si_feat.get("float_est")
-                float_shares = float_poly if float_poly is not None else float_est
 
                 trigger = pm["pm_high"]
                 stop = pm["pm_low"]
@@ -826,79 +841,131 @@ def run_single_scan(date_str: str, end_local: datetime, log_fn=None):
                 feat = {
                     "ticker": t,
                     **pm,
-                    **si_feat,
-                    "ctb": ctb,
-                    "util": util,
-                    "avail": avail,
-                    "float_shares": float_shares,
                     "gap_pct": gap_pct,
                     "rel_vol": relv,
+                    "float_shares": float_poly,
                     "trigger": trigger,
                     "stop": stop,
+                    # ORTEX placeholders (filled later if allowed)
+                    "si_pct_ff": None,
+                    "si_pct_chg": None,
+                    "si_shares": None,
+                    "ctb": None,
+                    "util": None,
+                    "avail": None,
                 }
 
-                squeeze = is_true_squeeze_strict(feat)
+                # Polygon-only rank so we pick best 25 for ORTEX
+                poly_rank = compute_opportunity_score(feat)
 
-                pressure = compute_pressure_score(feat)
-                opportunity = compute_opportunity_score(feat)
-                structure = compute_structure_score(feat)
-
-                base_score = 0.34 * pressure + 0.33 * opportunity + 0.33 * structure
-                prob = score_to_prob(base_score)
-
-                hp = halt_probability(feat)
-                dnc, dnc_reason = do_not_chase_warning(feat)
-                low_q, low_q_reason = data_quality_penalty(feat)
-
-                liq = liquidity_grade(pm["pm_dollar_vol"])
-                setup, plan = setup_type_and_plan(feat, squeeze=squeeze, dnc=dnc, halt_p=hp)
-
-                conf = confidence_grade(
-                    base_score=base_score,
-                    prob=prob,
-                    liq_grade=liq,
-                    halt_p=hp,
-                    dnc=dnc,
-                    low_quality=low_q,
-                )
-
-                bucket = "TRUE_SQUEEZE" if squeeze else "MOMENTUM"
-
-                rows.append({
-                    "ticker": t,
-                    "bucket": bucket,
-                    "base_score": base_score,
-                    "prob": prob,
-                    "si_pct_ff": feat.get("si_pct_ff"),
-                    "si_pct_chg": feat.get("si_pct_chg"),
-                    "ctb": ctb,
-                    "util": util,
-                    "avail": avail,
-                    "float_shares": float_shares,
-                    "gap_pct": gap_pct,
-                    "rel_vol": relv,
-                    "pm_dollar_vol": pm["pm_dollar_vol"],
-                    "pm_range_pct": pm["pm_range_pct"],
-                    "pm_hold_pct": pm["pm_hold_pct"],
-                    "pm_open": pm["pm_open"],
-                    "pm_high": pm["pm_high"],
-                    "pm_low": pm["pm_low"],
-                    "pm_close": pm["pm_close"],
-                    "trigger": trigger,
-                    "stop": stop,
-                    "halt_prob": hp,
-                    "do_not_chase": dnc,
-                    "dnc_reason": dnc_reason,
-                    "data_low_quality": low_q,
-                    "data_quality_reason": low_q_reason,
-                    "liq_grade": liq,
-                    "confidence": conf,
-                    "setup_type": setup,
-                    "plan": plan,
+                pre_rows.append({
+                    "feat": feat,
+                    "poly_rank": poly_rank,
                 })
 
             except Exception:
                 continue
+
+    if not pre_rows:
+        return [], [], meta
+
+    # -----------------------------
+    # Select ORTEX finalists (<=25)
+    # -----------------------------
+    FINALISTS = 25
+    pre_rows.sort(key=lambda x: x["poly_rank"], reverse=True)
+    finalists = pre_rows[:FINALISTS]
+
+    # -----------------------------
+    # ORTEX enrich (only for finalists, only in time window)
+    # -----------------------------
+    if allow_ortex:
+        if log_fn:
+            log_fn(f"ORTEX finalists: {len(finalists)} (cap={FINALISTS})")
+
+        for item in finalists:
+            feat = item["feat"]
+            t = feat["ticker"]
+
+            si_feat = ortex_short_interest_features(t, log_fn=log_fn)
+            if si_feat:
+                feat["si_pct_ff"] = si_feat.get("si_pct_ff")
+                feat["si_pct_chg"] = si_feat.get("si_pct_chg")
+                feat["si_shares"] = si_feat.get("si_shares")
+
+            feat["ctb"] = ortex_ctb_latest(t, log_fn=log_fn)
+            feat["avail"] = ortex_availability_latest(t, log_fn=log_fn)
+            feat["util"] = None  # intentionally disabled
+
+    # -----------------------------
+    # PASS 2: Score + bucket + output
+    # -----------------------------
+    rows = []
+    for item in pre_rows:
+        feat = item["feat"]
+
+        # TRUE_SQUEEZE only possible when ORTEX is allowed (otherwise bucket stays MOMENTUM)
+        squeeze = False
+        if allow_ortex:
+            squeeze = is_true_squeeze_strict(feat)
+
+        pressure = compute_pressure_score(feat)
+        opportunity = compute_opportunity_score(feat)
+        structure = compute_structure_score(feat)
+
+        base_score = 0.34 * pressure + 0.33 * opportunity + 0.33 * structure
+        prob = score_to_prob(base_score)
+
+        hp = halt_probability(feat)
+        dnc, dnc_reason = do_not_chase_warning(feat)
+        low_q, low_q_reason = data_quality_penalty(feat)
+
+        liq = liquidity_grade(feat["pm_dollar_vol"])
+        setup, plan = setup_type_and_plan(feat, squeeze=squeeze, dnc=dnc, halt_p=hp)
+
+        conf = confidence_grade(
+            base_score=base_score,
+            prob=prob,
+            liq_grade=liq,
+            halt_p=hp,
+            dnc=dnc,
+            low_quality=low_q,
+        )
+
+        bucket = "TRUE_SQUEEZE" if squeeze else "MOMENTUM"
+
+        rows.append({
+            "ticker": feat["ticker"],
+            "bucket": bucket,
+            "base_score": base_score,
+            "prob": prob,
+            "si_pct_ff": feat.get("si_pct_ff"),
+            "si_pct_chg": feat.get("si_pct_chg"),
+            "ctb": feat.get("ctb"),
+            "util": feat.get("util"),
+            "avail": feat.get("avail"),
+            "float_shares": feat.get("float_shares"),
+            "gap_pct": feat.get("gap_pct"),
+            "rel_vol": feat.get("rel_vol"),
+            "pm_dollar_vol": feat["pm_dollar_vol"],
+            "pm_range_pct": feat["pm_range_pct"],
+            "pm_hold_pct": feat["pm_hold_pct"],
+            "pm_open": feat["pm_open"],
+            "pm_high": feat["pm_high"],
+            "pm_low": feat["pm_low"],
+            "pm_close": feat["pm_close"],
+            "trigger": feat["trigger"],
+            "stop": feat["stop"],
+            "halt_prob": hp,
+            "do_not_chase": dnc,
+            "dnc_reason": dnc_reason,
+            "data_low_quality": low_q,
+            "data_quality_reason": low_q_reason,
+            "liq_grade": liq,
+            "confidence": conf,
+            "setup_type": setup,
+            "plan": plan,
+        })
 
     squeezes = [r for r in rows if r["bucket"] == "TRUE_SQUEEZE"]
     momentum = [r for r in rows if r["bucket"] == "MOMENTUM"]
@@ -907,6 +974,7 @@ def run_single_scan(date_str: str, end_local: datetime, log_fn=None):
     momentum.sort(key=lambda r: r["base_score"], reverse=True)
 
     return squeezes[:TOP_N_PER_BUCKET], momentum[:TOP_N_PER_BUCKET], meta
+
 
 # ============================================================
 # PUBLIC ENTRYPOINT (called by main.py)
@@ -928,7 +996,7 @@ def run_scan(log_fn=None) -> str | None:
 
     html_path = write_reports(date_str, end_local, top_s, top_m, meta)
 
-    # 👇 THIS LINE IS THE KEY FIX (your UI is waiting for this exact text)
+    # Your UI is waiting for this exact text
     if log_fn and html_path:
         log_fn(f"Saved HTML: {html_path}")
 
