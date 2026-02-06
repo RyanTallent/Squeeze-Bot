@@ -1,17 +1,21 @@
-import os
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 app = FastAPI()
 
+# Serve anything in /static (like index.html, favicon later, etc.)
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 @app.get("/")
 def home():
-    return {"message": "Squeeze_Bot is live"}
+    # Serve the HTML homepage
+    return FileResponse("static/index.html")
 
 @app.get("/health")
 def health():
     return {"status": "ok"}
 
-# We'll connect this to your scanner next
 @app.post("/run_scan")
 def run_scan():
-    return {"status": "ready", "note": "Hook scanner here next"}
+    return {"status": "ready"}
