@@ -3,6 +3,7 @@ import csv
 import json
 import math
 import time
+import argparse
 import requests
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
@@ -16,7 +17,7 @@ SCAN_EVERY_SECONDS = 5 * 60
 
 TOP_N_PER_BUCKET = 3
 
-# Base structure filters (keep your original idea, now applied to dynamic window)
+# Base structure filters
 MIN_PM_DOLLAR_VOL = 150_000
 MIN_RANGE_PCT = 0.02
 MIN_HOLD_PCT = 0.25
@@ -45,7 +46,6 @@ REQUIRE_BORROW_DATA_FOR_TRUE_SQUEEZE = True
 PRICE_TIERS = [(0.01, 2.50), (2.50, 5.00), (5.00, 10.00)]
 MAX_CANDIDATES_PER_TIER = 300  # keep manageable
 
-
 # ============================================================
 # KEYS + SESSION
 # ============================================================
@@ -71,7 +71,6 @@ try:
     CT_TZ = ZoneInfo("America/Chicago")
 except Exception:
     CT_TZ = timezone(timedelta(hours=-6))
-
 
 # ============================================================
 # HELPERS
@@ -117,7 +116,6 @@ def fmt_millions(n):
     return str(n)
 
 def sigmoid(x: float) -> float:
-    # stable sigmoid
     if x >= 0:
         z = math.exp(-x)
         return 1.0 / (1.0 + z)
@@ -125,10 +123,6 @@ def sigmoid(x: float) -> float:
     return z / (1.0 + z)
 
 def score_to_prob(score: float) -> float:
-    """
-    Calibrated so PROB doesn't saturate near 1.0.
-    This is *ranking probability*, not a true statistical probability.
-    """
     return sigmoid((score - 55.0) / 12.0)
 
 def polygon_get(url: str, params: dict | None = None) -> dict:
@@ -155,21 +149,23 @@ def ct_dt(date_str: str, hm: tuple[int, int]) -> datetime:
 
 def scan_window_utc(date_str: str, end_local: datetime) -> tuple[datetime, datetime, int]:
     start_local = ct_dt(date_str, SCAN_START_CT)
-    # end_local is already CT tz aware
+
+    # clamp end_local so it can’t be before start_local
+    if end_local < start_local:
+        end_local = start_local + timedelta(minutes=1)
+
     start_utc = start_local.astimezone(timezone.utc)
     end_utc = end_local.astimezone(timezone.utc)
     minutes = int(max(1, (end_local - start_local).total_seconds() // 60))
     return start_utc, end_utc, minutes
 
+
 def next_5min_boundary(dt: datetime) -> datetime:
-    # rounds up to next 5-min mark
     minute = dt.minute
     add = (5 - (minute % 5)) % 5
     if add == 0 and dt.second == 0:
         add = 5
-    nxt = (dt.replace(second=0, microsecond=0) + timedelta(minutes=add))
-    return nxt
-
+    return (dt.replace(second=0, microsecond=0) + timedelta(minutes=add))
 
 # ============================================================
 # POLYGON DATA
@@ -187,10 +183,6 @@ def is_common_stock_polygon(ticker: str) -> bool:
         return False
 
 def polygon_shares_outstanding_best_effort(ticker: str) -> int | None:
-    """
-    Polygon may provide shares outstanding (not always true float).
-    We'll use this as a fallback float proxy if needed.
-    """
     try:
         data = polygon_get(f"https://api.polygon.io/v3/reference/tickers/{ticker}", {})
         res = data.get("results") or {}
@@ -203,20 +195,14 @@ def polygon_shares_outstanding_best_effort(ticker: str) -> int | None:
     return None
 
 def pick_candidates_from_snapshot(snap: list[dict], max_candidates: int, price_min: float, price_max: float) -> list[str]:
-    """
-    Use snapshot as a fast way to focus on tickers with activity/vol/gap.
-    """
     scored = []
     for item in snap:
         t = item.get("ticker")
         if not t:
             continue
-
         last_trade = item.get("lastTrade") or {}
         last_price = safe_float(last_trade.get("p"))
-        if last_price is None:
-            continue
-        if not (price_min <= last_price <= price_max):
+        if last_price is None or not (price_min <= last_price <= price_max):
             continue
 
         day = item.get("day") or {}
@@ -269,15 +255,11 @@ def get_avg_daily_volume_10d(ticker: str, end_date_str: str) -> float | None:
     return sum(vols) / len(vols)
 
 def get_premarket_stats_dynamic(ticker: str, date_str: str, end_local: datetime) -> dict | None:
-    """
-    Premarket = from 3:00 CT to end_local (<=8:29 CT), using 1-min bars.
-    """
     results = get_minute_aggs(ticker, date_str)
     if not results:
         return None
 
     start_utc, end_utc, minutes = scan_window_utc(date_str, end_local)
-
     pm = [r for r in results if start_utc <= ms_to_utc(r["t"]) < end_utc]
     if not pm:
         return None
@@ -305,7 +287,6 @@ def get_premarket_stats_dynamic(ticker: str, date_str: str, end_local: datetime)
         "pm_minutes": minutes,
     }
 
-
 # ============================================================
 # ORTEX DATA
 # ============================================================
@@ -322,7 +303,7 @@ def ortex_short_interest_features(ticker: str) -> dict | None:
     latest = rows[-1]
     prev = rows[-2] if len(rows) >= 2 else None
 
-    si_pct = safe_float(latest.get("shortInterestPcFreeFloat"))  # percent
+    si_pct = safe_float(latest.get("shortInterestPcFreeFloat"))
     si_shares = safe_float(latest.get("shortInterestShares"))
 
     si_pct_chg = None
@@ -331,19 +312,13 @@ def ortex_short_interest_features(ticker: str) -> dict | None:
         if prev_pct is not None:
             si_pct_chg = si_pct - prev_pct
 
-    # estimate free float from SI shares + SI% if possible
     float_est = None
     if si_shares is not None and si_pct is not None and si_pct > 0:
         est = si_shares / (si_pct / 100.0)
         if est > 0:
             float_est = int(est)
 
-    return {
-        "si_pct_ff": si_pct,
-        "si_pct_chg": si_pct_chg,
-        "si_shares": si_shares,
-        "float_est": float_est,
-    }
+    return {"si_pct_ff": si_pct, "si_pct_chg": si_pct_chg, "si_shares": si_shares, "float_est": float_est}
 
 def ortex_ctb_latest(ticker: str) -> float | None:
     endpoints = [
@@ -356,7 +331,6 @@ def ortex_ctb_latest(ticker: str) -> float | None:
             data = ortex_get(url)
         except Exception:
             continue
-
         rows = data.get("rows")
         if isinstance(rows, list) and rows:
             latest = rows[-1]
@@ -376,7 +350,6 @@ def ortex_utilization_latest(ticker: str) -> float | None:
             data = ortex_get(url)
         except Exception:
             continue
-
         rows = data.get("rows")
         if isinstance(rows, list) and rows:
             latest = rows[-1]
@@ -397,7 +370,6 @@ def ortex_availability_latest(ticker: str) -> float | None:
             data = ortex_get(url)
         except Exception:
             continue
-
         rows = data.get("rows")
         if isinstance(rows, list) and rows:
             latest = rows[-1]
@@ -407,24 +379,16 @@ def ortex_availability_latest(ticker: str) -> float | None:
                     return v
     return None
 
-
 # ============================================================
 # ENGINE FEATURES + CLASSIFICATION
 # ============================================================
 def liquidity_grade(pm_dollar_vol: float) -> str:
-    if pm_dollar_vol >= LIQ_A:
-        return "A"
-    if pm_dollar_vol >= LIQ_B:
-        return "B"
-    if pm_dollar_vol >= LIQ_C:
-        return "C"
+    if pm_dollar_vol >= LIQ_A: return "A"
+    if pm_dollar_vol >= LIQ_B: return "B"
+    if pm_dollar_vol >= LIQ_C: return "C"
     return "D"
 
 def compute_rel_vol(pm_vol: float, avg_daily_vol: float | None, pm_minutes: int) -> float | None:
-    """
-    Correct relVol: compare pm_vol to expected volume for that many minutes.
-    Expected minutes share ~ (pm_minutes / 390) of daily volume.
-    """
     if avg_daily_vol is None or avg_daily_vol <= 0:
         return None
     expected = avg_daily_vol * (pm_minutes / 390.0)
@@ -433,9 +397,6 @@ def compute_rel_vol(pm_vol: float, avg_daily_vol: float | None, pm_minutes: int)
     return pm_vol / expected
 
 def compute_pressure_score(feat: dict) -> float:
-    """
-    Squeeze pressure: SI + SI trend + CTB + Util + Availability.
-    """
     si = feat.get("si_pct_ff") or 0.0
     si_chg = feat.get("si_pct_chg") or 0.0
     ctb = feat.get("ctb") or 0.0
@@ -444,9 +405,8 @@ def compute_pressure_score(feat: dict) -> float:
 
     avail_term = 0.0
     if avail is not None:
-        avail_term = max(0.0, 6.0 - math.log10(max(avail, 1.0)))  # smaller avail -> higher
+        avail_term = max(0.0, 6.0 - math.log10(max(avail, 1.0)))
 
-    # scale into a reasonable 0..~100-ish range
     score = 0.0
     score += si * 2.0
     score += si_chg * 8.0
@@ -456,14 +416,10 @@ def compute_pressure_score(feat: dict) -> float:
     return score
 
 def compute_opportunity_score(feat: dict) -> float:
-    """
-    Opportunity = how much room it has to move + demand.
-    """
     rng = feat.get("pm_range_pct") or 0.0
     gap = feat.get("gap_pct") or 0.0
     relv = feat.get("rel_vol") or 0.0
     dv = feat.get("pm_dollar_vol") or 0.0
-
     dv_m = dv / 1_000_000.0
 
     score = 0.0
@@ -474,9 +430,6 @@ def compute_opportunity_score(feat: dict) -> float:
     return score
 
 def compute_structure_score(feat: dict) -> float:
-    """
-    Structure = is it holding gains and offering a clean plan.
-    """
     hold = feat.get("pm_hold_pct") or 0.0
     rng = feat.get("pm_range_pct") or 0.0
     trigger = feat.get("trigger") or 0.0
@@ -484,20 +437,16 @@ def compute_structure_score(feat: dict) -> float:
     pm_close = feat.get("pm_close") or 0.0
 
     risk = max(trigger - stop, 1e-9)
-    # reward proxy: range * price
     reward = max((rng * max(pm_close, 1e-9)), 1e-9)
-    rr = reward / (risk / max(pm_close, 1e-9))  # normalized-ish
+    rr = reward / (risk / max(pm_close, 1e-9))
 
     score = 0.0
     score += hold * 60.0
     score += clamp(rr / 5.0) * 30.0
-    score += clamp((0.12 - abs(rng - 0.06)) / 0.12) * 10.0  # prefer moderate range for cleanliness
+    score += clamp((0.12 - abs(rng - 0.06)) / 0.12) * 10.0
     return score
 
 def halt_probability(feat: dict) -> float:
-    """
-    Heuristic 0..1. Higher for low price, big move, thin liquidity, small float.
-    """
     price = safe_float(feat.get("pm_close")) or safe_float(feat.get("pm_open")) or 0.0
     gap = safe_float(feat.get("gap_pct")) or 0.0
     rng = safe_float(feat.get("pm_range_pct")) or 0.0
@@ -528,9 +477,6 @@ def halt_probability(feat: dict) -> float:
     return clamp(pf + (0.55 * move) + lf + ff)
 
 def do_not_chase_warning(feat: dict) -> tuple[bool, str]:
-    """
-    Conservative DNC: only real chase/liquidity/violence triggers.
-    """
     gap = safe_float(feat.get("gap_pct")) or 0.0
     rng = safe_float(feat.get("pm_range_pct")) or 0.0
     hold = safe_float(feat.get("pm_hold_pct")) or 0.0
@@ -540,79 +486,45 @@ def do_not_chase_warning(feat: dict) -> tuple[bool, str]:
     trigger = safe_float(feat.get("trigger")) or 0.0
 
     reasons = []
-
-    if gap >= DNC_GAP_PCT:
-        reasons.append("gap>=20%")
-    if rng >= DNC_RANGE_PCT:
-        reasons.append("range>=10%")
-    if dv < DNC_THIN_LIQ:
-        reasons.append("thin_liquidity")
-    if rng >= DNC_SPIKE_RANGE and hold < DNC_SPIKE_HOLD:
-        reasons.append("spike_risk")
-    if trigger > 0 and pm_close > trigger * (1.0 + CHASE_ABOVE_TRIGGER_PCT):
-        reasons.append(">2%_above_trigger")
+    if gap >= DNC_GAP_PCT: reasons.append("gap>=20%")
+    if rng >= DNC_RANGE_PCT: reasons.append("range>=10%")
+    if dv < DNC_THIN_LIQ: reasons.append("thin_liquidity")
+    if rng >= DNC_SPIKE_RANGE and hold < DNC_SPIKE_HOLD: reasons.append("spike_risk")
+    if trigger > 0 and pm_close > trigger * (1.0 + CHASE_ABOVE_TRIGGER_PCT): reasons.append(">2%_above_trigger")
 
     return (len(reasons) > 0), ",".join(reasons)
 
 def data_quality_penalty(feat: dict) -> tuple[bool, str]:
-    """
-    Returns (is_low_quality, reason). This affects confidence (downgrade),
-    but should not automatically DNC.
-    """
     reasons = []
-
-    # missing key demand context
-    if feat.get("rel_vol") is None:
-        reasons.append("relVol_missing")
-    if feat.get("float_shares") is None:
-        reasons.append("float_missing")
-
-    # missing borrow metrics
-    if feat.get("ctb") is None:
-        reasons.append("ctb_missing")
-    if feat.get("util") is None:
-        reasons.append("util_missing")
-    if feat.get("avail") is None:
-        reasons.append("avail_missing")
-
+    if feat.get("rel_vol") is None: reasons.append("relVol_missing")
+    if feat.get("float_shares") is None: reasons.append("float_missing")
+    if feat.get("ctb") is None: reasons.append("ctb_missing")
+    if feat.get("util") is None: reasons.append("util_missing")
+    if feat.get("avail") is None: reasons.append("avail_missing")
     return (len(reasons) > 0), ",".join(reasons)
 
 def is_true_squeeze_strict(feat: dict) -> bool:
-    """
-    Strict TRUE SQUEEZE: must have borrow confirmation + strong enough SI + demand structure.
-    """
     si = feat.get("si_pct_ff")
     if si is None or si < 8.0:
         return False
-
-    # MUST have borrow metrics (strict)
     if REQUIRE_BORROW_DATA_FOR_TRUE_SQUEEZE:
         if feat.get("ctb") is None or feat.get("util") is None or feat.get("avail") is None:
             return False
-
-    # borrow pressure sanity
     util = feat.get("util")
     if util is not None and util < 80.0:
         return False
-
     avail = feat.get("avail")
     if avail is not None and avail > 250_000:
         return False
-
-    # demand/structure confirmation
     if (feat.get("pm_dollar_vol") or 0.0) < 250_000:
         return False
     if (feat.get("pm_hold_pct") or 0.0) < 0.25:
         return False
     if (feat.get("pm_range_pct") or 0.0) < 0.02:
         return False
-
     return True
 
 def setup_type_and_plan(feat: dict, squeeze: bool, dnc: bool, halt_p: float) -> tuple[str, str]:
-    """
-    Human-readable classification + plan string.
-    """
     hold = feat.get("pm_hold_pct") or 0.0
     rng = feat.get("pm_range_pct") or 0.0
     dv = feat.get("pm_dollar_vol") or 0.0
@@ -620,94 +532,51 @@ def setup_type_and_plan(feat: dict, squeeze: bool, dnc: bool, halt_p: float) -> 
     stop = feat.get("stop") or 0.0
 
     if halt_p >= HALT_HIGH_RISK:
-        setup = "halt-risk scalp"
-        plan = f"High halt risk. Size down. If trading: only quick scalps; avoid chasing. Trigger {trigger:.4f}, stop {stop:.4f}."
-        return setup, plan
+        return ("halt-risk scalp",
+                f"High halt risk. Size down. If trading: only quick scalps; avoid chasing. Trigger {trigger:.4f}, stop {stop:.4f}.")
 
     if squeeze:
         if dnc:
-            setup = "squeeze pullback"
-            plan = f"DNC flagged—wait for pullback/flag then reclaim. Use trigger {trigger:.4f}. Stop {stop:.4f} (or tighter after base forms)."
-        else:
-            setup = "squeeze breakout"
-            plan = f"Clean squeeze setup. Entry near trigger {trigger:.4f}. Stop {stop:.4f}. Avoid >2% chase."
-        return setup, plan
+            return ("squeeze pullback",
+                    f"DNC flagged—wait for pullback/flag then reclaim. Use trigger {trigger:.4f}. Stop {stop:.4f}.")
+        return ("squeeze breakout",
+                f"Clean squeeze setup. Entry near trigger {trigger:.4f}. Stop {stop:.4f}. Avoid >2% chase.")
 
-    # momentum
     if dv < 300_000:
-        setup = "thin momentum"
-        plan = f"Thin liquidity—use limits only. Prefer pullback entry. Trigger {trigger:.4f}, stop {stop:.4f}."
-        return setup, plan
+        return ("thin momentum",
+                f"Thin liquidity—use limits only. Prefer pullback entry. Trigger {trigger:.4f}, stop {stop:.4f}.")
 
     if hold >= 0.35 and 0.02 <= rng <= 0.12:
-        setup = "momentum breakout"
-        plan = f"Entry near trigger {trigger:.4f}. Stop {stop:.4f}. Take profit into spikes; don’t chase >2%."
-        return setup, plan
+        return ("momentum breakout",
+                f"Entry near trigger {trigger:.4f}. Stop {stop:.4f}. Take profit into spikes; don’t chase >2%.")
 
-    setup = "momentum pullback"
-    plan = f"Wait for pullback/base then reclaim trigger {trigger:.4f}. Stop {stop:.4f}. Avoid FOMO entries."
-    return setup, plan
+    return ("momentum pullback",
+            f"Wait for pullback/base then reclaim trigger {trigger:.4f}. Stop {stop:.4f}. Avoid FOMO entries.")
 
-def confidence_grade(
-    base_score: float,
-    prob: float,
-    liq_grade: str,
-    halt_p: float,
-    dnc: bool,
-    low_quality: bool
-) -> str:
-    """
-    Confidence A/B/C.
-    Rules:
-    - Liquidity hard cap: low liquidity can't be A.
-    - High halt risk penalizes.
-    - DNC penalizes.
-    - Low data quality downgrades.
-    """
+def confidence_grade(base_score: float, prob: float, liq_grade: str, halt_p: float, dnc: bool, low_quality: bool) -> str:
     pts = 0
+    if base_score >= 120: pts += 3
+    elif base_score >= 80: pts += 2
+    elif base_score >= 50: pts += 1
 
-    # strength
-    if base_score >= 120:
-        pts += 3
-    elif base_score >= 80:
-        pts += 2
-    elif base_score >= 50:
-        pts += 1
+    if prob >= 0.85: pts += 2
+    elif prob >= 0.65: pts += 1
 
-    if prob >= 0.85:
-        pts += 2
-    elif prob >= 0.65:
-        pts += 1
+    if halt_p >= HALT_HIGH_RISK: pts -= 2
+    elif halt_p >= HALT_WATCH: pts -= 1
+    if dnc: pts -= 1
+    if low_quality: pts -= 1
 
-    # penalties
-    if halt_p >= HALT_HIGH_RISK:
-        pts -= 2
-    elif halt_p >= HALT_WATCH:
-        pts -= 1
+    if pts >= 4: conf = "A"
+    elif pts >= 2: conf = "B"
+    else: conf = "C"
 
-    if dnc:
-        pts -= 1
-
-    if low_quality:
-        pts -= 1
-
-    # map points to letter
-    if pts >= 4:
-        conf = "A"
-    elif pts >= 2:
-        conf = "B"
-    else:
-        conf = "C"
-
-    # liquidity hard rule: low liquidity can never be A
     if conf == "A" and liq_grade in ("C", "D"):
         conf = "B"
-
     return conf
 
-
 # ============================================================
-# REPORTING (HTML + CSV + JSON) — readable output
+# REPORTING (HTML + CSV + JSON)
 # ============================================================
 def write_reports(date_str: str, end_local: datetime, top_squeeze: list[dict], top_momentum: list[dict], meta: dict):
     ts = now_ct().strftime("%Y-%m-%d_%H-%M-%S")
@@ -719,20 +588,14 @@ def write_reports(date_str: str, end_local: datetime, top_squeeze: list[dict], t
     html_path = OUT_DIR / f"{base}.html"
 
     def fmt_num(x, nd=2):
-        if x is None:
-            return "NA"
-        try:
-            return f"{float(x):.{nd}f}"
-        except Exception:
-            return "NA"
+        if x is None: return "NA"
+        try: return f"{float(x):.{nd}f}"
+        except Exception: return "NA"
 
     def fmt_int(x):
-        if x is None:
-            return "NA"
-        try:
-            return f"{int(float(x)):,}"
-        except Exception:
-            return "NA"
+        if x is None: return "NA"
+        try: return f"{int(float(x)):,}"
+        except Exception: return "NA"
 
     def badge(text, kind):
         return f'<span class="badge {kind}">{text}</span>'
@@ -741,14 +604,10 @@ def write_reports(date_str: str, end_local: datetime, top_squeeze: list[dict], t
         return "good" if c == "A" else ("warn" if c == "B" else "bad")
 
     def halt_kind(h):
-        try:
-            hv = float(h)
-        except Exception:
-            return "neutral"
-        if hv >= HALT_HIGH_RISK:
-            return "bad"
-        if hv >= HALT_WATCH:
-            return "warn"
+        try: hv = float(h)
+        except Exception: return "neutral"
+        if hv >= HALT_HIGH_RISK: return "bad"
+        if hv >= HALT_WATCH: return "warn"
         return "good"
 
     def dnc_kind(v):
@@ -778,8 +637,7 @@ def write_reports(date_str: str, end_local: datetime, top_squeeze: list[dict], t
         }
 
     def table_html(rows):
-        if not rows:
-            return "<p class='muted'>None</p>"
+        if not rows: return "<p class='muted'>None</p>"
         cols = list(rows[0].keys())
         head = "".join(f"<th>{c}</th>" for c in cols)
         body = ""
@@ -804,14 +662,11 @@ def write_reports(date_str: str, end_local: datetime, top_squeeze: list[dict], t
     sq = [row_view(r) for r in top_squeeze]
     mo = [row_view(r) for r in top_momentum]
 
-    # TXT — quick summary only
     with open(txt_path, "w", encoding="utf-8") as f:
         f.write(f"Date: {date_str}\n")
         f.write(f"Scan window: {ct_dt(date_str, SCAN_START_CT).strftime('%H:%M')}–{end_local.strftime('%H:%M')} CT\n")
         flt = meta["filters"]
-        f.write(f"Filters: pm_$vol>={int(flt['min_pm_dollar_vol'])}, range_pct>={flt['min_range_pct']}, hold_pct>={flt['min_hold_pct']}\n")
-        tiers = ", ".join([f"{t[0]:.2f}-{t[1]:.2f}" for t in PRICE_TIERS])
-        f.write(f"Tiers: {tiers}\n\n")
+        f.write(f"Filters: pm_$vol>={int(flt['min_pm_dollar_vol'])}, range_pct>={flt['min_range_pct']}, hold_pct>={flt['min_hold_pct']}\n\n")
 
         def write_bucket(title, rows):
             f.write(f"{title} (Top {len(rows)}):\n")
@@ -828,10 +683,8 @@ def write_reports(date_str: str, end_local: datetime, top_squeeze: list[dict], t
 
         write_bucket("TRUE SQUEEZE", top_squeeze)
         write_bucket("MOMENTUM", top_momentum)
-
         f.write("Open the HTML report for the readable dashboard.\n")
 
-    # CSV — full rows
     all_rows = top_squeeze + top_momentum
     fieldnames = sorted(set().union(*(r.keys() for r in all_rows)) or [])
     with open(csv_path, "w", newline="", encoding="utf-8") as f:
@@ -840,11 +693,9 @@ def write_reports(date_str: str, end_local: datetime, top_squeeze: list[dict], t
         for r in all_rows:
             w.writerow({k: r.get(k) for k in fieldnames})
 
-    # JSON — full
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump({"meta": meta, "date": date_str, "top_squeeze": top_squeeze, "top_momentum": top_momentum}, f, indent=2)
 
-    # HTML — main readability
     html = f"""<!doctype html>
 <html>
 <head>
@@ -870,7 +721,7 @@ small {{ color: #777; }}
 <body>
 <h1>SqueezeBot — Engine v1</h1>
 <div class="sub">
-  {date_str} • Window: {ct_dt(date_str, SCAN_START_CT).strftime('%H:%M')}–{end_local.strftime('%H:%M')} CT • Scans: every 5 min • Top 3 per bucket
+  {date_str} • Window: {ct_dt(date_str, SCAN_START_CT).strftime('%H:%M')}–{end_local.strftime('%H:%M')} CT • Top {TOP_N_PER_BUCKET} per bucket
 </div>
 
 <div class="card">
@@ -893,11 +744,10 @@ small {{ color: #777; }}
 
     return txt_path, csv_path, json_path, html_path
 
-
 # ============================================================
 # SCAN ENGINE (one scan pass)
 # ============================================================
-def run_single_scan(date_str: str, end_local: datetime) -> tuple[list[dict], list[dict], dict]:
+def run_single_scan(date_str: str, end_local: datetime):
     snap_all = get_snapshot_all_tickers()
 
     meta = {
@@ -924,7 +774,6 @@ def run_single_scan(date_str: str, end_local: datetime) -> tuple[list[dict], lis
 
         for t in candidates:
             try:
-                # prefilters
                 if not is_common_stock_polygon(t):
                     continue
 
@@ -959,7 +808,6 @@ def run_single_scan(date_str: str, end_local: datetime) -> tuple[list[dict], lis
                 float_est = si_feat.get("float_est")
                 float_shares = float_poly if float_poly is not None else float_est
 
-                # trigger/stop: simple + consistent (premarket high/low)
                 trigger = pm["pm_high"]
                 stop = pm["pm_low"]
 
@@ -978,10 +826,8 @@ def run_single_scan(date_str: str, end_local: datetime) -> tuple[list[dict], lis
                     "price_tier": f"{pmin:.2f}-{pmax:.2f}",
                 }
 
-                # STRICT squeeze label
                 squeeze = is_true_squeeze_strict(feat)
 
-                # scores (equal blend)
                 pressure = compute_pressure_score(feat)
                 opportunity = compute_opportunity_score(feat)
                 structure = compute_structure_score(feat)
@@ -1005,31 +851,25 @@ def run_single_scan(date_str: str, end_local: datetime) -> tuple[list[dict], lis
                     low_quality=low_q,
                 )
 
-                # if strict squeeze is required, anything missing borrow metrics should not be squeeze (already handled).
                 bucket = "TRUE_SQUEEZE" if squeeze else "MOMENTUM"
 
-                row = {
+                rows.append({
                     "ticker": t,
                     "bucket": bucket,
                     "base_score": base_score,
                     "prob": prob,
-
                     "pressure_score": pressure,
                     "opportunity_score": opportunity,
                     "structure_score": structure,
-
                     "si_pct_ff": feat.get("si_pct_ff"),
                     "si_pct_chg": feat.get("si_pct_chg"),
                     "si_shares": feat.get("si_shares"),
-
                     "ctb": ctb,
                     "util": util,
                     "avail": avail,
-
                     "float_shares": float_shares,
                     "gap_pct": gap_pct,
                     "rel_vol": relv,
-
                     "pm_dollar_vol": pm["pm_dollar_vol"],
                     "pm_vol": pm["pm_vol"],
                     "pm_range_pct": pm["pm_range_pct"],
@@ -1039,55 +879,26 @@ def run_single_scan(date_str: str, end_local: datetime) -> tuple[list[dict], lis
                     "pm_low": pm["pm_low"],
                     "pm_close": pm["pm_close"],
                     "pm_minutes": pm["pm_minutes"],
-
                     "trigger": trigger,
                     "stop": stop,
-
                     "halt_prob": hp,
                     "do_not_chase": dnc,
                     "dnc_reason": dnc_reason,
-
                     "data_low_quality": low_q,
                     "data_quality_reason": low_q_reason,
-
                     "liq_grade": liq,
                     "confidence": conf,
                     "setup_type": setup,
                     "plan": plan,
-
                     "price_tier": feat.get("price_tier"),
-                }
-
-                rows.append(row)
+                })
 
             except Exception:
                 continue
 
-    # percentile (helpful for ranking explanation)
-    if rows:
-        scores_sorted = sorted([r["base_score"] for r in rows])
-        def pct_rank(x):
-            # percentile 0..100
-            # position in sorted list
-            lo = 0
-            hi = len(scores_sorted)
-            while lo < hi:
-                mid = (lo + hi) // 2
-                if scores_sorted[mid] <= x:
-                    lo = mid + 1
-                else:
-                    hi = mid
-            return 100.0 * (lo / len(scores_sorted))
-
-        for r in rows:
-            r["score_pctile"] = pct_rank(r["base_score"])
-
-    # IMMEDIATE DEMOTION IS NATURAL: every scan recomputes list fresh
     squeezes = [r for r in rows if r["bucket"] == "TRUE_SQUEEZE"]
     momentum = [r for r in rows if r["bucket"] == "MOMENTUM"]
 
-    # Rank by equal blend already in base_score, but add tie-breakers:
-    # prefer better confidence, better liquidity, lower halt risk
     conf_rank = {"A": 3, "B": 2, "C": 1}
     liq_rank = {"A": 3, "B": 2, "C": 1, "D": 0}
 
@@ -1103,19 +914,14 @@ def run_single_scan(date_str: str, end_local: datetime) -> tuple[list[dict], lis
     squeezes.sort(key=sort_key, reverse=True)
     momentum.sort(key=sort_key, reverse=True)
 
-    top_squeeze = squeezes[:TOP_N_PER_BUCKET]
-    top_momentum = momentum[:TOP_N_PER_BUCKET]
-
-    return top_squeeze, top_momentum, meta
-
+    return squeezes[:TOP_N_PER_BUCKET], momentum[:TOP_N_PER_BUCKET], meta
 
 # ============================================================
-# SCHEDULER LOOP (continuous premarket every 5 minutes)
+# MODES
 # ============================================================
-def run_premarket_loop():
+def run_one_shot(force: bool = False):
     dt = now_ct()
 
-    # if weekend: back to last weekday for testing
     if not is_weekday_ct(dt):
         back = dt
         while back.weekday() >= 5:
@@ -1125,55 +931,76 @@ def run_premarket_loop():
     date_str = ct_date_str(dt)
     start_local = ct_dt(date_str, SCAN_START_CT)
     end_local_limit = ct_dt(date_str, SCAN_END_CT)
-
-    # if before scan start, wait until start
     now_local = now_ct()
-    if now_local < start_local:
-        wait_sec = max(0, (start_local - now_local).total_seconds())
-        print(f"Waiting until scan start {start_local.strftime('%H:%M')} CT...")
-        time.sleep(min(wait_sec, 60))  # wake up soon (don’t sleep forever)
-        return
 
-    # if after scan end, run one final scan and exit
-    if now_local >= end_local_limit:
-        print("Past scan window. Running one final scan and exiting.")
-        top_s, top_m, meta = run_single_scan(date_str, end_local_limit)
-        paths = write_reports(date_str, end_local_limit, top_s, top_m, meta)
-        print(f"Saved: {paths[0]}")
-        print(f"Saved: {paths[1]}")
-        print(f"Saved: {paths[2]}")
-        print(f"Saved: {paths[3]}")
-        return
+    if not force:
+        if now_local < start_local:
+            print(f"Outside scan window (too early). Window is {start_local.strftime('%H:%M')}–{end_local_limit.strftime('%H:%M')} CT.")
+            return
+        if now_local >= end_local_limit:
+            print(f"Outside scan window (too late). Window is {start_local.strftime('%H:%M')}–{end_local_limit.strftime('%H:%M')} CT.")
+            return
 
-    # run scans until end
     end_local = min(now_local, end_local_limit)
     top_s, top_m, meta = run_single_scan(date_str, end_local)
     txt_path, csv_path, json_path, html_path = write_reports(date_str, end_local, top_s, top_m, meta)
 
-    print(f"[{now_local.strftime('%H:%M:%S')}] Saved: {html_path}")
+    print(f"Saved TXT:  {txt_path}")
+    print(f"Saved CSV:  {csv_path}")
+    print(f"Saved JSON: {json_path}")
+    print(f"Saved HTML: {html_path}")
 
-    # sleep to next 5-min boundary
-    nxt = next_5min_boundary(now_local)
-    if nxt > end_local_limit:
-        return
-    sleep_sec = max(1, (nxt - now_local).total_seconds())
-    time.sleep(sleep_sec)
-
-
-def main():
-    # keep running during premarket window, otherwise it will wait / run once / exit
-    # To stop it, Ctrl+C
+def run_loop_forever():
     while True:
         try:
-            run_premarket_loop()
+            dt = now_ct()
+            if not is_weekday_ct(dt):
+                time.sleep(60)
+                continue
+
+            date_str = ct_date_str(dt)
+            start_local = ct_dt(date_str, SCAN_START_CT)
+            end_local_limit = ct_dt(date_str, SCAN_END_CT)
+            now_local = now_ct()
+
+            if now_local < start_local:
+                time.sleep(60)
+                continue
+
+            if now_local >= end_local_limit:
+                time.sleep(300)
+                continue
+
+            end_local = min(now_local, end_local_limit)
+            top_s, top_m, meta = run_single_scan(date_str, end_local)
+            _, _, _, html_path = write_reports(date_str, end_local, top_s, top_m, meta)
+            print(f"[{now_local.strftime('%H:%M:%S')}] Saved: {html_path}")
+
+            nxt = next_5min_boundary(now_local)
+            sleep_sec = max(1, (nxt - now_local).total_seconds())
+            time.sleep(sleep_sec)
+
         except KeyboardInterrupt:
             print("Stopped.")
             break
         except Exception as e:
             print(f"Error: {e}")
-            # small cooldown to avoid rapid retry storms
             time.sleep(10)
 
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--mode", choices=["oneshot", "loop"], default="loop")
+    parser.add_argument("--force", action="store_true")
+    parser.add_argument("--run-id", default=None)
+    args = parser.parse_args()
+
+    if args.run_id:
+        print(f"Run ID: {args.run_id}")
+
+    if args.mode == "oneshot":
+        run_one_shot(force=args.force)
+    else:
+        run_loop_forever()
 
 if __name__ == "__main__":
     main()
