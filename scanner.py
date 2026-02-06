@@ -40,20 +40,23 @@ HALT_HIGH_RISK = 0.55
 HALT_WATCH = 0.40
 
 # TRUE SQUEEZE (strict) requires borrow pressure confirmation
-# Utilization is temporarily disabled unless your ORTEX account supports it.
 REQUIRE_BORROW_DATA_FOR_TRUE_SQUEEZE = True
 
 # Candidate selection
 PRICE_TIERS = [(0.01, 2.50), (2.50, 5.00), (5.00, 10.00)]
-MAX_CANDIDATES_PER_TIER = 300
+MAX_CANDIDATES_PER_TIER = 300  # keep manageable
 
-# Output
-OUT_DIR = Path("outputs")
-OUT_DIR.mkdir(exist_ok=True)
+# ============================================================
+# KEYS + SESSION
+# ============================================================
+POLYGON_KEY = os.getenv("POLYGON_API_KEY")
+ORTEX_KEY = os.getenv("ORTEX_API_KEY")
 
 SESSION = requests.Session()
 SESSION.headers.update({"User-Agent": "squeeze-bot/engine-v1"})
 
+OUT_DIR = Path("outputs")
+OUT_DIR.mkdir(exist_ok=True)
 
 # ============================================================
 # TIMEZONE (Central)
@@ -64,9 +67,41 @@ try:
 except Exception:
     CT_TZ = timezone(timedelta(hours=-6))
 
+# ============================================================
+# SCHEDULER RULES (WHAT YOU ASKED FOR)
+# - Pre + regular: every 5 minutes
+# - Post/after-hours: every 30 minutes
+# ============================================================
+def next_interval_seconds() -> int | None:
+    """
+    Returns how often we should scan RIGHT NOW.
+    None = market closed (sleep longer).
+    """
+    dt = now_ct()
+    if dt.weekday() >= 5:
+        return None
+
+    # CT times
+    pre_start = dt.replace(hour=3, minute=0, second=0, microsecond=0)
+    pre_end   = dt.replace(hour=8, minute=29, second=59, microsecond=0)
+
+    reg_start = dt.replace(hour=8, minute=30, second=0, microsecond=0)
+    reg_end   = dt.replace(hour=15, minute=0, second=0, microsecond=0)
+
+    post_start = dt.replace(hour=15, minute=0, second=1, microsecond=0)
+    post_end   = dt.replace(hour=19, minute=0, second=0, microsecond=0)
+
+    if pre_start <= dt <= pre_end:
+        return 5 * 60
+    if reg_start <= dt <= reg_end:
+        return 5 * 60
+    if post_start <= dt <= post_end:
+        return 30 * 60
+
+    return None
 
 # ============================================================
-# SAFE HELPERS
+# HELPERS
 # ============================================================
 def now_ct() -> datetime:
     return datetime.now(tz=CT_TZ)
@@ -118,8 +153,14 @@ def sigmoid(x: float) -> float:
 def score_to_prob(score: float) -> float:
     return sigmoid((score - 55.0) / 12.0)
 
-def is_weekday_ct(dt: datetime) -> bool:
-    return dt.weekday() < 5
+def polygon_get(url: str, params: dict | None = None) -> dict:
+    if not POLYGON_KEY:
+        raise RuntimeError("POLYGON_API_KEY environment variable is not set")
+    params = dict(params or {})
+    params["apiKey"] = POLYGON_KEY
+    r = SESSION.get(url, params=params, timeout=30)
+    r.raise_for_status()
+    return r.json()
 
 def ms_to_utc(ms: int) -> datetime:
     return datetime.fromtimestamp(ms / 1000, tz=timezone.utc)
@@ -137,31 +178,9 @@ def scan_window_utc(date_str: str, end_local: datetime) -> tuple[datetime, datet
     minutes = int(max(1, (end_local - start_local).total_seconds() // 60))
     return start_utc, end_utc, minutes
 
-
 # ============================================================
-# KEYS (DON'T CRASH APP ON IMPORT)
+# POLYGON DATA
 # ============================================================
-def require_keys():
-    polygon = os.getenv("POLYGON_API_KEY")
-    ortex = os.getenv("ORTEX_API_KEY")
-    if not polygon:
-        raise RuntimeError("POLYGON_API_KEY is missing in Render Environment Variables.")
-    if not ortex:
-        raise RuntimeError("ORTEX_API_KEY is missing in Render Environment Variables.")
-    return polygon, ortex
-
-
-# ============================================================
-# POLYGON
-# ============================================================
-def polygon_get(url: str, params: dict | None = None) -> dict:
-    polygon_key, _ = require_keys()
-    params = dict(params or {})
-    params["apiKey"] = polygon_key
-    r = SESSION.get(url, params=params, timeout=30)
-    r.raise_for_status()
-    return r.json()
-
 def get_snapshot_all_tickers() -> list[dict]:
     data = polygon_get("https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers", {})
     return data.get("tickers", []) or []
@@ -280,51 +299,59 @@ def get_premarket_stats_dynamic(ticker: str, date_str: str, end_local: datetime)
         "pm_minutes": minutes,
     }
 
-
 # ============================================================
-# ORTEX (WITH BACKOFF)
+# ORTEX DATA (FIX: NO-DATA MUST NOT CRASH)
 # ============================================================
-def ortex_get(url: str, *, max_retries: int = 2, logger=print) -> dict:
-    _, ortex_key = require_keys()
+def ortex_get(url: str, log_fn=None) -> dict | None:
+    if not ORTEX_KEY:
+        raise RuntimeError("ORTEX_API_KEY environment variable is not set")
 
-    for attempt in range(max_retries + 1):
-        r = SESSION.get(url, headers={"Ortex-Api-Key": ortex_key}, timeout=30)
+    r = SESSION.get(url, headers={"Ortex-Api-Key": ORTEX_KEY}, timeout=30)
 
-        if r.status_code == 429:
-            try:
-                j = r.json()
-            except Exception:
-                j = {}
-            msg = (j.get("detail") or "") if isinstance(j, dict) else ""
-            m = re.search(r"available in (\d+)\s*seconds", msg)
-            wait_s = int(m.group(1)) + 1 if m else 10
-
-            if attempt >= max_retries:
-                logger(f"[ORTEX THROTTLED] {url} — giving up.")
-                return {}
-
-            logger(f"[ORTEX THROTTLED] waiting {min(wait_s,60)}s then retrying…")
-            time.sleep(min(wait_s, 60))
-            continue
-
-        if r.status_code >= 400:
-            logger(f"[ORTEX ERROR] {r.status_code} {url}")
-            try:
-                logger(r.text[:800])
-            except Exception:
-                pass
-            return {}
-
+    # ORTEX "no coverage" frequently returns 404 with a JSON message.
+    if r.status_code == 404:
         try:
-            return r.json()
+            j = r.json()
         except Exception:
-            logger(f"[ORTEX ERROR] Non-JSON response from {url}")
-            return {}
+            j = {"message": "No data"}
+        if log_fn:
+            log_fn(f"[ORTEX NO DATA] 404 {url} {str(j)[:200]}")
+        return None
 
-    return {}
+    # Sometimes ORTEX returns 400 with "No data..." too. Treat it the same.
+    if r.status_code == 400:
+        try:
+            j = r.json()
+        except Exception:
+            j = {"message": r.text[:200]}
+        msg = str(j)
+        if "No data" in msg or "No data returned" in msg:
+            if log_fn:
+                log_fn(f"[ORTEX NO DATA] 400 {url} {msg[:200]}")
+            return None
 
-def ortex_short_interest_features(ticker: str, logger=print) -> dict | None:
-    data = ortex_get(f"https://api.ortex.com/api/v1/stock/US/{ticker}/short_interest", logger=logger)
+    if r.status_code == 429:
+        if log_fn:
+            log_fn("[ORTEX THROTTLED] 429 — skipping this call")
+        return None
+
+    if r.status_code >= 400:
+        if log_fn:
+            log_fn(f"[ORTEX ERROR] {r.status_code} {url} {r.text[:200]}")
+        return None
+
+    try:
+        return r.json()
+    except Exception:
+        if log_fn:
+            log_fn(f"[ORTEX ERROR] Non-JSON response {url}")
+        return None
+
+def ortex_short_interest_features(ticker: str, log_fn=None) -> dict | None:
+    data = ortex_get(f"https://api.ortex.com/api/v1/stock/US/{ticker}/short_interest", log_fn=log_fn)
+    if not data:
+        return None
+
     rows = data.get("rows", []) if isinstance(data, dict) else []
     if not rows:
         return None
@@ -349,13 +376,15 @@ def ortex_short_interest_features(ticker: str, logger=print) -> dict | None:
 
     return {"si_pct_ff": si_pct, "si_pct_chg": si_pct_chg, "si_shares": si_shares, "float_est": float_est}
 
-def ortex_ctb_latest(ticker: str, logger=print) -> float | None:
+def ortex_ctb_latest(ticker: str, log_fn=None) -> float | None:
     endpoints = [
         f"https://api.ortex.com/api/v1/stock/US/{ticker}/ctb/all",
         f"https://api.ortex.com/api/v1/stock/US/{ticker}/ctb/new",
     ]
     for url in endpoints:
-        data = ortex_get(url, logger=logger)
+        data = ortex_get(url, log_fn=log_fn)
+        if not data:
+            continue
         rows = data.get("rows", []) if isinstance(data, dict) else []
         if not rows:
             continue
@@ -366,26 +395,47 @@ def ortex_ctb_latest(ticker: str, logger=print) -> float | None:
                 return v
     return None
 
-def ortex_availability_latest(ticker: str, logger=print) -> float | None:
-    url = f"https://api.ortex.com/api/v1/stock/US/{ticker}/availability"
-    data = ortex_get(url, logger=logger)
-    rows = data.get("rows", []) if isinstance(data, dict) else []
-    if not rows:
-        return None
-    latest = rows[-1]
-    for k in ("shares", "availableShares", "availabilityShares", "available", "avail"):
-        v = safe_float(latest.get(k))
-        if v is not None:
-            return v
+def ortex_utilization_latest(ticker: str, log_fn=None) -> float | None:
+    # If your ORTEX plan doesn't support util endpoints, this may always be None.
+    endpoints = [
+        f"https://api.ortex.com/api/v1/stock/US/{ticker}/utilization",
+        f"https://api.ortex.com/api/v1/stock/US/{ticker}/utilization/all",
+    ]
+    for url in endpoints:
+        data = ortex_get(url, log_fn=log_fn)
+        if not data:
+            continue
+        rows = data.get("rows", []) if isinstance(data, dict) else []
+        if not rows:
+            continue
+        latest = rows[-1]
+        for k in ("utilization", "utilisation", "utilizationPct", "utilisationPct"):
+            v = safe_float(latest.get(k))
+            if v is not None:
+                return v
     return None
 
-def ortex_utilization_latest(ticker: str, logger=print) -> float | None:
-    # Disabled unless you confirm endpoint works on your account.
+def ortex_availability_latest(ticker: str, log_fn=None) -> float | None:
+    endpoints = [
+        f"https://api.ortex.com/api/v1/stock/US/{ticker}/availability",
+        f"https://api.ortex.com/api/v1/stock/US/{ticker}/availability/all",
+    ]
+    for url in endpoints:
+        data = ortex_get(url, log_fn=log_fn)
+        if not data:
+            continue
+        rows = data.get("rows", []) if isinstance(data, dict) else []
+        if not rows:
+            continue
+        latest = rows[-1]
+        for k in ("shares", "availableShares", "availabilityShares", "available", "avail"):
+            v = safe_float(latest.get(k))
+            if v is not None:
+                return v
     return None
-
 
 # ============================================================
-# SCORING + CLASSIFICATION
+# ENGINE FEATURES + CLASSIFICATION
 # ============================================================
 def liquidity_grade(pm_dollar_vol: float) -> str:
     if pm_dollar_vol >= LIQ_A: return "A"
@@ -486,6 +536,7 @@ def do_not_chase_warning(feat: dict) -> tuple[bool, str]:
     rng = safe_float(feat.get("pm_range_pct")) or 0.0
     hold = safe_float(feat.get("pm_hold_pct")) or 0.0
     dv = safe_float(feat.get("pm_dollar_vol")) or 0.0
+
     pm_close = safe_float(feat.get("pm_close")) or 0.0
     trigger = safe_float(feat.get("trigger")) or 0.0
 
@@ -495,6 +546,7 @@ def do_not_chase_warning(feat: dict) -> tuple[bool, str]:
     if dv < DNC_THIN_LIQ: reasons.append("thin_liquidity")
     if rng >= DNC_SPIKE_RANGE and hold < DNC_SPIKE_HOLD: reasons.append("spike_risk")
     if trigger > 0 and pm_close > trigger * (1.0 + CHASE_ABOVE_TRIGGER_PCT): reasons.append(">2%_above_trigger")
+
     return (len(reasons) > 0), ",".join(reasons)
 
 def data_quality_penalty(feat: dict) -> tuple[bool, str]:
@@ -511,6 +563,7 @@ def is_true_squeeze_strict(feat: dict) -> bool:
         return False
 
     if REQUIRE_BORROW_DATA_FOR_TRUE_SQUEEZE:
+        # util may be missing for some ORTEX plans; don't hard-fail it
         if feat.get("ctb") is None or feat.get("avail") is None:
             return False
 
@@ -528,27 +581,33 @@ def is_true_squeeze_strict(feat: dict) -> bool:
     return True
 
 def setup_type_and_plan(feat: dict, squeeze: bool, dnc: bool, halt_p: float) -> tuple[str, str]:
+    hold = feat.get("pm_hold_pct") or 0.0
+    rng = feat.get("pm_range_pct") or 0.0
     dv = feat.get("pm_dollar_vol") or 0.0
     trigger = feat.get("trigger") or 0.0
     stop = feat.get("stop") or 0.0
-    hold = feat.get("pm_hold_pct") or 0.0
-    rng = feat.get("pm_range_pct") or 0.0
 
     if halt_p >= HALT_HIGH_RISK:
-        return ("halt-risk scalp", f"High halt risk. Size down. Trigger {trigger:.4f}, stop {stop:.4f}.")
+        return ("halt-risk scalp",
+                f"High halt risk. Size down. Quick scalps only. Trigger {trigger:.4f}, stop {stop:.4f}.")
 
     if squeeze:
         if dnc:
-            return ("squeeze pullback", f"DNC flagged—wait for pullback then reclaim. Trigger {trigger:.4f}. Stop {stop:.4f}.")
-        return ("squeeze breakout", f"Clean squeeze setup. Entry near trigger {trigger:.4f}. Stop {stop:.4f}. Avoid >2% chase.")
+            return ("squeeze pullback",
+                    f"DNC flagged—wait for pullback then reclaim. Trigger {trigger:.4f}. Stop {stop:.4f}.")
+        return ("squeeze breakout",
+                f"Clean squeeze setup. Entry near trigger {trigger:.4f}. Stop {stop:.4f}. Avoid >2% chase.")
 
     if dv < 300_000:
-        return ("thin momentum", f"Thin liquidity—limits only. Trigger {trigger:.4f}, stop {stop:.4f}.")
+        return ("thin momentum",
+                f"Thin liquidity—limits only. Prefer pullback. Trigger {trigger:.4f}, stop {stop:.4f}.")
 
     if hold >= 0.35 and 0.02 <= rng <= 0.12:
-        return ("momentum breakout", f"Entry near trigger {trigger:.4f}. Stop {stop:.4f}. Don’t chase >2%.")
+        return ("momentum breakout",
+                f"Entry near trigger {trigger:.4f}. Stop {stop:.4f}. Don’t chase >2%.")
 
-    return ("momentum pullback", f"Wait pullback/base then reclaim trigger {trigger:.4f}. Stop {stop:.4f}.")
+    return ("momentum pullback",
+            f"Wait pullback/base then reclaim trigger {trigger:.4f}. Stop {stop:.4f}.")
 
 def confidence_grade(base_score: float, prob: float, liq_grade: str, halt_p: float, dnc: bool, low_quality: bool) -> str:
     pts = 0
@@ -572,11 +631,10 @@ def confidence_grade(base_score: float, prob: float, liq_grade: str, halt_p: flo
         conf = "B"
     return conf
 
-
 # ============================================================
 # REPORTING
 # ============================================================
-def write_reports(date_str: str, end_local: datetime, top_squeeze: list[dict], top_momentum: list[dict], meta: dict):
+def write_reports(date_str: str, end_local: datetime, top_squeeze: list[dict], top_momentum: list[dict], meta: dict) -> str:
     ts = now_ct().strftime("%Y-%m-%d_%H-%M-%S")
     base = f"scan_{date_str}_{ts}"
 
@@ -662,10 +720,7 @@ def write_reports(date_str: str, end_local: datetime, top_squeeze: list[dict], t
 
     with open(txt_path, "w", encoding="utf-8") as f:
         f.write(f"Date: {date_str}\n")
-        f.write(f"Scan window: {ct_dt(date_str, SCAN_START_CT).strftime('%H:%M')}–{end_local.strftime('%H:%M')} CT\n")
-        flt = meta["filters"]
-        f.write(f"Filters: pm_$vol>={int(flt['min_pm_dollar_vol'])}, range_pct>={flt['min_range_pct']}, hold_pct>={flt['min_hold_pct']}\n\n")
-        f.write("Open the HTML report for the readable dashboard.\n")
+        f.write(f"End time: {end_local.strftime('%H:%M:%S %Z')}\n")
 
     all_rows = top_squeeze + top_momentum
     fieldnames = sorted(set().union(*(r.keys() for r in all_rows)) or [])
@@ -701,14 +756,12 @@ small {{ color: #777; }}
 </style>
 </head>
 <body>
-<h1>SqueezeBot — Engine v1</h1>
-<div class="sub">
-  {date_str} • Window: {ct_dt(date_str, SCAN_START_CT).strftime('%H:%M')}–{end_local.strftime('%H:%M')} CT • Top {TOP_N_PER_BUCKET}
-</div>
+<h1>SqueezeBot</h1>
+<div class="sub">{date_str} • End: {end_local.strftime('%H:%M:%S %Z')} • Top {TOP_N_PER_BUCKET} per bucket</div>
 
 <div class="card">
   <h2>TRUE SQUEEZE</h2>
-  <small>Strict squeeze: requires CTB + Availability present (utilization disabled unless enabled later).</small>
+  <small>Requires CTB + Availability present.</small>
   {table_html(sq)}
 </div>
 
@@ -717,33 +770,22 @@ small {{ color: #777; }}
   <small>DNC is conservative. “Chasing” = &gt;2% above trigger.</small>
   {table_html(mo)}
 </div>
+
 </body>
 </html>
 """
     with open(html_path, "w", encoding="utf-8") as f:
         f.write(html)
 
-    return txt_path, csv_path, json_path, html_path
-
+    return str(html_path).replace("\\", "/")
 
 # ============================================================
-# ONE SCAN PASS (NO FOREVER LOOPS HERE)
+# SCAN (one pass)
 # ============================================================
-def run_single_scan(date_str: str, end_local: datetime, logger=print):
+def run_single_scan(date_str: str, end_local: datetime, log_fn=None):
     snap_all = get_snapshot_all_tickers()
 
-    meta = {
-        "date": date_str,
-        "scan_end_ct": end_local.strftime("%Y-%m-%d %H:%M:%S %Z"),
-        "filters": {
-            "min_pm_dollar_vol": MIN_PM_DOLLAR_VOL,
-            "min_range_pct": MIN_RANGE_PCT,
-            "min_hold_pct": MIN_HOLD_PCT,
-        },
-        "tiers": PRICE_TIERS,
-        "top_n_per_bucket": TOP_N_PER_BUCKET,
-    }
-
+    meta = {"date": date_str, "end_ct": end_local.strftime("%Y-%m-%d %H:%M:%S %Z")}
     rows = []
 
     for pmin, pmax in PRICE_TIERS:
@@ -778,13 +820,13 @@ def run_single_scan(date_str: str, end_local: datetime, logger=print):
                 avg_vol_10d = get_avg_daily_volume_10d(t, date_str)
                 relv = compute_rel_vol(pm["pm_vol"], avg_vol_10d, pm["pm_minutes"])
 
-                si_feat = ortex_short_interest_features(t, logger=logger)
+                si_feat = ortex_short_interest_features(t, log_fn=log_fn)
                 if not si_feat or si_feat.get("si_pct_ff") is None:
                     continue
 
-                ctb = ortex_ctb_latest(t, logger=logger)
-                util = ortex_utilization_latest(t, logger=logger)  # None for now
-                avail = ortex_availability_latest(t, logger=logger)
+                ctb = ortex_ctb_latest(t, log_fn=log_fn)
+                util = ortex_utilization_latest(t, log_fn=log_fn)
+                avail = ortex_availability_latest(t, log_fn=log_fn)
 
                 float_poly = polygon_shares_outstanding_best_effort(t)
                 float_est = si_feat.get("float_est")
@@ -805,7 +847,6 @@ def run_single_scan(date_str: str, end_local: datetime, logger=print):
                     "rel_vol": relv,
                     "trigger": trigger,
                     "stop": stop,
-                    "price_tier": f"{pmin:.2f}-{pmax:.2f}",
                 }
 
                 squeeze = is_true_squeeze_strict(feat)
@@ -840,12 +881,8 @@ def run_single_scan(date_str: str, end_local: datetime, logger=print):
                     "bucket": bucket,
                     "base_score": base_score,
                     "prob": prob,
-                    "pressure_score": pressure,
-                    "opportunity_score": opportunity,
-                    "structure_score": structure,
                     "si_pct_ff": feat.get("si_pct_ff"),
                     "si_pct_chg": feat.get("si_pct_chg"),
-                    "si_shares": feat.get("si_shares"),
                     "ctb": ctb,
                     "util": util,
                     "avail": avail,
@@ -853,14 +890,12 @@ def run_single_scan(date_str: str, end_local: datetime, logger=print):
                     "gap_pct": gap_pct,
                     "rel_vol": relv,
                     "pm_dollar_vol": pm["pm_dollar_vol"],
-                    "pm_vol": pm["pm_vol"],
                     "pm_range_pct": pm["pm_range_pct"],
                     "pm_hold_pct": pm["pm_hold_pct"],
                     "pm_open": pm["pm_open"],
                     "pm_high": pm["pm_high"],
                     "pm_low": pm["pm_low"],
                     "pm_close": pm["pm_close"],
-                    "pm_minutes": pm["pm_minutes"],
                     "trigger": trigger,
                     "stop": stop,
                     "halt_prob": hp,
@@ -872,7 +907,6 @@ def run_single_scan(date_str: str, end_local: datetime, logger=print):
                     "confidence": conf,
                     "setup_type": setup,
                     "plan": plan,
-                    "price_tier": feat.get("price_tier"),
                 })
 
             except Exception:
@@ -881,43 +915,26 @@ def run_single_scan(date_str: str, end_local: datetime, logger=print):
     squeezes = [r for r in rows if r["bucket"] == "TRUE_SQUEEZE"]
     momentum = [r for r in rows if r["bucket"] == "MOMENTUM"]
 
-    conf_rank = {"A": 3, "B": 2, "C": 1}
-    liq_rank = {"A": 3, "B": 2, "C": 1, "D": 0}
-
-    def sort_key(r):
-        return (
-            r["base_score"],
-            conf_rank.get(r.get("confidence", "C"), 1),
-            liq_rank.get(r.get("liq_grade", "D"), 0),
-            -(r.get("halt_prob") or 0.0),
-            r.get("pm_dollar_vol") or 0.0,
-        )
-
-    squeezes.sort(key=sort_key, reverse=True)
-    momentum.sort(key=sort_key, reverse=True)
+    squeezes.sort(key=lambda r: r["base_score"], reverse=True)
+    momentum.sort(key=lambda r: r["base_score"], reverse=True)
 
     return squeezes[:TOP_N_PER_BUCKET], momentum[:TOP_N_PER_BUCKET], meta
 
-
-def run_one_scan(logger=print) -> str:
-    """
-    Runs one scan right now and returns the HTML path (string).
-    """
+# ============================================================
+# PUBLIC ENTRYPOINT (called by main.py)
+# ============================================================
+def run_scan(log_fn=None) -> str | None:
     dt = now_ct()
-    if not is_weekday_ct(dt):
-        back = dt
-        while back.weekday() >= 5:
-            back = back - timedelta(days=1)
-        dt = back
-
     date_str = ct_date_str(dt)
-    end_local = now_ct()
+    end_local = dt
 
-    logger(f"Date: {date_str}")
-    logger(f"End time: {end_local.strftime('%H:%M:%S %Z')}")
+    if log_fn:
+        log_fn(f"Date: {date_str}")
+        log_fn(f"End time: {end_local.strftime('%H:%M:%S %Z')}")
 
-    top_s, top_m, meta = run_single_scan(date_str, end_local, logger=logger)
-    _, _, _, html_path = write_reports(date_str, end_local, top_s, top_m, meta)
-
-    logger(f"Saved HTML: {html_path.as_posix()}")
-    return html_path.as_posix()
+    top_s, top_m, meta = run_single_scan(date_str, end_local, log_fn=log_fn)
+    if not top_s and not top_m:
+        if log_fn:
+            log_fn("No candidates passed filters.")
+    html_path = write_reports(date_str, end_local, top_s, top_m, meta)
+    return html_path
