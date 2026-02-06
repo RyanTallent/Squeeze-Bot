@@ -6,6 +6,19 @@
   </head>
   <body>
     <h1>Squeeze_Bot is live ✅</h1>
-    <p>Next: run scan + show results here.</p>
+    <p>Click to run a scan and see the response:</p>
+
+    <button id="run">Run Scan</button>
+    <pre id="out" style="margin-top:12px; padding:12px; background:#f4f4f4;"></pre>
+
+    <script>
+      const out = document.getElementById("out");
+      document.getElementById("run").onclick = async () => {
+        out.textContent = "Running...";
+        const res = await fetch("/run_scan", { method: "POST" });
+        const data = await res.json();
+        out.textContent = JSON.stringify(data, null, 2);
+      };
+    </script>
   </body>
 </html>
