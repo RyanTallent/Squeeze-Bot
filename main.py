@@ -1,118 +1,167 @@
-# main.py
+import os
 import threading
-import time
-import uuid
-from pathlib import Path
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
+import traceback
+from datetime import datetime
 
-import scanner
+from fastapi import FastAPI
+from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
+import scanner  # your scanner.py
+
 
 app = FastAPI()
 
-# Serve your single-page UI
-app.mount("/static", StaticFiles(directory="static"), name="static")
+# Serve outputs/ so HTML reports can be loaded
+os.makedirs("outputs", exist_ok=True)
+app.mount("/outputs", StaticFiles(directory="outputs"), name="outputs")
 
-# Serve outputs (html reports, csv, json, txt)
-OUT_DIR = Path("outputs")
-OUT_DIR.mkdir(exist_ok=True)
-app.mount("/outputs", StaticFiles(directory=str(OUT_DIR)), name="outputs")
-
-# ---------- simple in-memory state ----------
-STATE_LOCK = threading.Lock()
-STATE = {
-    "running": False,
-    "log": "",
-    "latest_html": None,
-    "last_run_id": None,
-}
-
-def append_log(line: str):
-    with STATE_LOCK:
-        STATE["log"] += line.rstrip() + "\n"
-        # keep log from growing forever
-        if len(STATE["log"]) > 200_000:
-            STATE["log"] = STATE["log"][-200_000:]
+# --- Global state ---
+LOG_LINES: list[str] = []
+SCAN_LOCK = threading.Lock()
+SCAN_RUNNING = False
+LAST_REPORT_PATH: str | None = None
 
 
-def run_scan_job(run_id: str, reason: str):
-    with STATE_LOCK:
-        STATE["running"] = True
-        STATE["last_run_id"] = run_id
-        STATE["log"] = ""
-    append_log(f"Starting scan… ({reason})")
+def log(msg: str):
+    ts = datetime.now().strftime("%H:%M:%S")
+    line = f"[{ts}] {msg}"
+    print(line)
+    LOG_LINES.append(line)
+    # keep log from growing forever
+    if len(LOG_LINES) > 800:
+        del LOG_LINES[:200]
+
+
+def do_scan():
+    global SCAN_RUNNING, LAST_REPORT_PATH
     try:
-        html_path = scanner.run_scan(log_fn=append_log)
+        log("Scanner thread started. Calling scanner.run_scan()...")
+
+        # This will run your scan and should call log_fn for progress
+        html_path = scanner.run_scan(log_fn=log)
+
         if html_path:
-            # html_path is like outputs/scan_...html
-            append_log(f"Saved HTML: {html_path}")
-            with STATE_LOCK:
-                STATE["latest_html"] = "/" + html_path.replace("\\", "/")
+            # html_path might be like outputs/scan_xxx.html
+            LAST_REPORT_PATH = html_path.replace("\\", "/")
+            log(f"Saved HTML: {LAST_REPORT_PATH}")
         else:
-            append_log("Scan finished but no HTML was generated.")
-    except Exception as e:
-        append_log(f"Scan crashed: {e}")
+            log("Scan finished but returned no HTML path.")
+
+    except Exception:
+        log("SCAN CRASHED — traceback below:")
+        tb = traceback.format_exc()
+        for line in tb.splitlines():
+            log(line)
+
     finally:
-        with STATE_LOCK:
-            STATE["running"] = False
+        with SCAN_LOCK:
+            SCAN_RUNNING = False
+        log("Scanner thread finished.")
 
 
 @app.get("/", response_class=HTMLResponse)
 def home():
-    # Serve the single tab UI
-    index = Path("static/index.html")
-    return index.read_text(encoding="utf-8")
+    return """
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Squeeze Bot</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 18px; }
+    .row { display: flex; gap: 14px; }
+    .left { width: 360px; }
+    .card { border: 1px solid #e6e6e6; border-radius: 12px; padding: 12px; margin-bottom: 12px; }
+    button { padding: 10px 14px; border-radius: 10px; border: 1px solid #ddd; cursor: pointer; }
+    pre { height: 520px; overflow: auto; background: #0b0f14; color: #cfe3ff; padding: 10px; border-radius: 10px; }
+    iframe { width: 100%; height: 700px; border: 1px solid #e6e6e6; border-radius: 12px; }
+    .muted { color: #666; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <h2>Squeeze Bot</h2>
+  <div class="muted">Click Run Scan. Log updates live. Latest report loads on the right (same tab).</div>
+
+  <div class="row">
+    <div class="left">
+      <div class="card">
+        <button onclick="runScan()">Run Scan</button>
+        <div id="status" class="muted" style="margin-top:8px;"></div>
+      </div>
+
+      <div class="card">
+        <div class="muted">Live Log</div>
+        <pre id="log"></pre>
+      </div>
+    </div>
+
+    <div style="flex:1;">
+      <div class="card">
+        <div class="muted">Latest Report</div>
+        <iframe id="report" src="/report"></iframe>
+      </div>
+    </div>
+  </div>
+
+<script>
+async function runScan(){
+  document.getElementById("status").innerText = "Starting...";
+  await fetch("/run_scan", { method: "POST" });
+  document.getElementById("status").innerText = "Running (check log)...";
+}
+
+async function poll(){
+  try{
+    const r = await fetch("/scan_log");
+    const txt = await r.text();
+    document.getElementById("log").textContent = txt;
+
+    // If we see "Saved HTML:" then reload iframe
+    if (txt.includes("Saved HTML:")) {
+      document.getElementById("report").src = "/report?ts=" + Date.now();
+    }
+  }catch(e){}
+  setTimeout(poll, 1000);
+}
+poll();
+</script>
+</body>
+</html>
+"""
 
 
 @app.post("/run_scan")
 def run_scan():
-    with STATE_LOCK:
-        if STATE["running"]:
-            return JSONResponse({"ok": False, "message": "Scan already running", "log_url": "/scan_log"})
-        run_id = str(uuid.uuid4())
+    global SCAN_RUNNING
+    with SCAN_LOCK:
+        if SCAN_RUNNING:
+            log("Scan requested but one is already running.")
+            return {"ok": True, "running": True}
 
-    t = threading.Thread(target=run_scan_job, args=(run_id, "manual"), daemon=True)
+        SCAN_RUNNING = True
+
+    log("Starting scan… (manual)")
+    t = threading.Thread(target=do_scan, daemon=True)
     t.start()
-    return JSONResponse({"ok": True, "run_id": run_id, "log_url": "/scan_log"})
+    return {"ok": True, "started": True}
 
 
-@app.get("/scan_log")
+@app.get("/scan_log", response_class=PlainTextResponse)
 def scan_log():
-    with STATE_LOCK:
-        return JSONResponse({
-            "running": STATE["running"],
-            "log": STATE["log"],
-            "latest_html": STATE["latest_html"],
-        })
+    return "\n".join(LOG_LINES) + ("\n" if LOG_LINES else "")
 
 
-# ---------- background scheduler ----------
-def scheduler_loop():
-    # Runs forever, decides scan cadence based on CT time (inside scanner module)
-    while True:
-        try:
-            interval = scanner.next_interval_seconds()
-            # If interval is None, we're "closed" (sleep longer)
-            if interval is None:
-                time.sleep(60 * 10)
-                continue
+@app.get("/report")
+def report():
+    # If no report yet, show a friendly message
+    if not LAST_REPORT_PATH:
+        return HTMLResponse("<div style='font-family:Arial;padding:16px;color:#666'>No report yet. Click Run Scan.</div>")
 
-            # If not running, start an auto scan
-            with STATE_LOCK:
-                can_start = not STATE["running"]
+    # Serve the latest html report file
+    path = LAST_REPORT_PATH
+    if not os.path.exists(path):
+        return HTMLResponse(f"<div style='font-family:Arial;padding:16px;color:#666'>Report missing: {path}</div>")
 
-            if can_start:
-                run_id = str(uuid.uuid4())
-                t = threading.Thread(target=run_scan_job, args=(run_id, f"auto every {interval//60}m"), daemon=True)
-                t.start()
-
-            time.sleep(interval)
-        except Exception:
-            time.sleep(30)
-
-
-@app.on_event("startup")
-def on_startup():
-    # Start scheduler in background
-    threading.Thread(target=scheduler_loop, daemon=True).start()
+    return FileResponse(path, media_type="text/html")
