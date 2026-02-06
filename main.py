@@ -10,13 +10,21 @@ from fastapi.staticfiles import StaticFiles
 
 app = FastAPI()
 
-# Serve UI
+# ------------------------------------------------------------
+# Static files
+# ------------------------------------------------------------
+
+# Serve frontend UI
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Serve generated reports
+# Serve generated scan outputs (HTML reports)
 Path("outputs").mkdir(exist_ok=True)
 app.mount("/outputs", StaticFiles(directory="outputs"), name="outputs")
 
+
+# ------------------------------------------------------------
+# Routes
+# ------------------------------------------------------------
 
 @app.get("/")
 def home():
@@ -30,10 +38,14 @@ def health():
 
 @app.post("/run_scan")
 def run_scan():
+    """
+    Starts a one-shot scan in the background and streams logs
+    to outputs/run_<id>.log
+    """
     run_id = str(int(time.time()))
     out_path = f"outputs/run_{run_id}.log"
 
-    # Start scanner in background and stream logs to file
+    # Start scanner in background (FORCED one-shot so it runs anytime)
     with open(out_path, "w") as f:
         subprocess.Popen(
             [
@@ -67,4 +79,5 @@ def scan_log(run_id: str):
     with open(path, "r", errors="ignore") as f:
         text = f.read()
 
+    # limit size so polling stays fast
     return {"status": "ok", "log": text[-12000:]}
