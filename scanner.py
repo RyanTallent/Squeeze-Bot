@@ -4,7 +4,6 @@ import csv
 import json
 import math
 import time
-import re
 import requests
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
@@ -40,6 +39,7 @@ HALT_HIGH_RISK = 0.55
 HALT_WATCH = 0.40
 
 # TRUE SQUEEZE (strict) requires borrow pressure confirmation
+# ✅ FIX: Utilization is disabled (invalid endpoints). True squeeze requires CTB + Availability only.
 REQUIRE_BORROW_DATA_FOR_TRUE_SQUEEZE = True
 
 # Candidate selection
@@ -72,6 +72,9 @@ except Exception:
 # - Pre + regular: every 5 minutes
 # - Post/after-hours: every 30 minutes
 # ============================================================
+def now_ct() -> datetime:
+    return datetime.now(tz=CT_TZ)
+
 def next_interval_seconds() -> int | None:
     """
     Returns how often we should scan RIGHT NOW.
@@ -103,9 +106,6 @@ def next_interval_seconds() -> int | None:
 # ============================================================
 # HELPERS
 # ============================================================
-def now_ct() -> datetime:
-    return datetime.now(tz=CT_TZ)
-
 def ct_date_str(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%d")
 
@@ -300,7 +300,7 @@ def get_premarket_stats_dynamic(ticker: str, date_str: str, end_local: datetime)
     }
 
 # ============================================================
-# ORTEX DATA (FIX: NO-DATA MUST NOT CRASH)
+# ORTEX DATA (FIXED: remove invalid utilization endpoints)
 # ============================================================
 def ortex_get(url: str, log_fn=None) -> dict | None:
     if not ORTEX_KEY:
@@ -308,7 +308,7 @@ def ortex_get(url: str, log_fn=None) -> dict | None:
 
     r = SESSION.get(url, headers={"Ortex-Api-Key": ORTEX_KEY}, timeout=30)
 
-    # ORTEX "no coverage" frequently returns 404 with a JSON message.
+    # ORTEX "no coverage" frequently returns 404 with JSON message
     if r.status_code == 404:
         try:
             j = r.json()
@@ -318,7 +318,7 @@ def ortex_get(url: str, log_fn=None) -> dict | None:
             log_fn(f"[ORTEX NO DATA] 404 {url} {str(j)[:200]}")
         return None
 
-    # Sometimes ORTEX returns 400 with "No data..." too. Treat it the same.
+    # Treat "no data" 400s as non-fatal
     if r.status_code == 400:
         try:
             j = r.json()
@@ -329,6 +329,10 @@ def ortex_get(url: str, log_fn=None) -> dict | None:
             if log_fn:
                 log_fn(f"[ORTEX NO DATA] 400 {url} {msg[:200]}")
             return None
+        # otherwise a real bad request
+        if log_fn:
+            log_fn(f"[ORTEX ERROR] 400 {url} {msg[:200]}")
+        return None
 
     if r.status_code == 429:
         if log_fn:
@@ -396,42 +400,25 @@ def ortex_ctb_latest(ticker: str, log_fn=None) -> float | None:
     return None
 
 def ortex_utilization_latest(ticker: str, log_fn=None) -> float | None:
-    # If your ORTEX plan doesn't support util endpoints, this may always be None.
-    endpoints = [
-        f"https://api.ortex.com/api/v1/stock/US/{ticker}/utilization",
-        f"https://api.ortex.com/api/v1/stock/US/{ticker}/utilization/all",
-    ]
-    for url in endpoints:
-        data = ortex_get(url, log_fn=log_fn)
-        if not data:
-            continue
-        rows = data.get("rows", []) if isinstance(data, dict) else []
-        if not rows:
-            continue
-        latest = rows[-1]
-        for k in ("utilization", "utilisation", "utilizationPct", "utilisationPct"):
-            v = safe_float(latest.get(k))
-            if v is not None:
-                return v
+    # ✅ Disabled: the /utilization endpoints are not valid for this ORTEX API.
     return None
 
 def ortex_availability_latest(ticker: str, log_fn=None) -> float | None:
-    endpoints = [
-        f"https://api.ortex.com/api/v1/stock/US/{ticker}/availability",
-        f"https://api.ortex.com/api/v1/stock/US/{ticker}/availability/all",
-    ]
-    for url in endpoints:
-        data = ortex_get(url, log_fn=log_fn)
-        if not data:
-            continue
-        rows = data.get("rows", []) if isinstance(data, dict) else []
-        if not rows:
-            continue
-        latest = rows[-1]
-        for k in ("shares", "availableShares", "availabilityShares", "available", "avail"):
-            v = safe_float(latest.get(k))
-            if v is not None:
-                return v
+    # ✅ Valid endpoint (no /all):
+    url = f"https://api.ortex.com/api/v1/stock/US/{ticker}/availability"
+    data = ortex_get(url, log_fn=log_fn)
+    if not data:
+        return None
+
+    rows = data.get("rows", []) if isinstance(data, dict) else []
+    if not rows:
+        return None
+
+    latest = rows[-1]
+    for k in ("shares", "availableShares", "availabilityShares", "available", "avail"):
+        v = safe_float(latest.get(k))
+        if v is not None:
+            return v
     return None
 
 # ============================================================
@@ -455,7 +442,7 @@ def compute_pressure_score(feat: dict) -> float:
     si = feat.get("si_pct_ff") or 0.0
     si_chg = feat.get("si_pct_chg") or 0.0
     ctb = feat.get("ctb") or 0.0
-    util = feat.get("util") or 0.0
+    util = feat.get("util") or 0.0  # will be 0 if None
     avail = feat.get("avail")
 
     avail_term = 0.0
@@ -554,6 +541,7 @@ def data_quality_penalty(feat: dict) -> tuple[bool, str]:
     if feat.get("rel_vol") is None: reasons.append("relVol_missing")
     if feat.get("float_shares") is None: reasons.append("float_missing")
     if feat.get("ctb") is None: reasons.append("ctb_missing")
+    # utilization intentionally disabled
     if feat.get("avail") is None: reasons.append("avail_missing")
     return (len(reasons) > 0), ",".join(reasons)
 
@@ -563,7 +551,7 @@ def is_true_squeeze_strict(feat: dict) -> bool:
         return False
 
     if REQUIRE_BORROW_DATA_FOR_TRUE_SQUEEZE:
-        # util may be missing for some ORTEX plans; don't hard-fail it
+        # ✅ Require CTB + Availability only
         if feat.get("ctb") is None or feat.get("avail") is None:
             return False
 
@@ -825,7 +813,7 @@ def run_single_scan(date_str: str, end_local: datetime, log_fn=None):
                     continue
 
                 ctb = ortex_ctb_latest(t, log_fn=log_fn)
-                util = ortex_utilization_latest(t, log_fn=log_fn)
+                util = ortex_utilization_latest(t, log_fn=log_fn)  # always None
                 avail = ortex_availability_latest(t, log_fn=log_fn)
 
                 float_poly = polygon_shares_outstanding_best_effort(t)
