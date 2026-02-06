@@ -134,8 +134,20 @@ def polygon_get(url: str, params: dict | None = None) -> dict:
 
 def ortex_get(url: str) -> dict:
     r = SESSION.get(url, headers={"Ortex-Api-Key": ORTEX_KEY}, timeout=30)
-    r.raise_for_status()
-    return r.json()
+    try:
+        r.raise_for_status()
+    except Exception:
+        # this will show up inside your /scan_log/<run_id>
+        print(f"[ORTEX ERROR] {r.status_code} {url}")
+        print(r.text[:800])
+        raise
+    try:
+        return r.json()
+    except Exception:
+        print(f"[ORTEX ERROR] Non-JSON response from {url}")
+        print(r.text[:800])
+        raise
+
 
 def is_weekday_ct(dt: datetime) -> bool:
     return dt.weekday() < 5
