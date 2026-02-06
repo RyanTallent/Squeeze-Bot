@@ -1,13 +1,42 @@
 <button id="run">Run Scan</button>
-<pre id="out"></pre>
 
+<div style="margin-top:12px;">
+  <a id="reportLink" href="#" target="_blank" style="display:none; font-weight:700;">
+    Open latest HTML report
+  </a>
+</div>
+
+<iframe
+  id="reportFrame"
+  style="display:none; width:100%; height:70vh; margin-top:12px; border:1px solid #ddd; border-radius:10px;"
+></iframe>
+
+<pre id="out" style="margin-top:12px; padding:12px; border:1px solid #ddd; border-radius:10px; height:35vh; overflow:auto;"></pre>
 
 <script>
   const out = document.getElementById("out");
+  const reportLink = document.getElementById("reportLink");
+  const reportFrame = document.getElementById("reportFrame");
+
   let pollInterval = null;
+  let lastReportUrl = null;
+
+  function extractLatestHtmlPath(logText) {
+    // We expect lines like:
+    // Saved HTML: outputs/scan_YYYY-MM-DD_...html
+    const matches = logText.match(/Saved HTML:\s*(outputs\/[^\s]+\.html)/g);
+    if (!matches || matches.length === 0) return null;
+
+    const last = matches[matches.length - 1];
+    const path = last.replace("Saved HTML:", "").trim();
+    return "/" + path; // served by app.mount("/outputs", ...)
+  }
 
   document.getElementById("run").onclick = async () => {
     out.textContent = "Starting scan...\n";
+    reportLink.style.display = "none";
+    reportFrame.style.display = "none";
+    lastReportUrl = null;
 
     const res = await fetch("/run_scan", { method: "POST" });
     const data = await res.json();
@@ -20,10 +49,8 @@
     out.textContent += "Scan started.\n\n";
     const logUrl = data.log_url;
 
-    // stop any previous polling
     if (pollInterval) clearInterval(pollInterval);
 
-    // poll logs every 2 seconds
     pollInterval = setInterval(async () => {
       const logRes = await fetch(logUrl);
       const logData = await logRes.json();
@@ -31,6 +58,18 @@
       if (logData.log) {
         out.textContent = logData.log;
         out.scrollTop = out.scrollHeight;
+
+        const reportUrl = extractLatestHtmlPath(logData.log);
+        if (reportUrl && reportUrl !== lastReportUrl) {
+          lastReportUrl = reportUrl;
+
+          reportLink.href = reportUrl;
+          reportLink.style.display = "inline";
+
+          // show it inline too
+          reportFrame.src = reportUrl;
+          reportFrame.style.display = "block";
+        }
       }
     }, 2000);
   };
