@@ -9,12 +9,14 @@ from fastapi.staticfiles import StaticFiles
 
 app = FastAPI()
 
-# Serve anything in /static (like index.html, favicon later, etc.)
+# Serve static files (index.html, etc.)
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
 
 @app.get("/")
 def home():
     return FileResponse("static/index.html")
+
 
 @app.get("/health")
 def health():
@@ -23,14 +25,18 @@ def health():
 
 @app.post("/run_scan")
 def run_scan():
+    # Unique id for this run
     run_id = str(int(time.time()))
     out_path = f"outputs/run_{run_id}.log"
 
+    # Ensure outputs folder exists
     os.makedirs("outputs", exist_ok=True)
 
+    # Start scanner in the background.
+    # -u makes output unbuffered so logs show up live.
     with open(out_path, "w") as f:
         subprocess.Popen(
-            [sys.executable, "scanner.py"],
+            [sys.executable, "-u", "scanner.py"],
             stdout=f,
             stderr=subprocess.STDOUT
         )
@@ -47,12 +53,9 @@ def scan_log(run_id: str):
     path = f"outputs/run_{run_id}.log"
 
     if not os.path.exists(path):
-        return {"status": "missing"}
+        return {"status": "missing", "log": ""}
 
     with open(path, "r", errors="ignore") as f:
         text = f.read()
 
-    return {
-        "status": "ok",
-        "log": text[-12000:]
-    }
+    return {"status": "ok", "log": text[-12000:]}
