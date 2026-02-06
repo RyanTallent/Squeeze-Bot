@@ -1,3 +1,8 @@
+import os
+import sys
+import subprocess
+import time
+
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -9,30 +14,45 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/")
 def home():
-    # Serve the HTML homepage
     return FileResponse("static/index.html")
 
 @app.get("/health")
 def health():
     return {"status": "ok"}
 
+
 @app.post("/run_scan")
 def run_scan():
-    # Import here so the app can still boot even if scanner has optional deps
-    import scanner
+    run_id = str(int(time.time()))
+    out_path = f"outputs/run_{run_id}.log"
 
-    # If your scanner file has a main function, use it.
-    # Most likely it runs when executed directly, so we call a function if present.
-    if hasattr(scanner, "run_scan"):
-        results = scanner.run_scan()
-        return {"status": "ok", "results": results}
+    os.makedirs("outputs", exist_ok=True)
 
-    # Fallback: run the script-style scanner and capture output
-    import subprocess, sys
-    proc = subprocess.run([sys.executable, "scanner.py"], capture_output=True, text=True, timeout=300)
+    with open(out_path, "w") as f:
+        subprocess.Popen(
+            [sys.executable, "scanner.py"],
+            stdout=f,
+            stderr=subprocess.STDOUT
+        )
+
     return {
-        "status": "ok" if proc.returncode == 0 else "error",
-        "stdout": proc.stdout[-8000:],  # last chunk so response isn't huge
-        "stderr": proc.stderr[-8000:],
-        "code": proc.returncode,
+        "status": "started",
+        "run_id": run_id,
+        "log_url": f"/scan_log/{run_id}"
+    }
+
+
+@app.get("/scan_log/{run_id}")
+def scan_log(run_id: str):
+    path = f"outputs/run_{run_id}.log"
+
+    if not os.path.exists(path):
+        return {"status": "missing"}
+
+    with open(path, "r", errors="ignore") as f:
+        text = f.read()
+
+    return {
+        "status": "ok",
+        "log": text[-12000:]
     }
