@@ -921,8 +921,16 @@ def run_scan(log_fn=None) -> str | None:
         log_fn(f"End time: {end_local.strftime('%H:%M:%S %Z')}")
 
     top_s, top_m, meta = run_single_scan(date_str, end_local, log_fn=log_fn)
+
     if not top_s and not top_m:
         if log_fn:
             log_fn("No candidates passed filters.")
+
     html_path = write_reports(date_str, end_local, top_s, top_m, meta)
+
+    # 👇 THIS LINE IS THE KEY FIX (your UI is waiting for this exact text)
+    if log_fn and html_path:
+        log_fn(f"Saved HTML: {html_path}")
+
     return html_path
+
