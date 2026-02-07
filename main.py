@@ -1,243 +1,167 @@
 # main.py
 import os
+import uuid
+import queue
 import threading
 import traceback
+from pathlib import Path
 from datetime import datetime, timezone
 
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse, PlainTextResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import StreamingResponse
 
-import scanner  # scanner.py
+import scanner
+
 
 app = FastAPI()
 
-# --- outputs directory ---
-OUT_DIR = "outputs"
-os.makedirs(OUT_DIR, exist_ok=True)
-app.mount("/outputs", StaticFiles(directory=OUT_DIR), name="outputs")
+BASE_DIR = Path(__file__).resolve().parent
+STATIC_DIR = BASE_DIR / "static"
+OUT_DIR = BASE_DIR / "outputs"
+OUT_DIR.mkdir(exist_ok=True)
 
-# --- persistent log file ---
-LOG_PATH = os.path.join(OUT_DIR, "live_log.txt")
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+app.mount("/outputs", StaticFiles(directory=str(OUT_DIR)), name="outputs")
 
-SCAN_LOCK = threading.Lock()
-SCAN_RUNNING = False
-LAST_REPORT_PATH: str | None = None
+LOG_PATH = OUT_DIR / "live_log.txt"
 
+# ---------------------------
+# Scan session state
+# ---------------------------
+STATE_LOCK = threading.Lock()
+SCANS: dict[str, dict] = {}
+# SCANS[scan_id] = {
+#   "running": bool,
+#   "q": queue.Queue[str],
+#   "last_report": str|None,
+#   "started_utc": str,
+# }
 
 def _append_log_line(line: str):
-    # append to file so it survives restarts
     with open(LOG_PATH, "a", encoding="utf-8") as f:
         f.write(line + "\n")
 
 
-def log(msg: str):
-    # Use UTC timestamp for server log line, keep your message content the same
-    ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
-    line = f"[{ts}] {msg}"
-    print(line)
-    _append_log_line(line)
-
-
-def clear_log():
+def clear_log_file():
     with open(LOG_PATH, "w", encoding="utf-8") as f:
         f.write("")
 
 
-def do_scan():
-    global SCAN_RUNNING, LAST_REPORT_PATH
+def publish(scan_id: str, event: str, data: dict):
+    """
+    Put SSE event into this scan's queue.
+    """
+    payload = f"event: {event}\ndata: {scanner.json_dumps(data)}\n\n"
+    with STATE_LOCK:
+        s = SCANS.get(scan_id)
+        if not s:
+            return
+        s["q"].put(payload)
+
+
+def log_line(scan_id: str, msg: str):
+    ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
+    line = f"[{ts}] {msg}"
+    print(line)
+    _append_log_line(line)
+    publish(scan_id, "log", {"line": line})
+
+
+def do_scan(scan_id: str):
     try:
-        log("Scanner thread started. Calling scanner.run_scan()...")
-
-        html_path = scanner.run_scan(log_fn=log)
-
-        if html_path:
-            LAST_REPORT_PATH = html_path.replace("\\", "/")
-        else:
-            log("Scan finished but returned no HTML path.")
-
+        log_line(scan_id, "Scanner thread started.")
+        # Run scan and stream rows/logs through callbacks
+        html_path = scanner.run_scan(
+            log_fn=lambda m: log_line(scan_id, m),
+            row_fn=lambda row: publish(scan_id, "row", row),
+        )
+        with STATE_LOCK:
+            if scan_id in SCANS:
+                SCANS[scan_id]["last_report"] = html_path
+        publish(scan_id, "done", {"ok": True, "report_url": f"/{html_path.lstrip('/')}" if html_path else None})
+        log_line(scan_id, "Scan finished.")
     except Exception:
-        log("SCAN CRASHED — traceback below:")
+        log_line(scan_id, "SCAN CRASHED — traceback below:")
         tb = traceback.format_exc()
-        for line in tb.splitlines():
-            log(line)
-
+        for ln in tb.splitlines():
+            log_line(scan_id, ln)
+        publish(scan_id, "done", {"ok": False, "error": "Scan crashed. Check log."})
     finally:
-        with SCAN_LOCK:
-            SCAN_RUNNING = False
-        log("Scanner thread finished.")
+        with STATE_LOCK:
+            if scan_id in SCANS:
+                SCANS[scan_id]["running"] = False
 
 
 @app.get("/", response_class=HTMLResponse)
 def home():
-    return """
-<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>Squeeze Bot</title>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 18px; }
-    .row { display: flex; gap: 14px; }
-    .left { width: 420px; }
-    .card { border: 1px solid #e6e6e6; border-radius: 12px; padding: 12px; margin-bottom: 12px; }
-    button { padding: 10px 14px; border-radius: 10px; border: 1px solid #ddd; cursor: pointer; }
-    pre { height: 520px; overflow: auto; background: #0b0f14; color: #cfe3ff; padding: 10px; border-radius: 10px; user-select: text; }
-    iframe { width: 100%; height: 700px; border: 1px solid #e6e6e6; border-radius: 12px; }
-    .muted { color: #666; font-size: 13px; }
-    .status { margin-top: 8px; }
-    a { color: #0b65d8; text-decoration: none; font-weight: 700; }
-  </style>
-</head>
-<body>
-  <h2>Squeeze Bot</h2>
-  <div class="muted">Click Run Scan. Log updates live. Latest report loads on the right (same tab).</div>
-
-  <div class="row">
-    <div class="left">
-      <div class="card">
-        <button id="runBtn">Run Scan</button>
-        <button id="clearBtn" style="margin-left:8px;">Clear Log</button>
-        <div id="status" class="muted status"></div>
-        <div style="margin-top:10px;">
-          <a id="openReport" href="#" target="_blank" style="display:none;">Open latest HTML report</a>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="muted">Live Log (click/drag to copy — polling pauses while mouse is down)</div>
-        <pre id="log"></pre>
-      </div>
-    </div>
-
-    <div style="flex:1;">
-      <div class="card">
-        <div class="muted">Latest Report</div>
-        <iframe id="report" src="/report"></iframe>
-      </div>
-    </div>
-  </div>
-
-<script>
-  const logEl = document.getElementById("log");
-  const statusEl = document.getElementById("status");
-  const runBtn = document.getElementById("runBtn");
-  const clearBtn = document.getElementById("clearBtn");
-  const reportFrame = document.getElementById("report");
-  const openReport = document.getElementById("openReport");
-
-  let pausePoll = false;
-
-  logEl.addEventListener("mousedown", () => { pausePoll = true; });
-  window.addEventListener("mouseup", () => { setTimeout(() => { pausePoll = false; }, 400); });
-
-  function extractLatestHtmlPath(txt) {
-    const matches = txt.match(/Saved HTML:\\s*(outputs\\/[^\\s]+\\.html)/g);
-    if (!matches || matches.length === 0) return null;
-    const last = matches[matches.length - 1].replace("Saved HTML:", "").trim();
-    return "/" + last; // outputs mounted at /outputs
-  }
-
-  async function runScan(){
-    statusEl.textContent = "Starting...";
-    try {
-      const res = await fetch("/run_scan", { method: "POST" });
-      if (!res.ok) {
-        statusEl.textContent = "Run failed (server returned error).";
-        return;
-      }
-      const data = await res.json().catch(() => ({}));
-      statusEl.textContent = (data && data.running) ? "Already running (check log)..." : "Running (check log)...";
-    } catch (e) {
-      statusEl.textContent = "Run failed (network error).";
-    }
-  }
-
-  async function clearLog(){
-    statusEl.textContent = "Clearing log...";
-    try {
-      const res = await fetch("/clear_log", { method: "POST" });
-      statusEl.textContent = res.ok ? "Log cleared." : "Failed to clear log.";
-    } catch (e) {
-      statusEl.textContent = "Failed to clear log.";
-    }
-  }
-
-  runBtn.addEventListener("click", runScan);
-  clearBtn.addEventListener("click", clearLog);
-
-  async function poll(){
-    try{
-      const r = await fetch("/scan_log", { cache: "no-store" });
-      const txt = await r.text();
-
-      if (!pausePoll) {
-        logEl.textContent = txt || "No log yet. Click Run Scan.";
-        logEl.scrollTop = logEl.scrollHeight;
-
-        const reportUrl = extractLatestHtmlPath(txt);
-        if (reportUrl) {
-          openReport.href = reportUrl;
-          openReport.style.display = "inline";
-          reportFrame.src = reportUrl + "?ts=" + Date.now();
-        }
-      }
-    }catch(e){}
-    setTimeout(poll, 1500);
-  }
-
-  poll();
-</script>
-</body>
-</html>
-"""
-
-
-# Helps Render health checks that send HEAD /
-@app.head("/")
-def head_root():
-    return PlainTextResponse("ok")
+    # Serve the static UI
+    return FileResponse(STATIC_DIR / "index.html")
 
 
 @app.post("/run_scan")
 def run_scan():
-    global SCAN_RUNNING
-    with SCAN_LOCK:
-        if SCAN_RUNNING:
-            log("Scan requested but one is already running.")
-            return {"ok": True, "running": True}
-        SCAN_RUNNING = True
+    """
+    Starts a scan and returns scan_id.
+    UI will open EventSource(/stream/{scan_id})
+    """
+    scan_id = str(uuid.uuid4())
+    with STATE_LOCK:
+        SCANS[scan_id] = {
+            "running": True,
+            "q": queue.Queue(),
+            "last_report": None,
+            "started_utc": datetime.now(timezone.utc).isoformat(),
+        }
 
-    log("Starting scan… (manual)")
-    t = threading.Thread(target=do_scan, daemon=True)
+    # small header event for UI
+    publish(scan_id, "meta", {"scan_id": scan_id, "started_utc": SCANS[scan_id]["started_utc"]})
+
+    t = threading.Thread(target=do_scan, args=(scan_id,), daemon=True)
     t.start()
-    return {"ok": True, "started": True}
+    return JSONResponse({"ok": True, "scan_id": scan_id})
+
+
+@app.get("/stream/{scan_id}")
+def stream(scan_id: str):
+    """
+    Server-Sent Events stream: logs + rows + done.
+    """
+    with STATE_LOCK:
+        s = SCANS.get(scan_id)
+        if not s:
+            return JSONResponse({"ok": False, "error": "Unknown scan_id"}, status_code=404)
+        q = s["q"]
+
+    def gen():
+        # initial heartbeat so proxies open stream
+        yield "event: ping\ndata: {}\n\n"
+        while True:
+            try:
+                msg = q.get(timeout=25)
+                yield msg
+            except queue.Empty:
+                # keep-alive
+                yield "event: ping\ndata: {}\n\n"
+                with STATE_LOCK:
+                    alive = SCANS.get(scan_id)
+                    if not alive:
+                        break
+                    if not alive["running"] and alive["q"].empty():
+                        break
+
+    return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+@app.get("/scan_log")
+def scan_log():
+    if not LOG_PATH.exists():
+        return ""
+    return FileResponse(LOG_PATH, media_type="text/plain")
 
 
 @app.post("/clear_log")
-def clear_log_endpoint():
-    clear_log()
+def clear_log():
+    clear_log_file()
     return {"ok": True}
-
-
-@app.get("/scan_log", response_class=PlainTextResponse)
-def scan_log():
-    if not os.path.exists(LOG_PATH):
-        return ""
-    try:
-        with open(LOG_PATH, "r", encoding="utf-8") as f:
-            return f.read()
-    except Exception:
-        return ""
-
-
-@app.get("/report")
-def report():
-    if not LAST_REPORT_PATH:
-        return HTMLResponse("<div style='font-family:Arial;padding:16px;color:#666'>No report yet. Click Run Scan.</div>")
-
-    path = LAST_REPORT_PATH
-    if not os.path.exists(path):
-        return HTMLResponse(f"<div style='font-family:Arial;padding:16px;color:#666'>Report missing: {path}</div>")
-
-    return FileResponse(path, media_type="text/html")
