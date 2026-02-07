@@ -2,36 +2,46 @@
 import os
 import threading
 import traceback
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 
 import scanner  # scanner.py
 
 app = FastAPI()
 
-# Serve outputs/ so HTML reports can be loaded directly
-os.makedirs("outputs", exist_ok=True)
-app.mount("/outputs", StaticFiles(directory="outputs"), name="outputs")
+# --- outputs directory ---
+OUT_DIR = "outputs"
+os.makedirs(OUT_DIR, exist_ok=True)
+app.mount("/outputs", StaticFiles(directory=OUT_DIR), name="outputs")
 
-# --- Global state ---
-LOG_LINES: list[str] = []
+# --- persistent log file ---
+LOG_PATH = os.path.join(OUT_DIR, "live_log.txt")
+
 SCAN_LOCK = threading.Lock()
 SCAN_RUNNING = False
 LAST_REPORT_PATH: str | None = None
 
 
+def _append_log_line(line: str):
+    # append to file so it survives restarts
+    with open(LOG_PATH, "a", encoding="utf-8") as f:
+        f.write(line + "\n")
+
+
 def log(msg: str):
-    ts = datetime.now().strftime("%H:%M:%S")
+    # Use UTC timestamp for server log line, keep your message content the same
+    ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
     line = f"[{ts}] {msg}"
     print(line)
-    LOG_LINES.append(line)
-    # keep log from growing forever
-    if len(LOG_LINES) > 800:
-        del LOG_LINES[:200]
+    _append_log_line(line)
+
+
+def clear_log():
+    with open(LOG_PATH, "w", encoding="utf-8") as f:
+        f.write("")
 
 
 def do_scan():
@@ -39,14 +49,10 @@ def do_scan():
     try:
         log("Scanner thread started. Calling scanner.run_scan()...")
 
-        # scanner.run_scan will call log_fn(...) throughout
         html_path = scanner.run_scan(log_fn=log)
 
         if html_path:
             LAST_REPORT_PATH = html_path.replace("\\", "/")
-            # IMPORTANT: scanner.py already logs "Saved HTML: ..."
-            # We do NOT need to log it again, but it's ok if it happens once.
-            # We'll keep it OFF to avoid duplicates.
         else:
             log("Scan finished but returned no HTML path.")
 
@@ -91,6 +97,7 @@ def home():
     <div class="left">
       <div class="card">
         <button id="runBtn">Run Scan</button>
+        <button id="clearBtn" style="margin-left:8px;">Clear Log</button>
         <div id="status" class="muted status"></div>
         <div style="margin-top:10px;">
           <a id="openReport" href="#" target="_blank" style="display:none;">Open latest HTML report</a>
@@ -115,39 +122,49 @@ def home():
   const logEl = document.getElementById("log");
   const statusEl = document.getElementById("status");
   const runBtn = document.getElementById("runBtn");
+  const clearBtn = document.getElementById("clearBtn");
   const reportFrame = document.getElementById("report");
   const openReport = document.getElementById("openReport");
 
   let pausePoll = false;
 
-  // Pause while selecting/copying
   logEl.addEventListener("mousedown", () => { pausePoll = true; });
-  window.addEventListener("mouseup", () => { setTimeout(() => { pausePoll = false; }, 500); });
+  window.addEventListener("mouseup", () => { setTimeout(() => { pausePoll = false; }, 400); });
 
-  // Extract last "Saved HTML: outputs/....html"
   function extractLatestHtmlPath(txt) {
     const matches = txt.match(/Saved HTML:\\s*(outputs\\/[^\\s]+\\.html)/g);
     if (!matches || matches.length === 0) return null;
     const last = matches[matches.length - 1].replace("Saved HTML:", "").trim();
-    return "/" + last; // because outputs are mounted at /outputs
+    return "/" + last; // outputs mounted at /outputs
   }
 
   async function runScan(){
     statusEl.textContent = "Starting...";
     try {
       const res = await fetch("/run_scan", { method: "POST" });
-      const data = await res.json().catch(() => ({}));
-      if (data && data.running) {
-        statusEl.textContent = "Already running (check log)...";
-      } else {
-        statusEl.textContent = "Running (check log)...";
+      if (!res.ok) {
+        statusEl.textContent = "Run failed (server returned error).";
+        return;
       }
+      const data = await res.json().catch(() => ({}));
+      statusEl.textContent = (data && data.running) ? "Already running (check log)..." : "Running (check log)...";
     } catch (e) {
-      statusEl.textContent = "Run failed (network/server error).";
+      statusEl.textContent = "Run failed (network error).";
+    }
+  }
+
+  async function clearLog(){
+    statusEl.textContent = "Clearing log...";
+    try {
+      const res = await fetch("/clear_log", { method: "POST" });
+      statusEl.textContent = res.ok ? "Log cleared." : "Failed to clear log.";
+    } catch (e) {
+      statusEl.textContent = "Failed to clear log.";
     }
   }
 
   runBtn.addEventListener("click", runScan);
+  clearBtn.addEventListener("click", clearLog);
 
   async function poll(){
     try{
@@ -155,15 +172,13 @@ def home():
       const txt = await r.text();
 
       if (!pausePoll) {
-        logEl.textContent = txt;
+        logEl.textContent = txt || "No log yet. Click Run Scan.";
         logEl.scrollTop = logEl.scrollHeight;
 
         const reportUrl = extractLatestHtmlPath(txt);
         if (reportUrl) {
           openReport.href = reportUrl;
           openReport.style.display = "inline";
-
-          // Load that exact file (best)
           reportFrame.src = reportUrl + "?ts=" + Date.now();
         }
       }
@@ -176,6 +191,12 @@ def home():
 </body>
 </html>
 """
+
+
+# Helps Render health checks that send HEAD /
+@app.head("/")
+def head_root():
+    return PlainTextResponse("ok")
 
 
 @app.post("/run_scan")
@@ -193,9 +214,21 @@ def run_scan():
     return {"ok": True, "started": True}
 
 
+@app.post("/clear_log")
+def clear_log_endpoint():
+    clear_log()
+    return {"ok": True}
+
+
 @app.get("/scan_log", response_class=PlainTextResponse)
 def scan_log():
-    return "\n".join(LOG_LINES) + ("\n" if LOG_LINES else "")
+    if not os.path.exists(LOG_PATH):
+        return ""
+    try:
+        with open(LOG_PATH, "r", encoding="utf-8") as f:
+            return f.read()
+    except Exception:
+        return ""
 
 
 @app.get("/report")
