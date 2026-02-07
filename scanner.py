@@ -996,9 +996,5 @@ def run_scan(log_fn=None) -> str | None:
 
     html_path = write_reports(date_str, end_local, top_s, top_m, meta)
 
-    # Your UI is waiting for this exact text
-    if log_fn and html_path:
-        log_fn(f"Saved HTML: {html_path}")
-
     return html_path
 
