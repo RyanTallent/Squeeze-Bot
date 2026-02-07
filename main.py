@@ -1,3 +1,4 @@
+# main.py
 import os
 import threading
 import traceback
@@ -8,11 +9,11 @@ from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
-import scanner  # your scanner.py
+import scanner  # scanner.py
 
 app = FastAPI()
 
-# Serve outputs/ so HTML reports can be loaded
+# Serve outputs/ so HTML reports can be loaded directly
 os.makedirs("outputs", exist_ok=True)
 app.mount("/outputs", StaticFiles(directory="outputs"), name="outputs")
 
@@ -38,12 +39,14 @@ def do_scan():
     try:
         log("Scanner thread started. Calling scanner.run_scan()...")
 
-        # This will run your scan and should call log_fn for progress
+        # scanner.run_scan will call log_fn(...) throughout
         html_path = scanner.run_scan(log_fn=log)
 
         if html_path:
             LAST_REPORT_PATH = html_path.replace("\\", "/")
-            log(f"Saved HTML: {LAST_REPORT_PATH}")
+            # IMPORTANT: scanner.py already logs "Saved HTML: ..."
+            # We do NOT need to log it again, but it's ok if it happens once.
+            # We'll keep it OFF to avoid duplicates.
         else:
             log("Scan finished but returned no HTML path.")
 
@@ -70,12 +73,14 @@ def home():
   <style>
     body { font-family: Arial, sans-serif; margin: 18px; }
     .row { display: flex; gap: 14px; }
-    .left { width: 360px; }
+    .left { width: 420px; }
     .card { border: 1px solid #e6e6e6; border-radius: 12px; padding: 12px; margin-bottom: 12px; }
     button { padding: 10px 14px; border-radius: 10px; border: 1px solid #ddd; cursor: pointer; }
-    pre { height: 520px; overflow: auto; background: #0b0f14; color: #cfe3ff; padding: 10px; border-radius: 10px; }
+    pre { height: 520px; overflow: auto; background: #0b0f14; color: #cfe3ff; padding: 10px; border-radius: 10px; user-select: text; }
     iframe { width: 100%; height: 700px; border: 1px solid #e6e6e6; border-radius: 12px; }
     .muted { color: #666; font-size: 13px; }
+    .status { margin-top: 8px; }
+    a { color: #0b65d8; text-decoration: none; font-weight: 700; }
   </style>
 </head>
 <body>
@@ -86,7 +91,10 @@ def home():
     <div class="left">
       <div class="card">
         <button id="runBtn">Run Scan</button>
-        <div id="status" class="muted" style="margin-top:8px;"></div>
+        <div id="status" class="muted status"></div>
+        <div style="margin-top:10px;">
+          <a id="openReport" href="#" target="_blank" style="display:none;">Open latest HTML report</a>
+        </div>
       </div>
 
       <div class="card">
@@ -104,55 +112,66 @@ def home():
   </div>
 
 <script>
-let pausePoll = false;
+  const logEl = document.getElementById("log");
+  const statusEl = document.getElementById("status");
+  const runBtn = document.getElementById("runBtn");
+  const reportFrame = document.getElementById("report");
+  const openReport = document.getElementById("openReport");
 
-const logEl = document.getElementById("log");
-const reportEl = document.getElementById("report");
-const statusEl = document.getElementById("status");
-const runBtn = document.getElementById("runBtn");
+  let pausePoll = false;
 
-// Pause polling while user is selecting/copying text in the log
-logEl.addEventListener("mousedown", () => { pausePoll = true; });
-logEl.addEventListener("mouseup", () => { setTimeout(() => { pausePoll = false; }, 500); });
+  // Pause while selecting/copying
+  logEl.addEventListener("mousedown", () => { pausePoll = true; });
+  window.addEventListener("mouseup", () => { setTimeout(() => { pausePoll = false; }, 500); });
 
-async function runScan(){
-  statusEl.innerText = "Starting...";
-  try{
-    const res = await fetch("/run_scan", { method: "POST" });
-    const data = await res.json().catch(() => ({}));
-    if (data && data.running) {
-      statusEl.innerText = "Already running (check log)...";
-    } else {
-      statusEl.innerText = "Running (check log)...";
-    }
-  }catch(e){
-    statusEl.innerText = "Error starting scan (see console)";
-    console.error(e);
+  // Extract last "Saved HTML: outputs/....html"
+  function extractLatestHtmlPath(txt) {
+    const matches = txt.match(/Saved HTML:\\s*(outputs\\/[^\\s]+\\.html)/g);
+    if (!matches || matches.length === 0) return null;
+    const last = matches[matches.length - 1].replace("Saved HTML:", "").trim();
+    return "/" + last; // because outputs are mounted at /outputs
   }
-}
 
-runBtn.addEventListener("click", runScan);
-
-async function poll(){
-  try{
-    const r = await fetch("/scan_log");
-    const txt = await r.text();
-
-    if (!pausePoll) {
-      logEl.textContent = txt;
-
-      // If we see "Saved HTML:" then reload iframe
-      if (txt.includes("Saved HTML:")) {
-        reportEl.src = "/report?ts=" + Date.now();
+  async function runScan(){
+    statusEl.textContent = "Starting...";
+    try {
+      const res = await fetch("/run_scan", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (data && data.running) {
+        statusEl.textContent = "Already running (check log)...";
+      } else {
+        statusEl.textContent = "Running (check log)...";
       }
+    } catch (e) {
+      statusEl.textContent = "Run failed (network/server error).";
     }
-  }catch(e){
-    // ignore poll errors; keep polling
   }
-  setTimeout(poll, 1000);
-}
 
-poll();
+  runBtn.addEventListener("click", runScan);
+
+  async function poll(){
+    try{
+      const r = await fetch("/scan_log", { cache: "no-store" });
+      const txt = await r.text();
+
+      if (!pausePoll) {
+        logEl.textContent = txt;
+        logEl.scrollTop = logEl.scrollHeight;
+
+        const reportUrl = extractLatestHtmlPath(txt);
+        if (reportUrl) {
+          openReport.href = reportUrl;
+          openReport.style.display = "inline";
+
+          // Load that exact file (best)
+          reportFrame.src = reportUrl + "?ts=" + Date.now();
+        }
+      }
+    }catch(e){}
+    setTimeout(poll, 1500);
+  }
+
+  poll();
 </script>
 </body>
 </html>
@@ -166,7 +185,6 @@ def run_scan():
         if SCAN_RUNNING:
             log("Scan requested but one is already running.")
             return {"ok": True, "running": True}
-
         SCAN_RUNNING = True
 
     log("Starting scan… (manual)")
@@ -183,14 +201,10 @@ def scan_log():
 @app.get("/report")
 def report():
     if not LAST_REPORT_PATH:
-        return HTMLResponse(
-            "<div style='font-family:Arial;padding:16px;color:#666'>No report yet. Click Run Scan.</div>"
-        )
+        return HTMLResponse("<div style='font-family:Arial;padding:16px;color:#666'>No report yet. Click Run Scan.</div>")
 
     path = LAST_REPORT_PATH
     if not os.path.exists(path):
-        return HTMLResponse(
-            f"<div style='font-family:Arial;padding:16px;color:#666'>Report missing: {path}</div>"
-        )
+        return HTMLResponse(f"<div style='font-family:Arial;padding:16px;color:#666'>Report missing: {path}</div>")
 
     return FileResponse(path, media_type="text/html")
