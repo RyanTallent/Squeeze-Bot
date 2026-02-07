@@ -8,21 +8,24 @@ import requests
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
-# -----------------------------
-# Locked settings (your rules)
-# -----------------------------
-TOP_N_PER_BUCKET = 25  # UI will show more live; report top N per bucket
-DEEP_ANALYZE_TOP = 75  # your choice
+# ============================================================
+# ENGINE V2 — SIMPLE, RELIABLE, STREAMING-FRIENDLY
+# ============================================================
 
-# Moderate base filters (keeps noise down but not strict)
-MIN_DOLLAR_VOL_PROXY = 250_000  # snapshot proxy
-MIN_MOVE_PROXY_PCT = 0.01       # snapshot move proxy
+# Output sizing
+TOP_N_PER_BUCKET = 25         # saved HTML report shows top N per bucket
+DEEP_ANALYZE_TOP = 75         # you wanted top 75 so we don't miss stuff
+ORTEX_FINALISTS = 25          # ORTEX only for the first 25 to save credits
 
-# ORTEX window (your updated preference)
-ORTEX_ON_START_CT = (7, 30)
-ORTEX_ON_END_CT   = (16, 0)
+# Moderate snapshot filter (cheap “whole market” pass)
+MIN_DOLLAR_VOL_PROXY = 250_000
+MIN_MOVE_PROXY_PCT = 0.01
 
-# Market windows (CT)
+# Price tiers
+PRICE_TIERS = [(0.01, 2.50), (2.50, 5.00), (5.00, 10.00)]
+MAX_CANDIDATES_PER_TIER_SNAPSHOT = 600  # cheap list before deep analysis
+
+# Market hours (Central Time)
 PM_START_CT = (3, 0)
 PM_END_CT   = (8, 29)
 
@@ -32,9 +35,9 @@ REG_END_CT   = (15, 0)
 AH_START_CT = (15, 0)
 AH_END_CT   = (19, 0)
 
-# Candidate selection (price tiers)
-PRICE_TIERS = [(0.01, 2.50), (2.50, 5.00), (5.00, 10.00)]
-MAX_CANDIDATES_PER_TIER_SNAPSHOT = 600  # cheap snapshot ranking list (no heavy calls)
+# ORTEX hours (your preference)
+ORTEX_ON_START_CT = (7, 30)
+ORTEX_ON_END_CT   = (16, 0)
 
 # Keys
 POLYGON_KEY = os.getenv("POLYGON_API_KEY")
@@ -46,14 +49,19 @@ SESSION.headers.update({"User-Agent": "squeeze-bot/engine-v2"})
 OUT_DIR = Path("outputs")
 OUT_DIR.mkdir(exist_ok=True)
 
-# -----------------------------
 # Timezone (Central)
-# -----------------------------
 try:
     from zoneinfo import ZoneInfo
     CT_TZ = ZoneInfo("America/Chicago")
 except Exception:
     CT_TZ = timezone(timedelta(hours=-6))
+
+
+# ============================================================
+# Small utils
+# ============================================================
+def json_dumps(obj) -> str:
+    return json.dumps(obj, separators=(",", ":"), ensure_ascii=False)
 
 def now_ct() -> datetime:
     return datetime.now(tz=CT_TZ)
@@ -80,53 +88,85 @@ def safe_int(x):
     except Exception:
         return None
 
-def json_dumps(obj) -> str:
-    return json.dumps(obj, separators=(",", ":"), ensure_ascii=False)
-
 def ms_to_utc(ms: int) -> datetime:
     return datetime.fromtimestamp(ms / 1000, tz=timezone.utc)
 
-# -----------------------------
-# Window logic (CURRENT window only)
-# -----------------------------
+def sigmoid(x: float) -> float:
+    if x >= 0:
+        z = math.exp(-x)
+        return 1.0 / (1.0 + z)
+    z = math.exp(x)
+    return z / (1.0 + z)
+
+def score_to_prob(score: float) -> float:
+    return sigmoid((score - 55.0) / 12.0)
+
+
+# ============================================================
+# Market window logic (CURRENT window; CLOSED => last AFTERHOURS)
+# ============================================================
 def current_market_window(dt: datetime) -> tuple[str, datetime, datetime]:
     """
     Returns (window_name, start_local, end_local) in CT.
-    end_local is dt (now), clamped inside the window.
+    If market is CLOSED, returns the most recent AFTERHOURS session (15:00–19:00 CT).
     """
+    # weekends: treat as CLOSED and fallback to last weekday AH
     if dt.weekday() >= 5:
-        return ("CLOSED", dt, dt)
+        # go back to Friday
+        back = 1 if dt.weekday() == 5 else 2
+        y = dt - timedelta(days=back)
+        y_str = ct_date_str(y)
+        y_ah_start = ct_dt(y_str, AH_START_CT)
+        y_ah_end = ct_dt(y_str, AH_END_CT)
+        return ("AFTERHOURS (LAST)", y_ah_start, y_ah_end)
 
     date_str = ct_date_str(dt)
     pm_start = ct_dt(date_str, PM_START_CT)
-    pm_end   = ct_dt(date_str, PM_END_CT) + timedelta(seconds=59)
+    pm_end = ct_dt(date_str, PM_END_CT) + timedelta(seconds=59)
 
     reg_start = ct_dt(date_str, REG_START_CT)
-    reg_end   = ct_dt(date_str, REG_END_CT)
+    reg_end = ct_dt(date_str, REG_END_CT)
 
     ah_start = ct_dt(date_str, AH_START_CT)
-    ah_end   = ct_dt(date_str, AH_END_CT)
+    ah_end = ct_dt(date_str, AH_END_CT)
 
     if pm_start <= dt <= pm_end:
         return ("PREMARKET", pm_start, dt)
+
     if reg_start <= dt <= reg_end:
         return ("REGULAR", reg_start, dt)
+
     if ah_start <= dt <= ah_end:
         return ("AFTERHOURS", ah_start, dt)
 
-    return ("CLOSED", dt, dt)
+    # CLOSED fallback to most recent after-hours session
+    if dt > ah_end:
+        # after 7pm → use today's AH full session
+        return ("AFTERHOURS (LAST)", ah_start, ah_end)
+
+    # before 3am (but weekday) → use yesterday's AH
+    y = dt - timedelta(days=1)
+    # if yesterday is weekend, fallback to Friday
+    while y.weekday() >= 5:
+        y -= timedelta(days=1)
+    y_str = ct_date_str(y)
+    y_ah_start = ct_dt(y_str, AH_START_CT)
+    y_ah_end = ct_dt(y_str, AH_END_CT)
+    return ("AFTERHOURS (LAST)", y_ah_start, y_ah_end)
+
 
 def ortex_allowed_now(dt: datetime) -> bool:
     if dt.weekday() >= 5:
         return False
-    date_str = ct_date_str(dt)
-    start = ct_dt(date_str, ORTEX_ON_START_CT)
-    end   = ct_dt(date_str, ORTEX_ON_END_CT)
+    d = ct_date_str(dt)
+    start = ct_dt(d, ORTEX_ON_START_CT)
+    end = ct_dt(d, ORTEX_ON_END_CT)
     return start <= dt <= end
 
-# -----------------------------
-# Polygon with throttling + logging
-# -----------------------------
+
+# ============================================================
+# Polygon (throttle-safe + logs)
+# ============================================================
 def polygon_get(url: str, params: dict | None = None, log_fn=None, retries: int = 3) -> dict:
     if not POLYGON_KEY:
         raise RuntimeError("POLYGON_API_KEY environment variable is not set")
@@ -141,7 +181,7 @@ def polygon_get(url: str, params: dict | None = None, log_fn=None, retries: int 
             if r.status_code == 429:
                 wait = 1.5 * (2 ** attempt)
                 if log_fn:
-                    log_fn(f"[POLYGON 429] throttled. wait={wait:.1f}s url={url}")
+                    log_fn(f"[POLYGON 429] throttled; wait={wait:.1f}s")
                 time.sleep(wait)
                 continue
 
@@ -160,14 +200,21 @@ def polygon_get(url: str, params: dict | None = None, log_fn=None, retries: int 
 
     raise RuntimeError(f"Polygon failed after retries: {url}")
 
+
 def get_snapshot_all_tickers(log_fn=None) -> list[dict]:
-    data = polygon_get("https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers", {}, log_fn=log_fn)
+    data = polygon_get(
+        "https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers",
+        {},
+        log_fn=log_fn
+    )
     return data.get("tickers", []) or []
+
 
 def get_minute_aggs(ticker: str, date_str: str, log_fn=None) -> list[dict]:
     url = f"https://api.polygon.io/v2/aggs/ticker/{ticker}/range/1/minute/{date_str}/{date_str}"
     data = polygon_get(url, {"adjusted": "true", "sort": "asc", "limit": 50000}, log_fn=log_fn)
     return data.get("results", []) or []
+
 
 def get_daily_aggs_20d(ticker: str, end_date_str: str, log_fn=None) -> list[dict]:
     end_dt = datetime.fromisoformat(end_date_str)
@@ -177,6 +224,7 @@ def get_daily_aggs_20d(ticker: str, end_date_str: str, log_fn=None) -> list[dict
     data = polygon_get(url, {"adjusted": "true", "sort": "asc", "limit": 50000}, log_fn=log_fn)
     return data.get("results", []) or []
 
+
 def polygon_reference(ticker: str, log_fn=None) -> dict | None:
     url = f"https://api.polygon.io/v3/reference/tickers/{ticker}"
     try:
@@ -185,9 +233,10 @@ def polygon_reference(ticker: str, log_fn=None) -> dict | None:
     except Exception:
         return None
 
-# -----------------------------
-# Ortex (unchanged logic, time gated)
-# -----------------------------
+
+# ============================================================
+# ORTEX (time-gated)
+# ============================================================
 def ortex_get(url: str, log_fn=None) -> dict | None:
     if not ORTEX_KEY:
         return None
@@ -212,6 +261,7 @@ def ortex_get(url: str, log_fn=None) -> dict | None:
     except Exception:
         return None
 
+
 def ortex_short_interest_features(ticker: str, log_fn=None) -> dict | None:
     data = ortex_get(f"https://api.ortex.com/api/v1/stock/US/{ticker}/short_interest", log_fn=log_fn)
     if not data:
@@ -219,6 +269,7 @@ def ortex_short_interest_features(ticker: str, log_fn=None) -> dict | None:
     rows = data.get("rows", []) if isinstance(data, dict) else []
     if not rows:
         return None
+
     latest = rows[-1]
     prev = rows[-2] if len(rows) >= 2 else None
 
@@ -232,6 +283,7 @@ def ortex_short_interest_features(ticker: str, log_fn=None) -> dict | None:
             si_pct_chg = si_pct - prev_pct
 
     return {"si_pct_ff": si_pct, "si_pct_chg": si_pct_chg, "si_shares": si_shares}
+
 
 def ortex_ctb_latest(ticker: str, log_fn=None) -> float | None:
     for url in [
@@ -251,6 +303,7 @@ def ortex_ctb_latest(ticker: str, log_fn=None) -> float | None:
                 return v
     return None
 
+
 def ortex_availability_latest(ticker: str, log_fn=None) -> float | None:
     data = ortex_get(f"https://api.ortex.com/api/v1/stock/US/{ticker}/availability", log_fn=log_fn)
     if not data:
@@ -265,110 +318,10 @@ def ortex_availability_latest(ticker: str, log_fn=None) -> float | None:
             return v
     return None
 
-# -----------------------------
-# Scoring + confidence 1–10
-# -----------------------------
-def sigmoid(x: float) -> float:
-    if x >= 0:
-        z = math.exp(-x)
-        return 1.0 / (1.0 + z)
-    z = math.exp(x)
-    return z / (1.0 + z)
 
-def score_to_prob(score: float) -> float:
-    # tuned so 55-ish ~ 0.5
-    return sigmoid((score - 55.0) / 12.0)
-
-def confidence_1_to_10(prob: float, ortex_on: bool, has_borrow: bool) -> int:
-    # stricter without ORTEX: compress probabilities down a bit
-    p = prob
-    if not ortex_on:
-        p = p * 0.86
-    # 10 should be rare: require ORTEX + borrow fields + very high p
-    if ortex_on and has_borrow and p >= 0.965:
-        return 10
-    # map 0..1 to 1..9
-    c = int(round(clamp(p, 0, 0.99) * 8)) + 1
-    # cap polygon-only at 9 (and realistically harder to hit 9)
-    if not ortex_on and c >= 9:
-        c = 8 if p < 0.93 else 9
-    return max(1, min(9, c))
-
-def compute_rel_vol(window_vol: float, avg_daily_vol: float | None, window_minutes: int) -> float | None:
-    if avg_daily_vol is None or avg_daily_vol <= 0:
-        return None
-    expected = avg_daily_vol * (window_minutes / 390.0)
-    if expected <= 0:
-        return None
-    return window_vol / expected
-
-def compute_scores(feat: dict) -> tuple[float, float, float, float]:
-    # pressure (ORTEX boosts)
-    si = feat.get("si_pct_ff") or 0.0
-    si_chg = feat.get("si_pct_chg") or 0.0
-    ctb = feat.get("ctb") or 0.0
-    avail = feat.get("avail")
-
-    avail_term = 0.0
-    if avail is not None:
-        avail_term = max(0.0, 6.0 - math.log10(max(avail, 1.0)))
-
-    pressure = (si * 2.0) + (si_chg * 8.0) + (min(ctb, 200.0) * 0.10) + (avail_term * 2.0)
-
-    # opportunity
-    rng = feat.get("range_pct") or 0.0
-    move = abs(feat.get("move_pct") or 0.0)
-    relv = feat.get("rel_vol") or 0.0
-    dv = (feat.get("dollar_vol") or 0.0) / 1_000_000.0
-    opportunity = (rng * 120.0) + (move * 35.0) + (min(relv, 6.0) * 10.0) + (min(dv, 15.0) * 4.0)
-
-    # structure
-    hold = feat.get("hold_pct") or 0.0
-    rr = feat.get("rr") or 0.0
-    structure = (hold * 60.0) + (clamp(rr / 5.0) * 30.0) + (clamp((0.12 - abs(rng - 0.06)) / 0.12) * 10.0)
-
-    base_score = 0.34 * pressure + 0.33 * opportunity + 0.33 * structure
-    prob = score_to_prob(base_score)
-    return base_score, prob, pressure, opportunity
-
-def setup_type(feat: dict, squeeze: bool) -> str:
-    if squeeze:
-        return "squeeze breakout" if feat.get("hold_pct", 0) >= 0.30 else "squeeze pullback"
-    # momentum subtypes
-    if (feat.get("dollar_vol") or 0) < 300_000:
-        return "thin momentum"
-    if (feat.get("hold_pct") or 0) >= 0.35 and 0.02 <= (feat.get("range_pct") or 0) <= 0.12:
-        return "momentum breakout"
-    return "momentum pullback"
-
-def trade_plan(feat: dict) -> str:
-    trig = feat.get("trigger") or 0.0
-    stop = feat.get("stop") or 0.0
-    return f"Entry near trigger {trig:.4f}. Stop {stop:.4f}. Avoid chasing >2% above trigger."
-
-def is_true_squeeze(feat: dict, ortex_on: bool) -> bool:
-    # Only call something "SQUEEZE" when ORTEX is on and borrow data exists
-    if not ortex_on:
-        return False
-    si = feat.get("si_pct_ff")
-    if si is None or si < 8.0:
-        return False
-    if feat.get("ctb") is None or feat.get("avail") is None:
-        return False
-    # stricter squeeze gate
-    if feat.get("avail") is not None and feat["avail"] > 250_000:
-        return False
-    if (feat.get("dollar_vol") or 0) < 250_000:
-        return False
-    if (feat.get("hold_pct") or 0) < 0.25:
-        return False
-    if (feat.get("range_pct") or 0) < 0.02:
-        return False
-    return True
-
-# -----------------------------
-# Snapshot candidate selection (cheap “whole market” pass)
-# -----------------------------
+# ============================================================
+# Candidate selection (cheap whole-market pass)
+# ============================================================
 def pick_snapshot_candidates(snap: list[dict], price_min: float, price_max: float) -> list[tuple[float, str, dict]]:
     out = []
     for item in snap:
@@ -385,29 +338,45 @@ def pick_snapshot_candidates(snap: list[dict], price_min: float, price_max: floa
         prev = item.get("prevDay") or {}
 
         day_vol = safe_float(day.get("v")) or 0.0
-        prev_close = safe_float(prev.get("c")) or None
+        prev_close = safe_float(prev.get("c"))
+
         move_pct = 0.0
         if prev_close and prev_close > 0:
             move_pct = (p - prev_close) / prev_close
 
         dollar_vol_proxy = day_vol * p
 
-        # moderate filter (cheap)
+        # moderate cheap filter
         if dollar_vol_proxy < MIN_DOLLAR_VOL_PROXY and abs(move_pct) < MIN_MOVE_PROXY_PCT:
             continue
 
-        # rank proxy: liquidity + movement
-        score = (dollar_vol_proxy / 1_000_000.0) + (abs(move_pct) * 6.0)
-        out.append((score, t, {"last": p, "prev_close": prev_close, "day_vol": day_vol}))
+        proxy = (dollar_vol_proxy / 1_000_000.0) + (abs(move_pct) * 6.0)
+        out.append((proxy, t, {"last": p, "prev_close": prev_close, "day_vol": day_vol}))
 
     out.sort(reverse=True, key=lambda x: x[0])
     return out[:MAX_CANDIDATES_PER_TIER_SNAPSHOT]
 
-# -----------------------------
-# Deep analysis (Top 75 total)
-# -----------------------------
-def analyze_ticker_window(ticker: str, date_str: str, w_start: datetime, w_end: datetime, snap_meta: dict, log_fn=None) -> dict | None:
-    # minute bars for the day, then slice current window
+
+# ============================================================
+# Deep analysis for the chosen market window
+# ============================================================
+def compute_rel_vol(window_vol: float, avg_daily_vol: float | None, window_minutes: int) -> float | None:
+    if avg_daily_vol is None or avg_daily_vol <= 0:
+        return None
+    expected = avg_daily_vol * (window_minutes / 390.0)
+    if expected <= 0:
+        return None
+    return window_vol / expected
+
+
+def analyze_ticker_window(
+    ticker: str,
+    date_str: str,
+    w_start: datetime,
+    w_end: datetime,
+    snap_meta: dict,
+    log_fn=None
+) -> dict | None:
     bars = get_minute_aggs(ticker, date_str, log_fn=log_fn)
     if not bars:
         return None
@@ -435,15 +404,14 @@ def analyze_ticker_window(ticker: str, date_str: str, w_start: datetime, w_end: 
     if prev_close and prev_close > 0:
         move_pct = (c - prev_close) / prev_close
 
-    # 10d avg daily volume
     daily = get_daily_aggs_20d(ticker, date_str, log_fn=log_fn)
     vols = [safe_float(b.get("v")) for b in daily[-10:]] if daily else []
     vols = [x for x in vols if x is not None]
     adv10 = (sum(vols) / len(vols)) if vols else None
+
     window_minutes = max(1, int((w_end - w_start).total_seconds() // 60))
     relv = compute_rel_vol(v, adv10, window_minutes)
 
-    # reference (one call)
     ref = polygon_reference(ticker, log_fn=log_fn) or {}
     is_cs = (ref.get("type") == "CS" and ref.get("active") is True)
     if not is_cs:
@@ -456,14 +424,9 @@ def analyze_ticker_window(ticker: str, date_str: str, w_start: datetime, w_end: 
             float_shares = vv
             break
 
-    # trigger/stop simple
     trigger = h
     stop = l
-
-    # rr approximation
-    risk = max(trigger - stop, 1e-9)
-    reward = max(rng, 1e-9)
-    rr = (reward / max(risk, 1e-9))
+    rr = (rng / max(trigger - stop, 1e-9))
 
     return {
         "ticker": ticker,
@@ -479,13 +442,111 @@ def analyze_ticker_window(ticker: str, date_str: str, w_start: datetime, w_end: 
         "rr": rr,
     }
 
-# -----------------------------
-# Reporting (keeps your outputs)
-# -----------------------------
+
+# ============================================================
+# Scoring + confidence 1–10 (10 rare, polygon-only stricter)
+# ============================================================
+def compute_scores(feat: dict) -> tuple[float, float]:
+    # pressure (ORTEX helps)
+    si = feat.get("si_pct_ff") or 0.0
+    si_chg = feat.get("si_pct_chg") or 0.0
+    ctb = feat.get("ctb") or 0.0
+    avail = feat.get("avail")
+
+    avail_term = 0.0
+    if avail is not None:
+        avail_term = max(0.0, 6.0 - math.log10(max(avail, 1.0)))
+
+    pressure = (si * 2.0) + (si_chg * 8.0) + (min(ctb, 200.0) * 0.10) + (avail_term * 2.0)
+
+    # opportunity
+    rng = feat.get("range_pct") or 0.0
+    move = abs(feat.get("move_pct") or 0.0)
+    relv = feat.get("rel_vol") or 0.0
+    dv = (feat.get("dollar_vol") or 0.0) / 1_000_000.0
+    opportunity = (rng * 120.0) + (move * 35.0) + (min(relv, 6.0) * 10.0) + (min(dv, 15.0) * 4.0)
+
+    # structure
+    hold = feat.get("hold_pct") or 0.0
+    rr = feat.get("rr") or 0.0
+    structure = (hold * 60.0) + (clamp(rr / 5.0) * 30.0) + (clamp((0.12 - abs(rng - 0.06)) / 0.12) * 10.0)
+
+    base_score = 0.34 * pressure + 0.33 * opportunity + 0.33 * structure
+    prob = score_to_prob(base_score)
+    return base_score, prob
+
+
+def confidence_1_to_10(prob: float, ortex_on: bool, has_borrow: bool) -> int:
+    p = prob
+    if not ortex_on:
+        p = p * 0.86  # stricter without ORTEX
+
+    # 10 is very rare: requires ORTEX + borrow confirmation + extremely high p
+    if ortex_on and has_borrow and p >= 0.965:
+        return 10
+
+    # map into 1..9
+    c = int(round(clamp(p, 0, 0.99) * 8)) + 1
+
+    # polygon-only should rarely hit 9
+    if not ortex_on and c >= 9:
+        c = 8 if p < 0.93 else 9
+
+    return max(1, min(9, c))
+
+
+def is_true_squeeze(feat: dict, ortex_on: bool) -> bool:
+    # Only label SQUEEZE if ORTEX is ON and borrow data is present
+    if not ortex_on:
+        return False
+
+    si = feat.get("si_pct_ff")
+    if si is None or si < 8.0:
+        return False
+
+    if feat.get("ctb") is None or feat.get("avail") is None:
+        return False
+
+    if feat.get("avail") is not None and feat["avail"] > 250_000:
+        return False
+
+    if (feat.get("dollar_vol") or 0.0) < 250_000:
+        return False
+
+    if (feat.get("hold_pct") or 0.0) < 0.25:
+        return False
+
+    if (feat.get("range_pct") or 0.0) < 0.02:
+        return False
+
+    return True
+
+
+def setup_subtype(feat: dict, squeeze: bool) -> str:
+    if squeeze:
+        return "squeeze breakout" if (feat.get("hold_pct") or 0) >= 0.30 else "squeeze pullback"
+
+    if (feat.get("dollar_vol") or 0) < 300_000:
+        return "thin momentum"
+
+    if (feat.get("hold_pct") or 0) >= 0.35 and 0.02 <= (feat.get("range_pct") or 0) <= 0.12:
+        return "momentum breakout"
+
+    return "momentum pullback"
+
+
+def trade_plan(feat: dict) -> str:
+    trig = feat.get("trigger") or 0.0
+    stop = feat.get("stop") or 0.0
+    return f"Entry near trigger {trig:.4f}. Stop {stop:.4f}. Avoid chasing >2% above trigger."
+
+
+# ============================================================
+# HTML report
+# ============================================================
 def write_html_report(meta: dict, squeeze_rows: list[dict], momentum_rows: list[dict]) -> str:
     ts = now_ct().strftime("%Y-%m-%d_%H-%M-%S")
-    date_str = meta["date"]
-    base = f"scan_{date_str}_{ts}"
+    base = f"scan_{meta['date']}_{ts}"
     html_path = OUT_DIR / f"{base}.html"
 
     def fmt(x, nd=2):
@@ -504,7 +565,7 @@ def write_html_report(meta: dict, squeeze_rows: list[dict], momentum_rows: list[
         <tr>
           <td><b>{r["ticker"]}</b></td>
           <td>{r["confidence"]}</td>
-          <td>{r.get("setup_type","")}</td>
+          <td>{r.get("subtype","")}</td>
           <td>{fmt(r.get("close"),2)}</td>
           <td>{pct(r.get("move_pct"),1)}</td>
           <td>{fmt(r.get("dollar_vol"),0)}</td>
@@ -532,7 +593,7 @@ def write_html_report(meta: dict, squeeze_rows: list[dict], momentum_rows: list[
         """
 
     html = f"""<!doctype html>
-<html><head><meta charset="utf-8"><title>SqueezeBot {date_str}</title>
+<html><head><meta charset="utf-8"><title>SqueezeBot {meta['date']}</title>
 <style>
 body {{ font-family: Arial, sans-serif; background:#0b0f14; color:#e7eefc; margin:24px; }}
 .card {{ background:#111827; border:1px solid #253045; border-radius:16px; padding:16px; margin-bottom:16px; }}
@@ -564,58 +625,57 @@ th {{ text-align:left; color:#93a4bd; font-weight:700; }}
 
     return str(html_path).replace("\\", "/")
 
-# -----------------------------
-# Public entry
-# -----------------------------
+
+# ============================================================
+# Public entrypoint (called by main.py)
+# ============================================================
 def run_scan(log_fn=None, row_fn=None) -> str | None:
     dt = now_ct()
-    date_str = ct_date_str(dt)
-
     window, w_start, w_end = current_market_window(dt)
+
+    # IMPORTANT: date_str must match the window date (yesterday fallback)
+    date_str = ct_date_str(w_start)
+
     ortex_on = ortex_allowed_now(dt)
 
     if log_fn:
         log_fn(f"Date: {date_str}")
         log_fn(f"Market window: {window} ({w_start.strftime('%H:%M')}–{w_end.strftime('%H:%M')} CT)")
         log_fn(f"ORTEX mode: {'ON' if ortex_on else 'OFF'} (ON only 7:30AM–4:00PM CT)")
-        if window == "CLOSED":
-            log_fn("Market window CLOSED. Returning best-effort scan from snapshot only.")
 
     snap = get_snapshot_all_tickers(log_fn=log_fn)
     if log_fn:
         log_fn(f"Snapshot tickers received: {len(snap)}")
 
-    # Step 1: cheap “whole market” scan → ranked candidates
-    candidates_scored: list[tuple[float, str, dict]] = []
+    # Step 1: cheap whole-market scan -> ranked candidates
+    candidates: list[tuple[float, str, dict]] = []
     for pmin, pmax in PRICE_TIERS:
-        tier = pick_snapshot_candidates(snap, pmin, pmax)
-        candidates_scored.extend(tier)
+        candidates.extend(pick_snapshot_candidates(snap, pmin, pmax))
 
-    candidates_scored.sort(reverse=True, key=lambda x: x[0])
+    candidates.sort(reverse=True, key=lambda x: x[0])
 
-    # choose Top 75 total for deep analysis
-    deep_list = candidates_scored[:DEEP_ANALYZE_TOP]
+    deep_list = candidates[:DEEP_ANALYZE_TOP]
     if log_fn:
         log_fn(f"Deep-analyze list: {len(deep_list)} tickers (Top {DEEP_ANALYZE_TOP})")
 
-    # Step 2: deep analysis per ticker (stream rows)
     analyzed: list[dict] = []
-    for idx, (proxy_score, t, snap_meta) in enumerate(deep_list, start=1):
+
+    for idx, (proxy_score, ticker, snap_meta) in enumerate(deep_list, start=1):
         if log_fn and idx % 10 == 0:
             log_fn(f"Analyzing {idx}/{len(deep_list)}...")
 
         try:
-            feat = analyze_ticker_window(t, date_str, w_start, w_end, snap_meta, log_fn=log_fn)
+            feat = analyze_ticker_window(ticker, date_str, w_start, w_end, snap_meta, log_fn=log_fn)
             if not feat:
                 continue
 
-            # ORTEX enrich for top 25 only (cost control)
-            if ortex_on and idx <= 25:
-                si = ortex_short_interest_features(t, log_fn=log_fn) or {}
+            # ORTEX enrich only for top 25 (and only if allowed)
+            if ortex_on and idx <= ORTEX_FINALISTS:
+                si = ortex_short_interest_features(ticker, log_fn=log_fn) or {}
                 feat["si_pct_ff"] = si.get("si_pct_ff")
                 feat["si_pct_chg"] = si.get("si_pct_chg")
-                feat["ctb"] = ortex_ctb_latest(t, log_fn=log_fn)
-                feat["avail"] = ortex_availability_latest(t, log_fn=log_fn)
+                feat["ctb"] = ortex_ctb_latest(ticker, log_fn=log_fn)
+                feat["avail"] = ortex_availability_latest(ticker, log_fn=log_fn)
             else:
                 feat["si_pct_ff"] = None
                 feat["si_pct_chg"] = None
@@ -623,16 +683,17 @@ def run_scan(log_fn=None, row_fn=None) -> str | None:
                 feat["avail"] = None
 
             squeeze = is_true_squeeze(feat, ortex_on=ortex_on)
-            base_score, prob, pressure, opportunity = compute_scores(feat)
+
+            base_score, prob = compute_scores(feat)
             has_borrow = (feat.get("ctb") is not None and feat.get("avail") is not None)
             conf = confidence_1_to_10(prob, ortex_on=ortex_on, has_borrow=has_borrow)
 
             bucket = "SQUEEZE" if squeeze else "MOMENTUM"
-            subtype = setup_type(feat, squeeze=squeeze)
+            subtype = setup_subtype(feat, squeeze=squeeze)
             plan = trade_plan(feat)
 
             row = {
-                "ticker": t,
+                "ticker": ticker,
                 "bucket": bucket,
                 "subtype": subtype,
                 "confidence": conf,
@@ -650,31 +711,27 @@ def run_scan(log_fn=None, row_fn=None) -> str | None:
                 "avail": feat.get("avail"),
                 "trigger": feat.get("trigger"),
                 "stop": feat.get("stop"),
-                "setup_type": subtype,
                 "plan": plan,
             }
 
             analyzed.append(row)
 
-            # STREAM this row to UI
+            # Stream row to UI immediately
             if row_fn:
                 row_fn(row)
 
         except Exception:
             continue
 
-    # Always return something if possible
     if not analyzed and log_fn:
-        log_fn("No deep-analysis rows produced. (Likely throttled or closed window)")
+        log_fn("No deep-analysis rows produced. (Possible Polygon throttling or empty window data)")
 
-    # Rank inside buckets
     squeezes = [r for r in analyzed if r["bucket"] == "SQUEEZE"]
     momentum = [r for r in analyzed if r["bucket"] == "MOMENTUM"]
 
     squeezes.sort(key=lambda r: (r["confidence"], r.get("base_score", 0)), reverse=True)
     momentum.sort(key=lambda r: (r["confidence"], r.get("base_score", 0)), reverse=True)
 
-    # Report top N
     meta = {"date": date_str, "window": window, "ortex": "ON" if ortex_on else "OFF"}
     html_path = write_html_report(meta, squeezes[:TOP_N_PER_BUCKET], momentum[:TOP_N_PER_BUCKET])
 
