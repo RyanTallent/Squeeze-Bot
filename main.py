@@ -1,5 +1,4 @@
 # main.py
-import os
 import uuid
 import queue
 import threading
@@ -8,12 +7,11 @@ from pathlib import Path
 from datetime import datetime, timezone
 
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import StreamingResponse
 
 import scanner
-
 
 app = FastAPI()
 
@@ -72,54 +70,65 @@ def log_line(scan_id: str, msg: str):
 def do_scan(scan_id: str):
     try:
         log_line(scan_id, "Scanner thread started.")
-        # Run scan and stream rows/logs through callbacks
+
         html_path = scanner.run_scan(
             log_fn=lambda m: log_line(scan_id, m),
             row_fn=lambda row: publish(scan_id, "row", row),
         )
+
         with STATE_LOCK:
             if scan_id in SCANS:
                 SCANS[scan_id]["last_report"] = html_path
-        publish(scan_id, "done", {"ok": True, "report_url": f"/{html_path.lstrip('/')}" if html_path else None})
+
+        publish(
+            scan_id,
+            "done",
+            {"ok": True, "report_url": f"/{html_path.lstrip('/')}" if html_path else None},
+        )
+
         log_line(scan_id, "Scan finished.")
+
     except Exception:
         log_line(scan_id, "SCAN CRASHED — traceback below:")
         tb = traceback.format_exc()
         for ln in tb.splitlines():
             log_line(scan_id, ln)
         publish(scan_id, "done", {"ok": False, "error": "Scan crashed. Check log."})
+
     finally:
         with STATE_LOCK:
             if scan_id in SCANS:
                 SCANS[scan_id]["running"] = False
 
 
-@app.get("/", response_class=HTMLResponse)
+@app.get("/")
 def home():
-    # Serve the static UI
-    return FileResponse(STATIC_DIR / "index.html")
+    # Always serve your SPA from /static (consistent paths)
+    return RedirectResponse(url="/static/index.html")
 
 
 @app.post("/run_scan")
 def run_scan():
     """
     Starts a scan and returns scan_id.
-    UI will open EventSource(/stream/{scan_id})
+    UI opens EventSource(/stream/{scan_id})
     """
     scan_id = str(uuid.uuid4())
+    started = datetime.now(timezone.utc).isoformat()
+
     with STATE_LOCK:
         SCANS[scan_id] = {
             "running": True,
             "q": queue.Queue(),
             "last_report": None,
-            "started_utc": datetime.now(timezone.utc).isoformat(),
+            "started_utc": started,
         }
 
-    # small header event for UI
-    publish(scan_id, "meta", {"scan_id": scan_id, "started_utc": SCANS[scan_id]["started_utc"]})
+    publish(scan_id, "meta", {"scan_id": scan_id, "started_utc": started})
 
     t = threading.Thread(target=do_scan, args=(scan_id,), daemon=True)
     t.start()
+
     return JSONResponse({"ok": True, "scan_id": scan_id})
 
 
@@ -142,7 +151,6 @@ def stream(scan_id: str):
                 msg = q.get(timeout=25)
                 yield msg
             except queue.Empty:
-                # keep-alive
                 yield "event: ping\ndata: {}\n\n"
                 with STATE_LOCK:
                     alive = SCANS.get(scan_id)
@@ -151,7 +159,12 @@ def stream(scan_id: str):
                     if not alive["running"] and alive["q"].empty():
                         break
 
-    return StreamingResponse(gen(), media_type="text/event-stream")
+    headers = {
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",  # helps with proxy buffering
+    }
+
+    return StreamingResponse(gen(), media_type="text/event-stream", headers=headers)
 
 
 @app.get("/scan_log")
