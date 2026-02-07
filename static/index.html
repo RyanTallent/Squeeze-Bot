@@ -1,76 +1,422 @@
-<button id="run">Run Scan</button>
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Squeeze Bot</title>
+  <style>
+    :root{
+      --bg:#070a10;
+      --panel:#0b1220;
+      --panel2:#0f1a2f;
+      --border:#23324d;
+      --text:#e7eefc;
+      --muted:#93a4bd;
+      --green:#48d17d;
+      --red:#ff5c5c;
+      --chip:#0c172b;
+      --btn:#1ea34a;
+      --btn2:#1a2b4a;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; font-family: Arial, sans-serif;
+      background: radial-gradient(900px 420px at 50% -50px, rgba(72,209,125,.22), transparent 60%),
+                  radial-gradient(900px 500px at 50% 120%, rgba(72,209,125,.10), transparent 65%),
+                  var(--bg);
+      color:var(--text);
+    }
+    .wrap{max-width:1180px; margin:0 auto; padding:26px 18px 34px;}
+    .title{
+      text-align:center; font-size:34px; letter-spacing:.4px;
+      margin: 8px 0 16px;
+    }
+    .topbar{
+      display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap;
+      margin-bottom:14px;
+    }
+    .chip{
+      background: rgba(12,23,43,.65);
+      border:1px solid var(--border);
+      color: var(--muted);
+      padding:7px 10px; border-radius:999px; font-size:13px;
+    }
+    .chip b{color:var(--text)}
+    .btnrow{display:flex; justify-content:center; gap:10px; margin: 14px 0 18px;}
+    button{
+      border:1px solid rgba(255,255,255,.08);
+      background: linear-gradient(180deg, rgba(30,163,74,.95), rgba(22,128,58,.95));
+      color:white; font-weight:800;
+      padding:12px 18px; border-radius:12px;
+      cursor:pointer; min-width:160px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.35);
+    }
+    button.secondary{
+      background: linear-gradient(180deg, rgba(26,43,74,.95), rgba(17,28,49,.95));
+      min-width:140px;
+    }
+    .grid{
+      display:grid;
+      grid-template-columns: 1fr 1.25fr;
+      gap:14px;
+      margin-top: 8px;
+    }
+    .panel{
+      background: rgba(11,18,32,.72);
+      border:1px solid var(--border);
+      border-radius:18px;
+      overflow:hidden;
+      box-shadow: 0 18px 70px rgba(0,0,0,.35);
+      backdrop-filter: blur(10px);
+    }
+    .panelHead{
+      padding:14px 14px 10px;
+      border-bottom:1px solid rgba(35,50,77,.7);
+      display:flex; align-items:center; justify-content:space-between;
+      gap:10px;
+    }
+    .panelHead .h{
+      font-weight:900; font-size:18px;
+    }
+    .panelHead .s{
+      font-size:13px; color:var(--muted);
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+      max-width: 58%;
+      text-align:right;
+    }
+    .log{
+      height: 520px;
+      padding:12px 14px;
+      background: rgba(6,10,18,.65);
+      color:#cfe3ff;
+      overflow:auto;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 12.5px;
+      user-select:text;
+      white-space:pre-wrap;
+    }
+    .tabs{
+      display:flex; gap:8px; padding:10px 12px;
+    }
+    .tab{
+      padding:8px 10px; border-radius:999px;
+      border:1px solid var(--border);
+      background: rgba(12,23,43,.55);
+      color:var(--muted);
+      cursor:pointer; font-weight:800; font-size:13px;
+    }
+    .tab.active{
+      background: rgba(72,209,125,.14);
+      color: var(--text);
+      border-color: rgba(72,209,125,.35);
+    }
+    table{
+      width:100%;
+      border-collapse: collapse;
+    }
+    th, td{
+      padding:10px 12px;
+      border-bottom:1px solid rgba(35,50,77,.55);
+      font-size: 13px;
+      vertical-align:top;
+    }
+    th{
+      color: var(--muted);
+      font-weight:900;
+      text-align:left;
+      background: rgba(9,14,25,.35);
+      position: sticky; top: 0;
+      cursor:pointer;
+    }
+    tr:hover td{background: rgba(72,209,125,.06)}
+    .badge{
+      display:inline-block; padding:4px 9px; border-radius:999px;
+      background: rgba(12,23,43,.75);
+      border:1px solid rgba(35,50,77,.7);
+      font-weight:900;
+    }
+    .pos{color: var(--green); font-weight:900}
+    .neg{color: var(--red); font-weight:900}
+    .expand{
+      display:none;
+      padding: 10px 12px 14px;
+      color: var(--muted);
+      background: rgba(6,10,18,.35);
+      border-bottom:1px solid rgba(35,50,77,.55);
+    }
+    .rowOpen + .expand{display:table-row}
+    .rightBody{max-height: 520px; overflow:auto}
+    .footerRow{
+      display:flex; align-items:center; justify-content:space-between;
+      padding: 10px 12px;
+      color: var(--muted);
+    }
+    a {color:#7ddcff; font-weight:900; text-decoration:none}
+    @media (max-width: 980px){
+      .grid{grid-template-columns:1fr}
+      .log{height: 360px}
+      .rightBody{max-height: 360px}
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="title">Short Squeeze</div>
 
-<div style="margin-top:12px;">
-  <a id="reportLink" href="#" target="_blank" style="display:none; font-weight:700;">
-    Open latest HTML report
-  </a>
-</div>
+    <div class="topbar">
+      <div class="chip">Window: <b id="chipWindow">—</b></div>
+      <div class="chip">ORTEX: <b id="chipOrtex">—</b></div>
+      <div class="chip">Last scan: <b id="chipTime">—</b></div>
+      <div class="chip">Report: <a id="reportLink" href="#" target="_blank" style="display:none;">Open</a></div>
+    </div>
 
-<iframe
-  id="reportFrame"
-  style="display:none; width:100%; height:70vh; margin-top:12px; border:1px solid #ddd; border-radius:10px;"
-></iframe>
+    <div class="btnrow">
+      <button id="scanBtn">Scan Stocks</button>
+      <button id="clearBtn" class="secondary">Clear Log</button>
+    </div>
 
-<pre id="out" style="margin-top:12px; padding:12px; border:1px solid #ddd; border-radius:10px; height:35vh; overflow:auto;"></pre>
+    <div class="grid">
+      <div class="panel">
+        <div class="panelHead">
+          <div class="h">Live Log</div>
+          <div class="s" id="status">Click “Scan Stocks”</div>
+        </div>
+        <pre class="log" id="log"></pre>
+      </div>
+
+      <div class="panel">
+        <div class="panelHead">
+          <div class="h">Stock Scanning Results</div>
+          <div class="s" id="counts">Streaming…</div>
+        </div>
+
+        <div class="tabs">
+          <div class="tab active" data-tab="SQUEEZE">SQUEEZE</div>
+          <div class="tab" data-tab="MOMENTUM">MOMENTUM</div>
+        </div>
+
+        <div class="rightBody">
+          <table>
+            <thead>
+              <tr>
+                <th data-sort="ticker">Ticker</th>
+                <th data-sort="confidence">Conf</th>
+                <th data-sort="subtype">Subtype</th>
+                <th data-sort="close">Price</th>
+                <th data-sort="move_pct">Move</th>
+                <th data-sort="dollar_vol">$Vol</th>
+              </tr>
+            </thead>
+            <tbody id="tbody"></tbody>
+          </table>
+        </div>
+
+        <div class="footerRow">
+          <div>Click a row to expand the plan.</div>
+          <div class="muted" id="streamState">Idle</div>
+        </div>
+      </div>
+    </div>
+  </div>
 
 <script>
-  const out = document.getElementById("out");
+  const logEl = document.getElementById("log");
+  const statusEl = document.getElementById("status");
+  const scanBtn = document.getElementById("scanBtn");
+  const clearBtn = document.getElementById("clearBtn");
+  const tbody = document.getElementById("tbody");
+  const countsEl = document.getElementById("counts");
+  const streamStateEl = document.getElementById("streamState");
+
+  const chipWindow = document.getElementById("chipWindow");
+  const chipOrtex = document.getElementById("chipOrtex");
+  const chipTime = document.getElementById("chipTime");
   const reportLink = document.getElementById("reportLink");
-  const reportFrame = document.getElementById("reportFrame");
 
-  let pollInterval = null;
-  let lastReportUrl = null;
+  let pausePoll = false;
+  logEl.addEventListener("mousedown", () => { pausePoll = true; });
+  window.addEventListener("mouseup", () => { setTimeout(() => pausePoll = false, 300); });
 
-  function extractLatestHtmlPath(logText) {
-    // We expect lines like:
-    // Saved HTML: outputs/scan_YYYY-MM-DD_...html
-    const matches = logText.match(/Saved HTML:\s*(outputs\/[^\s]+\.html)/g);
-    if (!matches || matches.length === 0) return null;
+  let activeTab = "SQUEEZE";
+  let rows = [];      // all rows
+  let rowsByTicker = new Map();
+  let sortKey = "confidence";
+  let sortDir = "desc";
 
-    const last = matches[matches.length - 1];
-    const path = last.replace("Saved HTML:", "").trim();
-    return "/" + path; // served by app.mount("/outputs", ...)
+  function fmtPct(x){
+    const v = (x ?? 0) * 100;
+    const s = (Math.round(v*10)/10).toFixed(1) + "%";
+    return (v >= 0 ? `<span class="pos">+${s}</span>` : `<span class="neg">${s}</span>`);
+  }
+  function fmtNum(x){
+    if (x === null || x === undefined) return "NA";
+    const n = Number(x);
+    if (Number.isNaN(n)) return "NA";
+    if (n >= 1_000_000_000) return (n/1_000_000_000).toFixed(2)+"B";
+    if (n >= 1_000_000) return (n/1_000_000).toFixed(2)+"M";
+    if (n >= 1_000) return (n/1_000).toFixed(2)+"K";
+    return String(Math.round(n));
   }
 
-  document.getElementById("run").onclick = async () => {
-    out.textContent = "Starting scan...\n";
-    reportLink.style.display = "none";
-    reportFrame.style.display = "none";
-    lastReportUrl = null;
+  function setTab(tab){
+    activeTab = tab;
+    document.querySelectorAll(".tab").forEach(t=>{
+      t.classList.toggle("active", t.dataset.tab === tab);
+    });
+    render();
+  }
+  document.querySelectorAll(".tab").forEach(t=>{
+    t.addEventListener("click", ()=>setTab(t.dataset.tab));
+  });
 
-    const res = await fetch("/run_scan", { method: "POST" });
-    const data = await res.json();
+  function render(){
+    // filter by tab
+    let view = rows.filter(r => r.bucket === activeTab);
 
-    if (!data.log_url) {
-      out.textContent += "Failed to start scan.";
-      return;
+    // sort
+    view.sort((a,b)=>{
+      const av = a[sortKey];
+      const bv = b[sortKey];
+      if (av === undefined || av === null) return 1;
+      if (bv === undefined || bv === null) return -1;
+      if (typeof av === "string") {
+        return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+      }
+      return sortDir === "asc" ? (av - bv) : (bv - av);
+    });
+
+    tbody.innerHTML = "";
+    for (const r of view){
+      const tr = document.createElement("tr");
+      tr.className = "rowMain";
+      tr.innerHTML = `
+        <td><b>${r.ticker}</b></td>
+        <td><span class="badge">${r.confidence}</span></td>
+        <td>${r.subtype || ""}</td>
+        <td>${(r.close ?? "").toFixed ? r.close.toFixed(2) : (r.close ?? "NA")}</td>
+        <td>${fmtPct(r.move_pct)}</td>
+        <td>${fmtNum(r.dollar_vol)}</td>
+      `;
+
+      const ex = document.createElement("tr");
+      ex.className = "expand";
+      ex.innerHTML = `
+        <td colspan="6">
+          <div style="margin-bottom:6px;"><b>Plan:</b> ${r.plan || ""}</div>
+          <div><span class="badge">Trigger</span> ${(r.trigger ?? 0).toFixed(4)} &nbsp;
+               <span class="badge">Stop</span> ${(r.stop ?? 0).toFixed(4)} &nbsp;
+               <span class="badge">RelVol</span> ${(r.rel_vol ?? 0).toFixed ? (r.rel_vol ?? 0).toFixed(2) : "NA"} &nbsp;
+               <span class="badge">Range</span> ${fmtPct(r.range_pct)} &nbsp;
+               <span class="badge">Hold</span> ${(r.hold_pct ?? 0).toFixed ? (r.hold_pct ?? 0).toFixed(2) : "NA"}
+          </div>
+        </td>
+      `;
+
+      tr.addEventListener("click", ()=>{
+        tr.classList.toggle("rowOpen");
+      });
+
+      tbody.appendChild(tr);
+      tbody.appendChild(ex);
     }
 
-    out.textContent += "Scan started.\n\n";
-    const logUrl = data.log_url;
+    const sq = rows.filter(r=>r.bucket==="SQUEEZE").length;
+    const mo = rows.filter(r=>r.bucket==="MOMENTUM").length;
+    countsEl.textContent = `SQUEEZE: ${sq} • MOMENTUM: ${mo} • Showing: ${activeTab}`;
+  }
 
-    if (pollInterval) clearInterval(pollInterval);
+  // sorting headers
+  document.querySelectorAll("th[data-sort]").forEach(th=>{
+    th.addEventListener("click", ()=>{
+      const key = th.dataset.sort;
+      if (sortKey === key) sortDir = (sortDir === "asc" ? "desc" : "asc");
+      else { sortKey = key; sortDir = "desc"; }
+      render();
+    });
+  });
 
-    pollInterval = setInterval(async () => {
-      const logRes = await fetch(logUrl);
-      const logData = await logRes.json();
+  let es = null;
 
-      if (logData.log) {
-        out.textContent = logData.log;
-        out.scrollTop = out.scrollHeight;
+  async function startScan(){
+    // reset
+    rows = [];
+    rowsByTicker = new Map();
+    render();
+    reportLink.style.display = "none";
+    reportLink.href = "#";
+    chipTime.textContent = new Date().toLocaleTimeString();
+    statusEl.textContent = "Starting scan…";
+    streamStateEl.textContent = "Connecting…";
 
-        const reportUrl = extractLatestHtmlPath(logData.log);
-        if (reportUrl && reportUrl !== lastReportUrl) {
-          lastReportUrl = reportUrl;
+    const res = await fetch("/run_scan", {method:"POST"});
+    const data = await res.json();
+    const scanId = data.scan_id;
 
-          reportLink.href = reportUrl;
-          reportLink.style.display = "inline";
+    if (es) es.close();
+    es = new EventSource(`/stream/${scanId}`);
 
-          // show it inline too
-          reportFrame.src = reportUrl;
-          reportFrame.style.display = "block";
-        }
+    es.addEventListener("ping", ()=>{});
+
+    es.addEventListener("meta", (e)=>{
+      streamStateEl.textContent = "Streaming…";
+    });
+
+    es.addEventListener("log", (e)=>{
+      if (pausePoll) return;
+      const j = JSON.parse(e.data);
+      logEl.textContent += j.line + "\n";
+      logEl.scrollTop = logEl.scrollHeight;
+
+      // quick UI chips from log lines if present
+      if (j.line.includes("Market window:")) {
+        const m = j.line.split("Market window:")[1].trim();
+        chipWindow.textContent = m.split("(")[0].trim();
       }
-    }, 2000);
-  };
+      if (j.line.includes("ORTEX mode:")) {
+        chipOrtex.textContent = j.line.includes("ON") ? "ON" : "OFF";
+      }
+      statusEl.textContent = "Running…";
+    });
+
+    es.addEventListener("row", (e)=>{
+      const r = JSON.parse(e.data);
+      // upsert by ticker
+      if (rowsByTicker.has(r.ticker)){
+        const idx = rows.findIndex(x=>x.ticker===r.ticker);
+        if (idx >= 0) rows[idx] = r;
+      } else {
+        rows.push(r);
+        rowsByTicker.set(r.ticker, true);
+      }
+      render();
+    });
+
+    es.addEventListener("done", (e)=>{
+      const j = JSON.parse(e.data);
+      statusEl.textContent = j.ok ? "Done." : "Done (errors).";
+      streamStateEl.textContent = "Completed";
+
+      if (j.report_url) {
+        reportLink.href = j.report_url;
+        reportLink.style.display = "inline";
+      }
+
+      if (es) es.close();
+    });
+
+    es.onerror = ()=>{
+      streamStateEl.textContent = "Stream error (reconnect…)";
+    };
+  }
+
+  async function clearLog(){
+    await fetch("/clear_log", {method:"POST"});
+    logEl.textContent = "";
+    statusEl.textContent = "Log cleared.";
+  }
+
+  scanBtn.addEventListener("click", startScan);
+  clearBtn.addEventListener("click", clearLog);
 </script>
+</body>
+</html>
