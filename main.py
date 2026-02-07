@@ -112,19 +112,35 @@ async function runScan(){
   document.getElementById("status").innerText = "Running (check log)...";
 }
 
+<script>
+let pausePoll = false;
+const logEl = document.getElementById("log");
+
+logEl.addEventListener("mousedown", () => {
+  pausePoll = true;
+});
+logEl.addEventListener("mouseup", () => {
+  setTimeout(() => pausePoll = false, 500);
+});
+
 async function poll(){
   try{
     const r = await fetch("/scan_log");
     const txt = await r.text();
-    document.getElementById("log").textContent = txt;
 
-    // If we see "Saved HTML:" then reload iframe
-    if (txt.includes("Saved HTML:")) {
-      document.getElementById("report").src = "/report?ts=" + Date.now();
+    if (!pausePoll) {
+      logEl.textContent = txt;
+
+      if (txt.includes("Saved HTML:")) {
+        document.getElementById("report").src = "/report?ts=" + Date.now();
+      }
     }
   }catch(e){}
   setTimeout(poll, 1000);
 }
+poll();
+</script>
+
 poll();
 </script>
 </body>
