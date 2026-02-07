@@ -8,15 +8,12 @@
     :root{
       --bg:#070a10;
       --panel:#0b1220;
-      --panel2:#0f1a2f;
       --border:#23324d;
       --text:#e7eefc;
       --muted:#93a4bd;
       --green:#48d17d;
       --red:#ff5c5c;
-      --chip:#0c172b;
       --btn:#1ea34a;
-      --btn2:#1a2b4a;
     }
     *{box-sizing:border-box}
     body{
@@ -75,9 +72,7 @@
       display:flex; align-items:center; justify-content:space-between;
       gap:10px;
     }
-    .panelHead .h{
-      font-weight:900; font-size:18px;
-    }
+    .panelHead .h{font-weight:900; font-size:18px;}
     .panelHead .s{
       font-size:13px; color:var(--muted);
       white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
@@ -95,9 +90,7 @@
       user-select:text;
       white-space:pre-wrap;
     }
-    .tabs{
-      display:flex; gap:8px; padding:10px 12px;
-    }
+    .tabs{display:flex; gap:8px; padding:10px 12px;}
     .tab{
       padding:8px 10px; border-radius:999px;
       border:1px solid var(--border);
@@ -110,10 +103,7 @@
       color: var(--text);
       border-color: rgba(72,209,125,.35);
     }
-    table{
-      width:100%;
-      border-collapse: collapse;
-    }
+    table{width:100%; border-collapse: collapse;}
     th, td{
       padding:10px 12px;
       border-bottom:1px solid rgba(35,50,77,.55);
@@ -161,13 +151,17 @@
 </head>
 <body>
   <div class="wrap">
-    <div class="title">Short Squeeze</div>
+    <div class="title">Squeeze Bot</div>
 
     <div class="topbar">
       <div class="chip">Window: <b id="chipWindow">—</b></div>
       <div class="chip">ORTEX: <b id="chipOrtex">—</b></div>
       <div class="chip">Last scan: <b id="chipTime">—</b></div>
       <div class="chip">Report: <a id="reportLink" href="#" target="_blank" style="display:none;">Open</a></div>
+
+      <div class="chip">
+        Hours (CT): <b>Pre</b> 3:00–8:29 • <b>Reg</b> 8:30–3:00 • <b>AH</b> 3:00–7:00
+      </div>
     </div>
 
     <div class="btnrow">
@@ -213,7 +207,7 @@
 
         <div class="footerRow">
           <div>Click a row to expand the plan.</div>
-          <div class="muted" id="streamState">Idle</div>
+          <div id="streamState">Idle</div>
         </div>
       </div>
     </div>
@@ -238,10 +232,11 @@
   window.addEventListener("mouseup", () => { setTimeout(() => pausePoll = false, 300); });
 
   let activeTab = "SQUEEZE";
-  let rows = [];      // all rows
-  let rowsByTicker = new Map();
+  let rows = [];
+  let seen = new Set();
   let sortKey = "confidence";
   let sortDir = "desc";
+  let es = null;
 
   function fmtPct(x){
     const v = (x ?? 0) * 100;
@@ -270,15 +265,14 @@
   });
 
   function render(){
-    // filter by tab
     let view = rows.filter(r => r.bucket === activeTab);
 
-    // sort
     view.sort((a,b)=>{
       const av = a[sortKey];
       const bv = b[sortKey];
       if (av === undefined || av === null) return 1;
       if (bv === undefined || bv === null) return -1;
+
       if (typeof av === "string") {
         return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
       }
@@ -288,12 +282,11 @@
     tbody.innerHTML = "";
     for (const r of view){
       const tr = document.createElement("tr");
-      tr.className = "rowMain";
       tr.innerHTML = `
         <td><b>${r.ticker}</b></td>
         <td><span class="badge">${r.confidence}</span></td>
         <td>${r.subtype || ""}</td>
-        <td>${(r.close ?? "").toFixed ? r.close.toFixed(2) : (r.close ?? "NA")}</td>
+        <td>${(r.close ?? 0).toFixed ? (r.close ?? 0).toFixed(2) : (r.close ?? "NA")}</td>
         <td>${fmtPct(r.move_pct)}</td>
         <td>${fmtNum(r.dollar_vol)}</td>
       `;
@@ -303,17 +296,19 @@
       ex.innerHTML = `
         <td colspan="6">
           <div style="margin-bottom:6px;"><b>Plan:</b> ${r.plan || ""}</div>
-          <div><span class="badge">Trigger</span> ${(r.trigger ?? 0).toFixed(4)} &nbsp;
-               <span class="badge">Stop</span> ${(r.stop ?? 0).toFixed(4)} &nbsp;
-               <span class="badge">RelVol</span> ${(r.rel_vol ?? 0).toFixed ? (r.rel_vol ?? 0).toFixed(2) : "NA"} &nbsp;
-               <span class="badge">Range</span> ${fmtPct(r.range_pct)} &nbsp;
-               <span class="badge">Hold</span> ${(r.hold_pct ?? 0).toFixed ? (r.hold_pct ?? 0).toFixed(2) : "NA"}
+          <div>
+            <span class="badge">Trigger</span> ${(r.trigger ?? 0).toFixed(4)}&nbsp;
+            <span class="badge">Stop</span> ${(r.stop ?? 0).toFixed(4)}&nbsp;
+            <span class="badge">RelVol</span> ${((r.rel_vol ?? 0).toFixed ? (r.rel_vol ?? 0).toFixed(2) : "NA")}&nbsp;
+            <span class="badge">Range</span> ${fmtPct(r.range_pct)}&nbsp;
+            <span class="badge">Hold</span> ${((r.hold_pct ?? 0).toFixed ? (r.hold_pct ?? 0).toFixed(2) : "NA")}
           </div>
         </td>
       `;
 
       tr.addEventListener("click", ()=>{
         tr.classList.toggle("rowOpen");
+        ex.style.display = tr.classList.contains("rowOpen") ? "table-row" : "none";
       });
 
       tbody.appendChild(tr);
@@ -325,7 +320,6 @@
     countsEl.textContent = `SQUEEZE: ${sq} • MOMENTUM: ${mo} • Showing: ${activeTab}`;
   }
 
-  // sorting headers
   document.querySelectorAll("th[data-sort]").forEach(th=>{
     th.addEventListener("click", ()=>{
       const key = th.dataset.sort;
@@ -335,18 +329,18 @@
     });
   });
 
-  let es = null;
-
   async function startScan(){
-    // reset
     rows = [];
-    rowsByTicker = new Map();
+    seen = new Set();
     render();
+
     reportLink.style.display = "none";
     reportLink.href = "#";
+
     chipTime.textContent = new Date().toLocaleTimeString();
     statusEl.textContent = "Starting scan…";
     streamStateEl.textContent = "Connecting…";
+    logEl.textContent = "";
 
     const res = await fetch("/run_scan", {method:"POST"});
     const data = await res.json();
@@ -355,19 +349,12 @@
     if (es) es.close();
     es = new EventSource(`/stream/${scanId}`);
 
-    es.addEventListener("ping", ()=>{});
-
-    es.addEventListener("meta", (e)=>{
-      streamStateEl.textContent = "Streaming…";
-    });
-
     es.addEventListener("log", (e)=>{
       if (pausePoll) return;
       const j = JSON.parse(e.data);
       logEl.textContent += j.line + "\n";
       logEl.scrollTop = logEl.scrollHeight;
 
-      // quick UI chips from log lines if present
       if (j.line.includes("Market window:")) {
         const m = j.line.split("Market window:")[1].trim();
         chipWindow.textContent = m.split("(")[0].trim();
@@ -375,18 +362,19 @@
       if (j.line.includes("ORTEX mode:")) {
         chipOrtex.textContent = j.line.includes("ON") ? "ON" : "OFF";
       }
+
       statusEl.textContent = "Running…";
+      streamStateEl.textContent = "Streaming…";
     });
 
     es.addEventListener("row", (e)=>{
       const r = JSON.parse(e.data);
-      // upsert by ticker
-      if (rowsByTicker.has(r.ticker)){
+      if (!seen.has(r.ticker)){
+        rows.push(r);
+        seen.add(r.ticker);
+      } else {
         const idx = rows.findIndex(x=>x.ticker===r.ticker);
         if (idx >= 0) rows[idx] = r;
-      } else {
-        rows.push(r);
-        rowsByTicker.set(r.ticker, true);
       }
       render();
     });
@@ -400,12 +388,11 @@
         reportLink.href = j.report_url;
         reportLink.style.display = "inline";
       }
-
       if (es) es.close();
     });
 
     es.onerror = ()=>{
-      streamStateEl.textContent = "Stream error (reconnect…)";
+      streamStateEl.textContent = "Stream error (auto reconnect)…";
     };
   }
 
