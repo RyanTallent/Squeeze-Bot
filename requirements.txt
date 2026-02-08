@@ -6,3 +6,4 @@ tzdata==2025.3
 urllib3==2.6.3
 fastapi==0.115.8
 uvicorn==0.34.0
+psycopg[binary]==3.2.4
