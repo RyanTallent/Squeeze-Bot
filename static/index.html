@@ -13,6 +13,7 @@
       --muted:#93a4bd;
       --green:#48d17d;
       --red:#ff5c5c;
+      --yellow:#ffd166;
       --btn:#1ea34a;
     }
     *{box-sizing:border-box}
@@ -52,6 +53,14 @@
       background: linear-gradient(180deg, rgba(26,43,74,.95), rgba(17,28,49,.95));
       min-width:140px;
     }
+    button.mini{
+      min-width:auto; padding:7px 10px; border-radius:10px;
+      font-weight:900; font-size:12px;
+    }
+    button.danger{
+      background: linear-gradient(180deg, rgba(255,92,92,.95), rgba(180,50,50,.95));
+    }
+
     .grid{
       display:grid;
       grid-template-columns: 1fr 1.25fr;
@@ -97,12 +106,14 @@
       background: rgba(12,23,43,.55);
       color:var(--muted);
       cursor:pointer; font-weight:800; font-size:13px;
+      user-select:none;
     }
     .tab.active{
       background: rgba(72,209,125,.14);
       color: var(--text);
       border-color: rgba(72,209,125,.35);
     }
+
     table{width:100%; border-collapse: collapse;}
     th, td{
       padding:10px 12px;
@@ -142,10 +153,95 @@
       color: var(--muted);
     }
     a {color:#7ddcff; font-weight:900; text-decoration:none}
+
+    /* Notebook section */
+    .section{
+      margin-top: 14px;
+    }
+    .sectionBody{
+      max-height: 520px;
+      overflow:auto;
+    }
+
+    .pill{
+      display:inline-flex; gap:6px; align-items:center;
+      padding:4px 10px; border-radius:999px; font-weight:900; font-size:12px;
+      border:1px solid rgba(255,255,255,.10);
+      background: rgba(12,23,43,.55);
+      margin-right:6px; margin-top:6px;
+      user-select:none;
+    }
+    .pill.good{border-color: rgba(72,209,125,.35); background: rgba(72,209,125,.10)}
+    .pill.warn{border-color: rgba(255,209,102,.35); background: rgba(255,209,102,.10)}
+    .pill.bad{border-color: rgba(255,92,92,.35); background: rgba(255,92,92,.10)}
+    .pill.clickable{cursor:pointer}
+    .muted{color:var(--muted)}
+
+    /* Modal */
+    .modalBack{
+      position:fixed; inset:0;
+      background: rgba(0,0,0,.55);
+      display:none;
+      align-items:center; justify-content:center;
+      padding: 18px;
+      z-index: 9999;
+    }
+    .modal{
+      width: min(720px, 96vw);
+      background: rgba(11,18,32,.95);
+      border:1px solid var(--border);
+      border-radius:18px;
+      box-shadow: 0 22px 90px rgba(0,0,0,.60);
+      overflow:hidden;
+    }
+    .modalHead{
+      padding:14px 14px 10px;
+      border-bottom:1px solid rgba(35,50,77,.7);
+      display:flex; align-items:center; justify-content:space-between;
+      gap:10px;
+    }
+    .modalHead .h{font-weight:900; font-size:18px;}
+    .modalBody{padding:14px}
+    .row{
+      display:grid; grid-template-columns: 1fr 1fr;
+      gap:10px; margin-bottom:10px;
+    }
+    .row3{
+      display:grid; grid-template-columns: 1fr 1fr 1fr;
+      gap:10px; margin-bottom:10px;
+    }
+    label{display:block; font-size:12px; color:var(--muted); font-weight:900; margin-bottom:6px}
+    input, textarea{
+      width:100%;
+      background: rgba(6,10,18,.65);
+      border:1px solid rgba(35,50,77,.7);
+      color:var(--text);
+      border-radius:12px;
+      padding:10px 10px;
+      outline:none;
+      font-size:14px;
+    }
+    textarea{min-height: 80px; resize: vertical}
+    .modalFoot{
+      padding: 12px 14px;
+      border-top:1px solid rgba(35,50,77,.7);
+      display:flex; align-items:center; justify-content:space-between;
+      gap:10px;
+    }
+    .hint{font-size:12px; color:var(--muted)}
+    .inline{
+      display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+    }
+    .miniNote{
+      font-size:12px; color:var(--muted); margin-top:6px;
+    }
+
     @media (max-width: 980px){
       .grid{grid-template-columns:1fr}
       .log{height: 360px}
       .rightBody{max-height: 360px}
+      .sectionBody{max-height: 420px}
+      .row, .row3{grid-template-columns:1fr}
     }
   </style>
 </head>
@@ -199,6 +295,7 @@
                 <th data-sort="close">Price</th>
                 <th data-sort="move_pct">Move</th>
                 <th data-sort="dollar_vol">$Vol</th>
+                <th style="width:90px;">Add</th>
               </tr>
             </thead>
             <tbody id="tbody"></tbody>
@@ -211,9 +308,164 @@
         </div>
       </div>
     </div>
+
+    <!-- NOTEBOOK (FULL WIDTH) -->
+    <div class="section panel">
+      <div class="panelHead">
+        <div class="h">Notebook</div>
+        <div class="s" id="nbCounts">Loading…</div>
+      </div>
+
+      <div class="tabs">
+        <div class="tab active" data-nbtab="all">ALL TRADES</div>
+        <div class="tab" data-nbtab="yesterday">YESTERDAY REVIEW</div>
+      </div>
+
+      <div class="sectionBody">
+        <table>
+          <thead>
+            <tr>
+              <th>Ticker</th>
+              <th>Setup</th>
+              <th>Conf</th>
+              <th>Entry</th>
+              <th>Exit</th>
+              <th>Shares</th>
+              <th>P/L $</th>
+              <th>P/L %</th>
+              <th>Flags</th>
+              <th>Review</th>
+              <th style="width:140px;">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="nbTbody"></tbody>
+        </table>
+      </div>
+
+      <div class="footerRow">
+        <div class="muted">Click a trade row to expand “Scanner Snapshot”.</div>
+        <div class="muted">Edit uses a modal (safer).</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ADD TRADE MODAL -->
+  <div class="modalBack" id="addModalBack">
+    <div class="modal">
+      <div class="modalHead">
+        <div class="h" id="addTitle">Add Trade</div>
+        <button class="mini secondary" id="addCloseBtn">Close</button>
+      </div>
+      <div class="modalBody">
+        <div class="row3">
+          <div>
+            <label>Ticker</label>
+            <input id="addTicker" disabled />
+          </div>
+          <div>
+            <label>Entry Price (default = trigger)</label>
+            <input id="addEntry" type="number" step="0.0001" />
+            <div class="miniNote" id="addEntryHint"></div>
+          </div>
+          <div>
+            <label>Shares (required)</label>
+            <input id="addShares" type="number" step="0.01" />
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>Notes (optional)</label>
+            <textarea id="addNotes" placeholder="Why are you taking it? What’s the plan?"></textarea>
+          </div>
+          <div>
+            <label>Plan (from scanner)</label>
+            <textarea id="addPlan" disabled></textarea>
+          </div>
+        </div>
+        <div class="hint">Saved to server (Postgres). In Version 1, user_id defaults to <b>demo</b>.</div>
+      </div>
+      <div class="modalFoot">
+        <div class="hint" id="addError"></div>
+        <div class="inline">
+          <button class="secondary mini" id="addCancelBtn">Cancel</button>
+          <button class="mini" id="addSaveBtn">Save Trade</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- EDIT TRADE MODAL -->
+  <div class="modalBack" id="editModalBack">
+    <div class="modal">
+      <div class="modalHead">
+        <div class="h" id="editTitle">Edit Trade</div>
+        <button class="mini secondary" id="editCloseBtn">Close</button>
+      </div>
+      <div class="modalBody">
+        <div class="row3">
+          <div>
+            <label>Entry Price</label>
+            <input id="editEntry" type="number" step="0.0001" />
+          </div>
+          <div>
+            <label>Exit Price</label>
+            <input id="editExit" type="number" step="0.0001" />
+            <div class="miniNote">Saving an exit will auto-create flags instantly.</div>
+          </div>
+          <div>
+            <label>Shares</label>
+            <input id="editShares" type="number" step="0.01" />
+          </div>
+        </div>
+
+        <div class="row3">
+          <div>
+            <label>Review Tomorrow</label>
+            <input id="editReviewTomorrow" type="checkbox" style="width:auto; transform:scale(1.2);" />
+            <div class="miniNote">Toggle this if you want it to show up in review.</div>
+          </div>
+          <div>
+            <label>Grade (1–10)</label>
+            <input id="editGrade" type="number" min="1" max="10" step="1" />
+            <div class="miniNote">Execution grade (not “did it go up”).</div>
+          </div>
+          <div>
+            <label>P/L Preview</label>
+            <input id="editPnlPreview" disabled />
+            <div class="miniNote" id="editPnlPctPreview"></div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div>
+            <label>Notes</label>
+            <textarea id="editNotes"></textarea>
+          </div>
+          <div>
+            <label>Lesson learned (1 sentence)</label>
+            <textarea id="editLesson" placeholder="What will you do differently next time?"></textarea>
+          </div>
+        </div>
+
+        <div style="margin-top:8px;">
+          <div class="muted" style="font-weight:900; margin-bottom:6px;">Flags (click to toggle / override)</div>
+          <div id="editFlags"></div>
+          <div class="miniNote">These default to auto-flags when you close a trade, but you can override them.</div>
+        </div>
+      </div>
+
+      <div class="modalFoot">
+        <div class="hint" id="editError"></div>
+        <div class="inline">
+          <button class="secondary mini" id="editCancelBtn">Cancel</button>
+          <button class="mini" id="editSaveBtn">Save Changes</button>
+        </div>
+      </div>
+    </div>
   </div>
 
 <script>
+  // ---------- Elements ----------
   const logEl = document.getElementById("log");
   const statusEl = document.getElementById("status");
   const scanBtn = document.getElementById("scanBtn");
@@ -227,10 +479,48 @@
   const chipTime = document.getElementById("chipTime");
   const reportLink = document.getElementById("reportLink");
 
+  // Notebook
+  const nbCounts = document.getElementById("nbCounts");
+  const nbTbody = document.getElementById("nbTbody");
+  let nbTab = "all"; // all | yesterday
+  let notebookTrades = [];
+
+  // Modals
+  const addModalBack = document.getElementById("addModalBack");
+  const addCloseBtn = document.getElementById("addCloseBtn");
+  const addCancelBtn = document.getElementById("addCancelBtn");
+  const addSaveBtn = document.getElementById("addSaveBtn");
+  const addError = document.getElementById("addError");
+  const addTitle = document.getElementById("addTitle");
+  const addTicker = document.getElementById("addTicker");
+  const addEntry = document.getElementById("addEntry");
+  const addShares = document.getElementById("addShares");
+  const addNotes = document.getElementById("addNotes");
+  const addPlan = document.getElementById("addPlan");
+  const addEntryHint = document.getElementById("addEntryHint");
+
+  const editModalBack = document.getElementById("editModalBack");
+  const editCloseBtn = document.getElementById("editCloseBtn");
+  const editCancelBtn = document.getElementById("editCancelBtn");
+  const editSaveBtn = document.getElementById("editSaveBtn");
+  const editError = document.getElementById("editError");
+  const editTitle = document.getElementById("editTitle");
+  const editEntry = document.getElementById("editEntry");
+  const editExit = document.getElementById("editExit");
+  const editShares = document.getElementById("editShares");
+  const editReviewTomorrow = document.getElementById("editReviewTomorrow");
+  const editGrade = document.getElementById("editGrade");
+  const editNotes = document.getElementById("editNotes");
+  const editLesson = document.getElementById("editLesson");
+  const editFlags = document.getElementById("editFlags");
+  const editPnlPreview = document.getElementById("editPnlPreview");
+  const editPnlPctPreview = document.getElementById("editPnlPctPreview");
+
   let pausePoll = false;
   logEl.addEventListener("mousedown", () => { pausePoll = true; });
   window.addEventListener("mouseup", () => { setTimeout(() => pausePoll = false, 300); });
 
+  // ---------- Scan results state ----------
   let activeTab = "SQUEEZE";
   let rows = [];
   let seen = new Set();
@@ -238,6 +528,7 @@
   let sortDir = "desc";
   let es = null;
 
+  // ---------- Helpers ----------
   function fmtPct(x){
     const v = (x ?? 0) * 100;
     const s = (Math.round(v*10)/10).toFixed(1) + "%";
@@ -252,19 +543,50 @@
     if (n >= 1_000) return (n/1_000).toFixed(2)+"K";
     return String(Math.round(n));
   }
+  function money(x){
+    if (x === null || x === undefined) return "—";
+    const n = Number(x);
+    if (Number.isNaN(n)) return "—";
+    const sign = n >= 0 ? "+" : "-";
+    return sign + "$" + Math.abs(n).toFixed(2);
+  }
+  function pct2(x){
+    if (x === null || x === undefined) return "—";
+    const n = Number(x);
+    if (Number.isNaN(n)) return "—";
+    const v = n * 100;
+    const sign = v >= 0 ? "+" : "-";
+    return sign + Math.abs(v).toFixed(2) + "%";
+  }
+  function clsForFlag(level){
+    if (level === "good") return "good";
+    if (level === "warn") return "warn";
+    return "bad";
+  }
 
+  // ---------- Tabs (scanner) ----------
   function setTab(tab){
     activeTab = tab;
-    document.querySelectorAll(".tab").forEach(t=>{
+    document.querySelectorAll(".tab[data-tab]").forEach(t=>{
       t.classList.toggle("active", t.dataset.tab === tab);
     });
-    render();
+    renderScan();
   }
-  document.querySelectorAll(".tab").forEach(t=>{
+  document.querySelectorAll(".tab[data-tab]").forEach(t=>{
     t.addEventListener("click", ()=>setTab(t.dataset.tab));
   });
 
-  function render(){
+  // ---------- Sort (scanner table) ----------
+  document.querySelectorAll("th[data-sort]").forEach(th=>{
+    th.addEventListener("click", ()=>{
+      const key = th.dataset.sort;
+      if (sortKey === key) sortDir = (sortDir === "asc" ? "desc" : "asc");
+      else { sortKey = key; sortDir = "desc"; }
+      renderScan();
+    });
+  });
+
+  function renderScan(){
     let view = rows.filter(r => r.bucket === activeTab);
 
     view.sort((a,b)=>{
@@ -289,12 +611,13 @@
         <td>${(r.close ?? 0).toFixed ? (r.close ?? 0).toFixed(2) : (r.close ?? "NA")}</td>
         <td>${fmtPct(r.move_pct)}</td>
         <td>${fmtNum(r.dollar_vol)}</td>
+        <td><button class="mini" data-add="${r.ticker}">➕ Add</button></td>
       `;
 
       const ex = document.createElement("tr");
       ex.className = "expand";
       ex.innerHTML = `
-        <td colspan="6">
+        <td colspan="7">
           <div style="margin-bottom:6px;"><b>Plan:</b> ${r.plan || ""}</div>
           <div>
             <span class="badge">Trigger</span> ${(r.trigger ?? 0).toFixed(4)}&nbsp;
@@ -306,9 +629,16 @@
         </td>
       `;
 
-      tr.addEventListener("click", ()=>{
+      tr.addEventListener("click", (ev)=>{
+        // don’t expand if user clicked the Add button
+        if (ev.target && ev.target.dataset && ev.target.dataset.add) return;
         tr.classList.toggle("rowOpen");
         ex.style.display = tr.classList.contains("rowOpen") ? "table-row" : "none";
+      });
+
+      tr.querySelector('button[data-add]')?.addEventListener("click", (ev)=>{
+        ev.stopPropagation();
+        openAddModal(r);
       });
 
       tbody.appendChild(tr);
@@ -320,19 +650,11 @@
     countsEl.textContent = `SQUEEZE: ${sq} • MOMENTUM: ${mo} • Showing: ${activeTab}`;
   }
 
-  document.querySelectorAll("th[data-sort]").forEach(th=>{
-    th.addEventListener("click", ()=>{
-      const key = th.dataset.sort;
-      if (sortKey === key) sortDir = (sortDir === "asc" ? "desc" : "asc");
-      else { sortKey = key; sortDir = "desc"; }
-      render();
-    });
-  });
-
+  // ---------- Scan ----------
   async function startScan(){
     rows = [];
     seen = new Set();
-    render();
+    renderScan();
 
     reportLink.style.display = "none";
     reportLink.href = "#";
@@ -345,6 +667,9 @@
     const res = await fetch("/run_scan", {method:"POST"});
     const data = await res.json();
     const scanId = data.scan_id;
+
+    window._lastScanId = scanId; // used to link notebook trades
+    window._lastScanDate = new Date().toISOString();
 
     if (es) es.close();
     es = new EventSource(`/stream/${scanId}`);
@@ -376,7 +701,7 @@
         const idx = rows.findIndex(x=>x.ticker===r.ticker);
         if (idx >= 0) rows[idx] = r;
       }
-      render();
+      renderScan();
     });
 
     es.addEventListener("done", (e)=>{
@@ -404,6 +729,364 @@
 
   scanBtn.addEventListener("click", startScan);
   clearBtn.addEventListener("click", clearLog);
+
+  // ---------- Notebook tabs ----------
+  function setNbTab(tab){
+    nbTab = tab;
+    document.querySelectorAll(".tab[data-nbtab]").forEach(t=>{
+      t.classList.toggle("active", t.dataset.nbtab === tab);
+    });
+    loadNotebook();
+  }
+  document.querySelectorAll(".tab[data-nbtab]").forEach(t=>{
+    t.addEventListener("click", ()=>setNbTab(t.dataset.nbtab));
+  });
+
+  // ---------- Notebook load + render ----------
+  async function loadNotebook(){
+    nbCounts.textContent = "Loading…";
+    const res = await fetch(`/api/trades?view=${encodeURIComponent(nbTab)}&user_id=demo`);
+    const data = await res.json();
+    notebookTrades = data.trades || [];
+    renderNotebook();
+  }
+
+  function renderNotebook(){
+    nbTbody.innerHTML = "";
+    const openCount = notebookTrades.filter(t => t.exit_price === null || t.exit_price === undefined).length;
+    const closedCount = notebookTrades.length - openCount;
+    nbCounts.textContent = `Total: ${notebookTrades.length} • Open: ${openCount} • Closed: ${closedCount} • View: ${nbTab}`;
+
+    for (const t of notebookTrades){
+      const tr = document.createElement("tr");
+      const setup = `${t.bucket || ""} • ${t.subtype || ""}`.trim();
+
+      const flags = safeJson(t.review_flags) || safeJson(t.auto_flags) || [];
+      const flagsHtml = flags.slice(0, 3).map(f=>{
+        const cls = clsForFlag(f.level);
+        return `<span class="pill ${cls}">${f.icon} ${f.label}</span>`;
+      }).join("");
+      const more = flags.length > 3 ? `<span class="pill warn">+${flags.length-3} more</span>` : "";
+
+      tr.innerHTML = `
+        <td><b>${t.ticker}</b></td>
+        <td>${setup}</td>
+        <td><span class="badge">${t.confidence ?? "—"}</span></td>
+        <td>${t.entry_price?.toFixed ? t.entry_price.toFixed(4) : (t.entry_price ?? "—")}</td>
+        <td>${t.exit_price?.toFixed ? t.exit_price.toFixed(4) : "—"}</td>
+        <td>${t.shares ?? "—"}</td>
+        <td>${t.pnl_dollars === null || t.pnl_dollars === undefined ? "—" : money(t.pnl_dollars)}</td>
+        <td>${t.pnl_pct === null || t.pnl_pct === undefined ? "—" : pct2(t.pnl_pct)}</td>
+        <td>${flagsHtml}${more}</td>
+        <td>${t.review_tomorrow ? `<span class="pill warn">⚠️ Review</span>` : `<span class="pill good">✅ Good</span>`}</td>
+        <td>
+          <button class="mini secondary" data-edit="${t.id}">Edit</button>
+          <button class="mini danger" data-del="${t.id}">Delete</button>
+        </td>
+      `;
+
+      // Expand row for scanner snapshot
+      const ex = document.createElement("tr");
+      ex.className = "expand";
+      ex.innerHTML = `
+        <td colspan="11">
+          <div style="margin-bottom:6px;"><b>Plan:</b> ${t.plan || ""}</div>
+          <div class="muted" style="font-weight:900; margin: 6px 0;">Scanner Snapshot</div>
+          <div>
+            <span class="badge">Trigger</span> ${(t.trigger ?? 0).toFixed ? (t.trigger ?? 0).toFixed(4) : (t.trigger ?? "NA")}&nbsp;
+            <span class="badge">Stop</span> ${(t.stop ?? 0).toFixed ? (t.stop ?? 0).toFixed(4) : (t.stop ?? "NA")}&nbsp;
+            <span class="badge">Scan Price</span> ${(t.scan_close ?? 0).toFixed ? (t.scan_close ?? 0).toFixed(4) : (t.scan_close ?? "NA")}&nbsp;
+            <span class="badge">Move</span> ${fmtPct(t.move_pct)}&nbsp;
+            <span class="badge">$Vol</span> ${fmtNum(t.dollar_vol)}&nbsp;
+            <span class="badge">Range</span> ${fmtPct(t.range_pct)}&nbsp;
+            <span class="badge">Hold</span> ${(t.hold_pct ?? 0).toFixed ? (t.hold_pct ?? 0).toFixed(2) : (t.hold_pct ?? "NA")}&nbsp;
+            <span class="badge">RelVol</span> ${(t.rel_vol ?? 0).toFixed ? (t.rel_vol ?? 0).toFixed(2) : (t.rel_vol ?? "NA")}
+          </div>
+        </td>
+      `;
+
+      tr.addEventListener("click", (ev)=>{
+        if (ev.target && ev.target.dataset && (ev.target.dataset.edit || ev.target.dataset.del)) return;
+        tr.classList.toggle("rowOpen");
+        ex.style.display = tr.classList.contains("rowOpen") ? "table-row" : "none";
+      });
+
+      tr.querySelector('button[data-edit]')?.addEventListener("click", (ev)=>{
+        ev.stopPropagation();
+        const id = ev.target.dataset.edit;
+        const trade = notebookTrades.find(x=>x.id===id);
+        if (trade) openEditModal(trade);
+      });
+
+      tr.querySelector('button[data-del]')?.addEventListener("click", async (ev)=>{
+        ev.stopPropagation();
+        const id = ev.target.dataset.del;
+        if (!confirm("Delete this trade? This cannot be undone.")) return;
+        await fetch(`/api/trades/${id}?user_id=demo`, { method: "DELETE" });
+        await loadNotebook();
+      });
+
+      nbTbody.appendChild(tr);
+      nbTbody.appendChild(ex);
+    }
+  }
+
+  function safeJson(x){
+    if (!x) return null;
+    if (Array.isArray(x)) return x;
+    try { return JSON.parse(x); } catch(e){ return null; }
+  }
+
+  // ---------- Add Modal ----------
+  let pendingScanRow = null;
+
+  function openAddModal(scanRow){
+    pendingScanRow = scanRow;
+    addError.textContent = "";
+    addTitle.textContent = `Add Trade • ${scanRow.ticker}`;
+    addTicker.value = scanRow.ticker;
+
+    // default entry = trigger (your choice)
+    const trig = scanRow.trigger ?? scanRow.close ?? 0;
+    addEntry.value = trig ? Number(trig).toFixed(4) : "";
+    addEntryHint.textContent = `Trigger: ${(scanRow.trigger ?? 0).toFixed(4)} • Stop: ${(scanRow.stop ?? 0).toFixed(4)}`;
+
+    addShares.value = "";
+    addNotes.value = "";
+    addPlan.value = scanRow.plan || "";
+
+    addModalBack.style.display = "flex";
+  }
+  function closeAddModal(){
+    addModalBack.style.display = "none";
+    pendingScanRow = null;
+  }
+  addCloseBtn.addEventListener("click", closeAddModal);
+  addCancelBtn.addEventListener("click", closeAddModal);
+  addModalBack.addEventListener("click", (e)=>{ if (e.target === addModalBack) closeAddModal(); });
+
+  addSaveBtn.addEventListener("click", async ()=>{
+    addError.textContent = "";
+    if (!pendingScanRow) return;
+
+    const entry = Number(addEntry.value);
+    const shares = Number(addShares.value);
+    if (!entry || entry <= 0){
+      addError.textContent = "Entry price must be > 0.";
+      return;
+    }
+    if (!shares || shares <= 0){
+      addError.textContent = "Shares must be > 0.";
+      return;
+    }
+
+    const payload = {
+      user_id: "demo",
+
+      // link to scan
+      scan_id: window._lastScanId || null,
+      scan_date_ct: window._lastScanDate || null,
+
+      // snapshot from scan row
+      ticker: pendingScanRow.ticker,
+      bucket: pendingScanRow.bucket,
+      subtype: pendingScanRow.subtype,
+      confidence: pendingScanRow.confidence,
+      plan: pendingScanRow.plan,
+
+      trigger: pendingScanRow.trigger,
+      stop: pendingScanRow.stop,
+      scan_close: pendingScanRow.close,
+      move_pct: pendingScanRow.move_pct,
+      dollar_vol: pendingScanRow.dollar_vol,
+      range_pct: pendingScanRow.range_pct,
+      hold_pct: pendingScanRow.hold_pct,
+      rel_vol: pendingScanRow.rel_vol,
+
+      // execution
+      entry_price: entry,
+      shares: shares,
+      notes: addNotes.value || "",
+      review_tomorrow: false
+    };
+
+    const res = await fetch("/api/trades", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!data.ok){
+      addError.textContent = data.detail || "Could not save trade.";
+      return;
+    }
+
+    closeAddModal();
+    await loadNotebook();
+  });
+
+  // ---------- Edit Modal ----------
+  let editingTrade = null;
+  let selectedFlags = []; // review_flags override
+
+  function openEditModal(trade){
+    editingTrade = trade;
+    editError.textContent = "";
+    editTitle.textContent = `Edit Trade • ${trade.ticker}`;
+
+    editEntry.value = trade.entry_price ?? "";
+    editExit.value = trade.exit_price ?? "";
+    editShares.value = trade.shares ?? "";
+    editReviewTomorrow.checked = !!trade.review_tomorrow;
+    editGrade.value = trade.grade_1_10 ?? "";
+    editNotes.value = trade.notes ?? "";
+    editLesson.value = trade.lesson ?? "";
+
+    // flags (default to review_flags if set else auto_flags)
+    const rf = safeJson(trade.review_flags);
+    const af = safeJson(trade.auto_flags);
+    selectedFlags = (rf && rf.length ? rf : (af || []));
+
+    renderEditFlags();
+    updatePnlPreview();
+
+    editModalBack.style.display = "flex";
+  }
+
+  function closeEditModal(){
+    editModalBack.style.display = "none";
+    editingTrade = null;
+    selectedFlags = [];
+  }
+
+  editCloseBtn.addEventListener("click", closeEditModal);
+  editCancelBtn.addEventListener("click", closeEditModal);
+  editModalBack.addEventListener("click", (e)=>{ if (e.target === editModalBack) closeEditModal(); });
+
+  function updatePnlPreview(){
+    const entry = Number(editEntry.value);
+    const exitp = Number(editExit.value);
+    const shares = Number(editShares.value);
+
+    if (!entry || entry <= 0 || !shares || shares <= 0 || !exitp){
+      editPnlPreview.value = "—";
+      editPnlPctPreview.textContent = "";
+      return;
+    }
+    const pnlD = (exitp - entry) * shares;
+    const pnlP = (exitp - entry) / entry;
+
+    editPnlPreview.value = money(pnlD);
+    editPnlPctPreview.textContent = pct2(pnlP);
+  }
+
+  editEntry.addEventListener("input", updatePnlPreview);
+  editExit.addEventListener("input", updatePnlPreview);
+  editShares.addEventListener("input", updatePnlPreview);
+
+  function flagKeySet(list){
+    return new Set(list.map(x=>x.key));
+  }
+
+  function renderEditFlags(){
+    editFlags.innerHTML = "";
+    // Source list: we want to show auto_flags from the trade too, as suggestions
+    const auto = safeJson(editingTrade.auto_flags) || [];
+    const merged = new Map();
+    for (const f of auto) merged.set(f.key, f);
+    for (const f of selectedFlags) merged.set(f.key, f);
+
+    const selectedKeys = flagKeySet(selectedFlags);
+
+    for (const f of merged.values()){
+      const pill = document.createElement("span");
+      pill.className = `pill clickable ${clsForFlag(f.level)}${selectedKeys.has(f.key) ? "" : ""}`;
+      pill.textContent = `${f.icon} ${f.label}`;
+      pill.style.opacity = selectedKeys.has(f.key) ? "1.0" : "0.45";
+      pill.title = selectedKeys.has(f.key) ? "Included in Review Flags (click to remove)" : "Not included (click to include)";
+      pill.addEventListener("click", ()=>{
+        if (selectedKeys.has(f.key)){
+          selectedFlags = selectedFlags.filter(x=>x.key !== f.key);
+        } else {
+          selectedFlags = [...selectedFlags, f];
+        }
+        renderEditFlags();
+      });
+      editFlags.appendChild(pill);
+    }
+
+    if (!merged.size){
+      const s = document.createElement("div");
+      s.className = "muted";
+      s.textContent = "No flags yet. Add an exit price and save to generate auto-flags.";
+      editFlags.appendChild(s);
+    }
+  }
+
+  editSaveBtn.addEventListener("click", async ()=>{
+    editError.textContent = "";
+    if (!editingTrade) return;
+
+    const entry = Number(editEntry.value);
+    const shares = Number(editShares.value);
+    const exitpRaw = editExit.value.trim();
+    const exitp = exitpRaw === "" ? null : Number(exitpRaw);
+
+    if (!entry || entry <= 0){
+      editError.textContent = "Entry price must be > 0.";
+      return;
+    }
+    if (!shares || shares <= 0){
+      editError.textContent = "Shares must be > 0.";
+      return;
+    }
+    if (exitpRaw !== "" && (!exitp || exitp <= 0)){
+      editError.textContent = "Exit price must be > 0 (or blank if still open).";
+      return;
+    }
+
+    const gradeRaw = editGrade.value.trim();
+    let grade = null;
+    if (gradeRaw !== ""){
+      grade = Number(gradeRaw);
+      if (!Number.isInteger(grade) || grade < 1 || grade > 10){
+        editError.textContent = "Grade must be an integer 1–10.";
+        return;
+      }
+    }
+
+    const payload = {
+      entry_price: entry,
+      shares: shares,
+      exit_price: exitp,
+      review_tomorrow: editReviewTomorrow.checked,
+      grade_1_10: grade,
+      notes: editNotes.value || "",
+      lesson: editLesson.value || "",
+      review_flags: selectedFlags
+    };
+
+    const res = await fetch(`/api/trades/${editingTrade.id}?user_id=demo`, {
+      method: "PATCH",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify(payload)
+    });
+
+    const data = await res.json();
+    if (!data.ok){
+      editError.textContent = data.detail || "Could not save changes.";
+      return;
+    }
+
+    closeEditModal();
+    await loadNotebook();
+  });
+
+  // ---------- Page init ----------
+  window.addEventListener("load", ()=>{
+    renderScan();
+    loadNotebook(); // auto-load (your choice)
+  });
 </script>
 </body>
 </html>
