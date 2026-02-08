@@ -723,7 +723,7 @@ def run_scan(log_fn=None, row_fn=None) -> str | None:
         except Exception:
             continue
 
-   if not analyzed and log_fn:
+if not analyzed and log_fn:
         log_fn("No deep-analysis rows produced. (Possible Polygon throttling or empty window data)")
 
     # Buckets
