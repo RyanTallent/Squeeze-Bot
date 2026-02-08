@@ -723,9 +723,8 @@ def run_scan(log_fn=None, row_fn=None) -> str | None:
         except Exception:
             continue
 
-   if not analyzed and log_fn:
-        log_fn("No deep-analysis rows produced...")
-
+    if not analyzed and log_fn:
+        log_fn("No deep-analysis rows produced. (Possible Polygon throttling or empty window data)")
 
     # Buckets
     squeezes = [r for r in analyzed if r["bucket"] == "SQUEEZE"]
@@ -765,3 +764,4 @@ def run_scan(log_fn=None, row_fn=None) -> str | None:
         log_fn(f"Saved HTML: {html_path}")
 
     return html_path
+
