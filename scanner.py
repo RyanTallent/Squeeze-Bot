@@ -53,7 +53,7 @@ OUT_DIR.mkdir(exist_ok=True)
 try:
     from zoneinfo import ZoneInfo
     CT_TZ = ZoneInfo("America/Chicago")
-except Exception:
+    except Exception:
     CT_TZ = timezone(timedelta(hours=-6))
 
 
@@ -723,8 +723,9 @@ def run_scan(log_fn=None, row_fn=None) -> str | None:
         except Exception:
             continue
 
-if not analyzed and log_fn:
-        log_fn("No deep-analysis rows produced. (Possible Polygon throttling or empty window data)")
+   if not analyzed and log_fn:
+        log_fn("No deep-analysis rows produced...")
+
 
     # Buckets
     squeezes = [r for r in analyzed if r["bucket"] == "SQUEEZE"]
