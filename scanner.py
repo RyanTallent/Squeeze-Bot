@@ -726,14 +726,23 @@ def run_scan(log_fn=None, row_fn=None) -> str | None:
     if not analyzed and log_fn:
         log_fn("No deep-analysis rows produced. (Possible Polygon throttling or empty window data)")
 
-    squeezes = [r for r in analyzed if r["bucket"] == "SQUEEZE"]
-    momentum = [r for r in analyzed if r["bucket"] == "MOMENTUM"]
+  # Buckets
+squeezes = [r for r in analyzed if r["bucket"] == "SQUEEZE"]
 
-    squeezes.sort(key=lambda r: (r["confidence"], r.get("base_score", 0)), reverse=True)
-    momentum.sort(key=lambda r: (r["confidence"], r.get("base_score", 0)), reverse=True)
+# ✅ Momentum: only show gainers (move_pct > 0)
+momentum = [
+    r for r in analyzed
+    if r["bucket"] == "MOMENTUM" and (r.get("move_pct") is not None) and (r["move_pct"] > 0)
+]
 
-    meta = {"date": date_str, "window": window, "ortex": "ON" if ortex_on else "OFF"}
-    html_path = write_html_report(meta, squeezes[:TOP_N_PER_BUCKET], momentum[:TOP_N_PER_BUCKET])
+# Sort best to worst
+squeezes.sort(key=lambda r: (r["confidence"], r.get("base_score", 0)), reverse=True)
+momentum.sort(key=lambda r: (r["confidence"], r.get("base_score", 0)), reverse=True)
+
+# Limit output
+meta = {"date": date_str, "window": window, "ortex": "ON" if ortex_on else "OFF"}
+html_path = write_html_report(meta, squeezes[:TOP_N_PER_BUCKET], momentum[:TOP_N_PER_BUCKET])
+
 
     if log_fn:
         log_fn(f"Saved HTML: {html_path}")
