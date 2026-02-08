@@ -53,8 +53,9 @@ OUT_DIR.mkdir(exist_ok=True)
 try:
     from zoneinfo import ZoneInfo
     CT_TZ = ZoneInfo("America/Chicago")
-    except Exception:
+except Exception:
     CT_TZ = timezone(timedelta(hours=-6))
+
 
 
 # ============================================================
