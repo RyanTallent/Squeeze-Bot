@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 # ============================================================
 
 # Output sizing
-TOP_N_PER_BUCKET = 25         # saved HTML report shows top N per bucket
+TOP_N_PER_BUCKET = 5         # saved HTML report shows top N per bucket
 DEEP_ANALYZE_TOP = 75         # you wanted top 75 so we don't miss stuff
 ORTEX_FINALISTS = 25          # ORTEX only for the first 25 to save credits
 
