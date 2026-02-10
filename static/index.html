@@ -707,12 +707,11 @@
 
     const mode = (modeSelect?.value || "day");
     chipMode.textContent = mode.toUpperCase();
+    chipOrtex.textContent = (mode === "day") ? "ON (expected)" : "OFF";
+const res = await fetch(`/run_scan?mode=${encodeURIComponent(mode)}`, {
+  method: "POST"
+});
 
-    const res = await fetch("/run_scan", {
-      method:"POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ mode })
-    });
     const data = await res.json();
     const scanId = data.scan_id;
 
