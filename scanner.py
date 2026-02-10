@@ -1,6 +1,5 @@
 # scanner.py
 import os
-import csv
 import json
 import math
 import time
@@ -9,13 +8,13 @@ from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
 # ============================================================
-# ENGINE V2 — SIMPLE, RELIABLE, STREAMING-FRIENDLY
+# ENGINE V2 — SIMPLE, RELIABLE, STREAMING-FRIENDLY (CLEAN BUILD)
 # ============================================================
 
 # Output sizing
-TOP_N_PER_BUCKET = 5         # saved HTML report shows top N per bucket
-DEEP_ANALYZE_TOP = 75         # you wanted top 75 so we don't miss stuff
-ORTEX_FINALISTS = 25          # ORTEX only for the first 25 to save credits
+TOP_N_PER_BUCKET = 5          # HTML report shows top N per bucket
+DEEP_ANALYZE_TOP = 75         # deep-analyze top N candidates
+ORTEX_FINALISTS = 25          # ORTEX only for first N (saves credits)
 
 # Moderate snapshot filter (cheap “whole market” pass)
 MIN_DOLLAR_VOL_PROXY = 250_000
@@ -57,7 +56,6 @@ except Exception:
     CT_TZ = timezone(timedelta(hours=-6))
 
 
-
 # ============================================================
 # Small utils
 # ============================================================
@@ -93,6 +91,7 @@ def ms_to_utc(ms: int) -> datetime:
     return datetime.fromtimestamp(ms / 1000, tz=timezone.utc)
 
 def sigmoid(x: float) -> float:
+    # numerically safe sigmoid
     if x >= 0:
         z = math.exp(-x)
         return 1.0 / (1.0 + z)
@@ -113,8 +112,7 @@ def current_market_window(dt: datetime) -> tuple[str, datetime, datetime]:
     """
     # weekends: treat as CLOSED and fallback to last weekday AH
     if dt.weekday() >= 5:
-        # go back to Friday
-        back = 1 if dt.weekday() == 5 else 2
+        back = 1 if dt.weekday() == 5 else 2  # Sat->Fri, Sun->Fri
         y = dt - timedelta(days=back)
         y_str = ct_date_str(y)
         y_ah_start = ct_dt(y_str, AH_START_CT)
@@ -142,12 +140,10 @@ def current_market_window(dt: datetime) -> tuple[str, datetime, datetime]:
 
     # CLOSED fallback to most recent after-hours session
     if dt > ah_end:
-        # after 7pm → use today's AH full session
         return ("AFTERHOURS (LAST)", ah_start, ah_end)
 
-    # before 3am (but weekday) → use yesterday's AH
+    # before 3am weekday -> use yesterday's AH (skip weekends)
     y = dt - timedelta(days=1)
-    # if yesterday is weekend, fallback to Friday
     while y.weekday() >= 5:
         y -= timedelta(days=1)
     y_str = ct_date_str(y)
@@ -157,6 +153,7 @@ def current_market_window(dt: datetime) -> tuple[str, datetime, datetime]:
 
 
 def ortex_allowed_now(dt: datetime) -> bool:
+    # You already wanted ORTEX only during certain hours — this enforces it.
     if dt.weekday() >= 5:
         return False
     d = ct_date_str(dt)
@@ -323,8 +320,13 @@ def ortex_availability_latest(ticker: str, log_fn=None) -> float | None:
 # ============================================================
 # Candidate selection (cheap whole-market pass)
 # ============================================================
-def pick_snapshot_candidates(snap: list[dict], price_min: float, price_max: float) -> list[tuple[float, str, dict]]:
-    out = []
+def pick_snapshot_candidates(
+    snap: list[dict],
+    price_min: float,
+    price_max: float
+) -> list[tuple[float, str, dict]]:
+    out: list[tuple[float, str, dict]] = []
+
     for item in snap:
         t = item.get("ticker")
         if not t:
@@ -427,7 +429,6 @@ def analyze_ticker_window(
 
     trigger = h
     stop = l
-    rr = (rng / max(trigger - stop, 1e-9))
 
     return {
         "ticker": ticker,
@@ -440,7 +441,6 @@ def analyze_ticker_window(
         "float_shares": float_shares,
         "trigger": trigger,
         "stop": stop,
-        "rr": rr,
     }
 
 
@@ -467,10 +467,9 @@ def compute_scores(feat: dict) -> tuple[float, float]:
     dv = (feat.get("dollar_vol") or 0.0) / 1_000_000.0
     opportunity = (rng * 120.0) + (move * 35.0) + (min(relv, 6.0) * 10.0) + (min(dv, 15.0) * 4.0)
 
-    # structure
+    # structure (keep it simple + stable)
     hold = feat.get("hold_pct") or 0.0
-    rr = feat.get("rr") or 0.0
-    structure = (hold * 60.0) + (clamp(rr / 5.0) * 30.0) + (clamp((0.12 - abs(rng - 0.06)) / 0.12) * 10.0)
+    structure = (hold * 70.0) + (clamp((0.12 - abs(rng - 0.06)) / 0.12) * 30.0)
 
     base_score = 0.34 * pressure + 0.33 * opportunity + 0.33 * structure
     prob = score_to_prob(base_score)
@@ -616,7 +615,7 @@ th {{ text-align:left; color:#93a4bd; font-weight:700; }}
 </div>
 <div class="card">
   <h2>MOMENTUM</h2>
-  <div class="muted">Ranked by Confidence 1–10</div>
+  <div class="muted">Ranked by Confidence 1–10 (gainers only)</div>
   {table(momentum_rows)}
 </div>
 </body></html>
@@ -643,9 +642,6 @@ def run_scan(log_fn=None, row_fn=None) -> str | None:
         log_fn(f"Date: {date_str}")
         log_fn(f"Market window: {window} ({w_start.strftime('%H:%M')}–{w_end.strftime('%H:%M')} CT)")
         log_fn(f"ORTEX mode: {'ON' if ortex_on else 'OFF'} (ON only 7:30AM–4:00PM CT)")
-if log_fn:
-    log_fn(f"POLYGON key present: {bool(POLYGON_KEY)}")
-    log_fn("Fetching Polygon snapshot...")
 
     snap = get_snapshot_all_tickers(log_fn=log_fn)
     if log_fn:
@@ -664,7 +660,7 @@ if log_fn:
 
     analyzed: list[dict] = []
 
-    for idx, (proxy_score, ticker, snap_meta) in enumerate(deep_list, start=1):
+    for idx, (_proxy_score, ticker, snap_meta) in enumerate(deep_list, start=1):
         if log_fn and idx % 10 == 0:
             log_fn(f"Analyzing {idx}/{len(deep_list)}...")
 
@@ -725,6 +721,7 @@ if log_fn:
                 row_fn(row)
 
         except Exception:
+            # keep scan alive even if a ticker fails
             continue
 
     if not analyzed and log_fn:
@@ -742,31 +739,23 @@ if log_fn:
     ]
 
     # Sort best to worst
-    squeezes.sort(
-        key=lambda r: (r["confidence"], r.get("base_score", 0)),
-        reverse=True
-    )
-    momentum.sort(
-        key=lambda r: (r["confidence"], r.get("base_score", 0)),
-        reverse=True
-    )
+    squeezes.sort(key=lambda r: (r["confidence"], r.get("base_score", 0)), reverse=True)
+    momentum.sort(key=lambda r: (r["confidence"], r.get("base_score", 0)), reverse=True)
 
-    # Limit output
+    # Report meta
     meta = {
         "date": date_str,
         "window": window,
-        "ortex": "ON" if ortex_on else "OFF"
+        "ortex": "ON" if ortex_on else "OFF",
     }
 
     html_path = write_html_report(
         meta,
         squeezes[:TOP_N_PER_BUCKET],
-        momentum[:TOP_N_PER_BUCKET]
+        momentum[:TOP_N_PER_BUCKET],
     )
 
     if log_fn:
         log_fn(f"Saved HTML: {html_path}")
 
     return html_path
-
-
