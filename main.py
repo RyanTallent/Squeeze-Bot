@@ -293,8 +293,24 @@ def run_scan(mode: str = Query("auto", pattern="^(auto|day|night)$")):
             "q": queue.Queue(),
             "last_report": None,
             "started_utc": started,
-            "mode": mode,  # save it
+            "mode": mode,
         }
+
+    publish(scan_id, "meta", {
+        "scan_id": scan_id,
+        "started_utc": started,
+        "mode": mode
+    })
+
+    t = threading.Thread(
+        target=do_scan,
+        args=(scan_id, mode),
+        daemon=True
+    )
+    t.start()
+
+    return {"ok": True, "scan_id": scan_id}
+
 
     publish(scan_id, "meta", {"scan_id": scan_id, "started_utc": started, "mode": mode})
 
