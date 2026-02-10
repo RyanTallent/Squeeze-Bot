@@ -5,7 +5,7 @@ import queue
 import threading
 import traceback
 from pathlib import Path
-from datetime import datetime, timezone, timedelta, date
+from datetime import datetime, timezone, timedelta
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import (
@@ -32,15 +32,9 @@ except Exception:
 
 app = FastAPI()
 
-@app.get("/", include_in_schema=False)
-async def root():
-    return RedirectResponse(url="/static/index.html")
-
-@app.head("/", include_in_schema=False)
-async def root_head(request: Request):
-    return PlainTextResponse("OK")
-
-
+# ---------------------------
+# Paths + static
+# ---------------------------
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 OUT_DIR = BASE_DIR / "outputs"
@@ -50,7 +44,6 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 app.mount("/outputs", StaticFiles(directory=str(OUT_DIR)), name="outputs")
 
 LOG_PATH = OUT_DIR / "live_log.txt"
-
 DATABASE_URL = os.getenv("DATABASE_URL")  # Render Postgres injects this
 
 # ---------------------------
@@ -63,29 +56,24 @@ SCANS: dict[str, dict] = {}
 #   "q": queue.Queue[str],
 #   "last_report": str|None,
 #   "started_utc": str,
+#   "mode": str,
 # }
 
 def _append_log_line(line: str):
     with open(LOG_PATH, "a", encoding="utf-8") as f:
         f.write(line + "\n")
 
-
 def clear_log_file():
     with open(LOG_PATH, "w", encoding="utf-8") as f:
         f.write("")
 
-
 def publish(scan_id: str, event: str, data: dict):
-    """
-    Put SSE event into this scan's queue.
-    """
     payload = f"event: {event}\ndata: {scanner.json_dumps(data)}\n\n"
     with STATE_LOCK:
         s = SCANS.get(scan_id)
         if not s:
             return
         s["q"].put(payload)
-
 
 def log_line(scan_id: str, msg: str):
     ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
@@ -94,6 +82,23 @@ def log_line(scan_id: str, msg: str):
     _append_log_line(line)
     publish(scan_id, "log", {"line": line})
 
+# ---------------------------
+# Mode selection
+# ---------------------------
+def resolve_mode(mode: str) -> str:
+    """
+    mode can be: auto|day|night
+    Auto rule (CT): 7:00AM–4:00PM => day, else night
+    """
+    mode = (mode or "auto").strip().lower()
+    if mode in ("day", "night"):
+        return mode
+
+    # auto
+    now_ct = datetime.now(tz=CT_TZ)
+    start = now_ct.replace(hour=7, minute=0, second=0, microsecond=0)
+    end = now_ct.replace(hour=16, minute=0, second=0, microsecond=0)
+    return "day" if (start <= now_ct <= end) else "night"
 
 # ---------------------------
 # DB helpers + schema init
@@ -107,12 +112,10 @@ def db_required():
 
 def db_conn():
     db_required()
-    # psycopg3 supports DATABASE_URL directly
     return psycopg.connect(DATABASE_URL, row_factory=dict_row)
 
 def init_db():
     if not DATABASE_URL:
-        # allow app to boot, but notebook endpoints will error clearly
         return
 
     with db_conn() as conn:
@@ -130,7 +133,6 @@ def init_db():
               confidence        INTEGER,
               plan              TEXT,
 
-              -- scanner snapshot (read-only history)
               trigger           DOUBLE PRECISION,
               stop              DOUBLE PRECISION,
               scan_close        DOUBLE PRECISION,
@@ -140,7 +142,6 @@ def init_db():
               hold_pct          DOUBLE PRECISION,
               rel_vol           DOUBLE PRECISION,
 
-              -- execution
               entry_price       DOUBLE PRECISION NOT NULL,
               shares            DOUBLE PRECISION NOT NULL,
               entry_time_ct     TIMESTAMPTZ NOT NULL,
@@ -153,7 +154,6 @@ def init_db():
               review_tomorrow   BOOLEAN NOT NULL DEFAULT FALSE,
               grade_1_10        INTEGER,
 
-              -- flags
               auto_flags        TEXT NOT NULL DEFAULT '[]',
               review_flags      TEXT NOT NULL DEFAULT '[]',
               lesson            TEXT,
@@ -167,7 +167,6 @@ def init_db():
 def _startup():
     init_db()
 
-
 # ---------------------------
 # Flags + P/L logic
 # ---------------------------
@@ -176,12 +175,7 @@ WARN_ICON  = "⚠️"
 BAD_ICON   = "🚩"
 
 def compute_auto_flags(t: dict) -> list[dict]:
-    """
-    Returns list of {key,label,level,icon}
-    level: good|warn|bad
-    """
     out = []
-
     entry = t.get("entry_price")
     exitp = t.get("exit_price")
     trig = t.get("trigger")
@@ -199,7 +193,6 @@ def compute_auto_flags(t: dict) -> list[dict]:
         elif abs(entry - trig) / trig <= 0.005:
             add("entered_at_trigger", "Entered near trigger", "good")
 
-    # Only judge stop behavior when trade is closed
     if exitp is not None:
         if stop is not None and stop > 0:
             if exitp < stop * 0.995:
@@ -207,7 +200,6 @@ def compute_auto_flags(t: dict) -> list[dict]:
             elif abs(exitp - stop) / stop <= 0.01:
                 add("stop_respected", "Stop respected (exit near stop)", "good")
 
-        # “Held too long” (simple rule): > 4 hours
         if entry_time is not None and exit_time is not None:
             try:
                 mins = (exit_time - entry_time).total_seconds() / 60.0
@@ -216,7 +208,6 @@ def compute_auto_flags(t: dict) -> list[dict]:
             except Exception:
                 pass
 
-        # Profit-taking (simple): >= +3% from entry
         if entry is not None and entry > 0:
             if exitp >= entry * 1.03:
                 add("took_profit", "Took profit (>= +3%)", "good")
@@ -235,18 +226,17 @@ def pnl_calc(entry_price, exit_price, shares):
     except Exception:
         return None, None
 
-
 # ---------------------------
 # Scanner thread
 # ---------------------------
-def do_scan(scan_id: str, mode: str):
+def do_scan(scan_id: str, resolved_mode: str):
     try:
-        log_line(scan_id, "Scanner thread started.")
+        log_line(scan_id, f"Scanner thread started. Mode={resolved_mode.upper()}")
 
         html_path = scanner.run_scan(
             log_fn=lambda m: log_line(scan_id, m),
             row_fn=lambda row: publish(scan_id, "row", row),
-            mode=mode,
+            mode=resolved_mode,
         )
 
         with STATE_LOCK:
@@ -273,19 +263,22 @@ def do_scan(scan_id: str, mode: str):
             if scan_id in SCANS:
                 SCANS[scan_id]["running"] = False
 
-
 # ---------------------------
-# Routes: app + scan
+# Routes: home + scan
 # ---------------------------
-@app.get("/")
-def home():
+@app.get("/", include_in_schema=False)
+async def root():
     return RedirectResponse(url="/static/index.html")
 
+@app.head("/", include_in_schema=False)
+async def root_head(request: Request):
+    return PlainTextResponse("OK")
 
 @app.post("/run_scan")
 def run_scan(mode: str = Query("auto", pattern="^(auto|day|night)$")):
     scan_id = str(uuid.uuid4())
     started = datetime.now(timezone.utc).isoformat()
+    resolved = resolve_mode(mode)
 
     with STATE_LOCK:
         SCANS[scan_id] = {
@@ -293,41 +286,19 @@ def run_scan(mode: str = Query("auto", pattern="^(auto|day|night)$")):
             "q": queue.Queue(),
             "last_report": None,
             "started_utc": started,
-            "mode": mode,
+            "mode": resolved,
         }
 
     publish(scan_id, "meta", {
         "scan_id": scan_id,
         "started_utc": started,
-        "mode": mode
+        "mode": resolved
     })
 
-    t = threading.Thread(
-        target=do_scan,
-        args=(scan_id, mode),
-        daemon=True
-    )
+    t = threading.Thread(target=do_scan, args=(scan_id, resolved), daemon=True)
     t.start()
 
-    return {"ok": True, "scan_id": scan_id}
-
-
-    publish(scan_id, "meta", {"scan_id": scan_id, "started_utc": started, "mode": mode})
-
-    t = threading.Thread(target=do_scan, args=(scan_id,), daemon=True)
-    t.start()
-
-    return JSONResponse({"ok": True, "scan_id": scan_id})
-
-
-    publish(scan_id, "meta", {"scan_id": scan_id, "started_utc": started, "mode": mode})
-
-    t = threading.Thread(target=do_scan, args=(scan_id, mode), daemon=True)
-    t.start()
-
-    return JSONResponse({"ok": True, "scan_id": scan_id})
-
-
+    return {"ok": True, "scan_id": scan_id, "mode": resolved}
 
 @app.get("/stream/{scan_id}")
 def stream(scan_id: str):
@@ -349,15 +320,11 @@ def stream(scan_id: str):
                     alive = SCANS.get(scan_id)
                     if not alive:
                         break
-                    if not alive["running"] and alive["q"].empty():
+                    if (not alive["running"]) and alive["q"].empty():
                         break
 
-    headers = {
-        "Cache-Control": "no-cache",
-        "X-Accel-Buffering": "no",
-    }
+    headers = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
     return StreamingResponse(gen(), media_type="text/event-stream", headers=headers)
-
 
 @app.get("/scan_log")
 def scan_log():
@@ -365,12 +332,10 @@ def scan_log():
         return ""
     return FileResponse(LOG_PATH, media_type="text/plain")
 
-
 @app.post("/clear_log")
 def clear_log():
     clear_log_file()
     return {"ok": True}
-
 
 # ---------------------------
 # Routes: Notebook API (Postgres)
@@ -390,11 +355,10 @@ def api_get_trades(
     params = [user_id]
 
     if view == "yesterday":
-        # Yesterday review: only CLOSED trades, whose exit_time is yesterday CT
         where += " AND exit_time_ct IS NOT NULL AND exit_time_ct >= %s AND exit_time_ct < %s"
         params.extend([y_start, y_end])
 
-    q = f"""
+    q_sql = f"""
     SELECT *
     FROM trades
     {where}
@@ -403,10 +367,9 @@ def api_get_trades(
 
     with db_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(q, params)
+            cur.execute(q_sql, params)
             rows = cur.fetchall()
 
-    # Attach computed P/L and convenience fields
     out = []
     for r in rows:
         pnl_d, pnl_p = pnl_calc(r.get("entry_price"), r.get("exit_price"), r.get("shares"))
@@ -416,13 +379,8 @@ def api_get_trades(
 
     return {"ok": True, "trades": out}
 
-
 @app.post("/api/trades")
 def api_create_trade(payload: dict):
-    """
-    Required: ticker, entry_price, shares
-    We also accept scanner snapshot fields from the scan row.
-    """
     db_required()
 
     user_id = payload.get("user_id") or "demo"
@@ -446,7 +404,6 @@ def api_create_trade(payload: dict):
     if entry_price <= 0 or shares <= 0:
         raise HTTPException(status_code=400, detail="entry_price and shares must be > 0")
 
-    # Timestamps (CT)
     entry_time_ct = datetime.now(tz=CT_TZ)
 
     scan_date_ct = payload.get("scan_date_ct")
@@ -458,7 +415,6 @@ def api_create_trade(payload: dict):
 
     notes = payload.get("notes") or ""
 
-    # Insert
     with db_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
@@ -489,9 +445,7 @@ def api_create_trade(payload: dict):
             ))
         conn.commit()
 
-    # Return trade
     return api_get_trade(trade_id, user_id=user_id)
-
 
 @app.get("/api/trades/{trade_id}")
 def api_get_trade(trade_id: str, user_id: str = Query("demo")):
@@ -508,12 +462,10 @@ def api_get_trade(trade_id: str, user_id: str = Query("demo")):
     r["pnl_pct"] = pnl_p
     return {"ok": True, "trade": r}
 
-
 @app.patch("/api/trades/{trade_id}")
 def api_update_trade(trade_id: str, payload: dict, user_id: str = Query("demo")):
     db_required()
 
-    # Fetch existing
     with db_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT * FROM trades WHERE id=%s AND user_id=%s", (trade_id, user_id))
@@ -521,7 +473,6 @@ def api_update_trade(trade_id: str, payload: dict, user_id: str = Query("demo"))
             if not existing:
                 raise HTTPException(status_code=404, detail="trade not found")
 
-        # Build updates
         allowed = {
             "entry_price", "shares", "notes",
             "exit_price", "exit_time_ct",
@@ -552,7 +503,6 @@ def api_update_trade(trade_id: str, payload: dict, user_id: str = Query("demo"))
             if k == "review_tomorrow":
                 v = bool(v)
 
-            # exit_time_ct: if not provided but exit_price is being set, we’ll set it automatically
             if k == "exit_time_ct" and v:
                 try:
                     v = datetime.fromisoformat(v)
@@ -560,11 +510,9 @@ def api_update_trade(trade_id: str, payload: dict, user_id: str = Query("demo"))
                     v = None
 
             if k == "review_flags":
-                # store as JSON string (list)
                 if isinstance(v, list):
                     v = scanner.json_dumps(v)
                 elif isinstance(v, str):
-                    # trust the client string (must be JSON list)
                     v = v
                 else:
                     v = "[]"
@@ -572,7 +520,6 @@ def api_update_trade(trade_id: str, payload: dict, user_id: str = Query("demo"))
             sets.append(f"{k}=%s")
             params.append(v)
 
-        # If user sets exit_price but doesn't set exit_time_ct, set it now
         if "exit_price" in payload and payload.get("exit_price") is not None and "exit_time_ct" not in payload:
             sets.append("exit_time_ct=%s")
             params.append(datetime.now(tz=CT_TZ))
@@ -582,7 +529,6 @@ def api_update_trade(trade_id: str, payload: dict, user_id: str = Query("demo"))
             with conn.cursor() as cur:
                 cur.execute(f"UPDATE trades SET {', '.join(sets)} WHERE id=%s AND user_id=%s", params)
 
-        # Recompute flags if trade is now closed (exit_price exists)
         with conn.cursor() as cur:
             cur.execute("SELECT * FROM trades WHERE id=%s AND user_id=%s", (trade_id, user_id))
             updated = cur.fetchone()
@@ -590,7 +536,6 @@ def api_update_trade(trade_id: str, payload: dict, user_id: str = Query("demo"))
         auto = compute_auto_flags(updated)
         auto_json = scanner.json_dumps(auto)
 
-        # If trade is closed and review_flags empty, default to auto flags
         review_flags = updated.get("review_flags") or "[]"
         if updated.get("exit_price") is not None:
             if review_flags == "[]" or review_flags.strip() == "":
@@ -605,7 +550,6 @@ def api_update_trade(trade_id: str, payload: dict, user_id: str = Query("demo"))
         conn.commit()
 
     return api_get_trade(trade_id, user_id=user_id)
-
 
 @app.delete("/api/trades/{trade_id}")
 def api_delete_trade(trade_id: str, user_id: str = Query("demo")):
