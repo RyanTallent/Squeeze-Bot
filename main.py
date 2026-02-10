@@ -76,7 +76,7 @@ def publish(scan_id: str, event: str, data: dict):
         s["q"].put(payload)
 
 def log_line(scan_id: str, msg: str):
-    ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
+    ts = datetime.now(tz=CT_TZ).strftime("%H:%M:%S")
     line = f"[{ts}] {msg}"
     print(line)
     _append_log_line(line)
