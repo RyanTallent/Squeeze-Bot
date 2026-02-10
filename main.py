@@ -57,6 +57,7 @@ SCANS: dict[str, dict] = {}
 #   "last_report": str|None,
 #   "started_utc": str,
 #   "mode": str,
+#   "ortex": str,   # auto|on|off (requested)
 # }
 
 def _append_log_line(line: str):
@@ -94,11 +95,20 @@ def resolve_mode(mode: str) -> str:
     if mode in ("day", "night"):
         return mode
 
-    # auto
     now_ct = datetime.now(tz=CT_TZ)
     start = now_ct.replace(hour=7, minute=0, second=0, microsecond=0)
     end = now_ct.replace(hour=16, minute=0, second=0, microsecond=0)
     return "day" if (start <= now_ct <= end) else "night"
+
+def resolve_ortex_setting(ortex: str) -> str:
+    """
+    ortex can be: auto|on|off
+    (scanner.py decides what that means in practice)
+    """
+    ortex = (ortex or "auto").strip().lower()
+    if ortex in ("on", "off", "auto"):
+        return ortex
+    return "auto"
 
 # ---------------------------
 # DB helpers + schema init
@@ -229,14 +239,15 @@ def pnl_calc(entry_price, exit_price, shares):
 # ---------------------------
 # Scanner thread
 # ---------------------------
-def do_scan(scan_id: str, resolved_mode: str):
+def do_scan(scan_id: str, resolved_mode: str, ortex_setting: str):
     try:
-        log_line(scan_id, f"Scanner thread started. Mode={resolved_mode.upper()}")
+        log_line(scan_id, f"Scanner thread started. Mode={resolved_mode.upper()} ORTEX={ortex_setting.upper()}")
 
         html_path = scanner.run_scan(
             log_fn=lambda m: log_line(scan_id, m),
             row_fn=lambda row: publish(scan_id, "row", row),
             mode=resolved_mode,
+            ortex=ortex_setting,   # <-- NEW
         )
 
         with STATE_LOCK:
@@ -275,10 +286,15 @@ async def root_head(request: Request):
     return PlainTextResponse("OK")
 
 @app.post("/run_scan")
-def run_scan(mode: str = Query("auto", pattern="^(auto|day|night)$")):
+def run_scan(
+    mode: str = Query("auto", pattern="^(auto|day|night)$"),
+    ortex: str = Query("auto", pattern="^(auto|on|off)$"),
+):
     scan_id = str(uuid.uuid4())
     started = datetime.now(timezone.utc).isoformat()
-    resolved = resolve_mode(mode)
+
+    resolved_mode = resolve_mode(mode)
+    ortex_setting = resolve_ortex_setting(ortex)
 
     with STATE_LOCK:
         SCANS[scan_id] = {
@@ -286,19 +302,21 @@ def run_scan(mode: str = Query("auto", pattern="^(auto|day|night)$")):
             "q": queue.Queue(),
             "last_report": None,
             "started_utc": started,
-            "mode": resolved,
+            "mode": resolved_mode,
+            "ortex": ortex_setting,
         }
 
     publish(scan_id, "meta", {
         "scan_id": scan_id,
         "started_utc": started,
-        "mode": resolved
+        "mode": resolved_mode,
+        "ortex": ortex_setting,
     })
 
-    t = threading.Thread(target=do_scan, args=(scan_id, resolved), daemon=True)
+    t = threading.Thread(target=do_scan, args=(scan_id, resolved_mode, ortex_setting), daemon=True)
     t.start()
 
-    return {"ok": True, "scan_id": scan_id, "mode": resolved}
+    return {"ok": True, "scan_id": scan_id, "mode": resolved_mode, "ortex": ortex_setting}
 
 @app.get("/stream/{scan_id}")
 def stream(scan_id: str):
