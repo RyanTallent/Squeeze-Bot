@@ -6,18 +6,152 @@ import uuid
 import threading
 from pathlib import Path
 from collections import deque
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
+import psycopg
+from psycopg.rows import dict_row
+
 import scanner  # your scanner.py
 
+# -------------------- timezone helpers (CT) --------------------
+try:
+    from zoneinfo import ZoneInfo
+    CT_TZ = ZoneInfo("America/Chicago")
+except Exception:
+    CT_TZ = None
+
+def now_ct_str() -> str:
+    dt = datetime.now(tz=CT_TZ) if CT_TZ else datetime.now()
+    # Render linux supports %-I; Windows doesn't. We'll be safe.
+    try:
+        return dt.strftime("%-I:%M %p CT")
+    except Exception:
+        return dt.strftime("%I:%M %p CT").lstrip("0")
+
+def ct_date(dt: datetime | None = None) -> str:
+    dt = dt or (datetime.now(tz=CT_TZ) if CT_TZ else datetime.now())
+    return dt.strftime("%Y-%m-%d")
+
+def yesterday_ct_date() -> str:
+    dt = (datetime.now(tz=CT_TZ) if CT_TZ else datetime.now()) - timedelta(days=1)
+    return dt.strftime("%Y-%m-%d")
+
+
+# -------------------- DB --------------------
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+def db_conn():
+    if not DATABASE_URL:
+        raise RuntimeError("DATABASE_URL is not set in Render environment variables.")
+    # psycopg v3 wants postgresql://... (Render provides that)
+    return psycopg.connect(DATABASE_URL, row_factory=dict_row)
+
+def db_init():
+    # Simple durable storage for your notebook
+    with db_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS trades (
+              id TEXT PRIMARY KEY,
+              user_id TEXT NOT NULL,
+              created_at_utc TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+              scan_id TEXT,
+              scan_date_ct TEXT,
+
+              ticker TEXT NOT NULL,
+              bucket TEXT,
+              subtype TEXT,
+              confidence REAL,
+              plan TEXT,
+
+              trigger REAL,
+              stop REAL,
+              scan_close REAL,
+              move_pct REAL,
+              dollar_vol REAL,
+              range_pct REAL,
+              hold_pct REAL,
+              rel_vol REAL,
+              si_pct_ff REAL,
+              ctb REAL,
+              avail REAL,
+
+              entry_price REAL,
+              entry_time_ct TEXT,
+              exit_price REAL,
+              exit_time_ct TEXT,
+              shares REAL,
+
+              review_flags TEXT
+            );
+            """)
+            conn.commit()
+
+def compute_flags(t: dict) -> list[dict]:
+    # Optional: you can expand later. For now keep empty unless you stored flags.
+    try:
+        raw = t.get("review_flags")
+        if not raw:
+            return []
+        if isinstance(raw, str):
+            return json.loads(raw)
+        return raw
+    except Exception:
+        return []
+
+def trades_select(view: str, user_id: str) -> list[dict]:
+    view = (view or "all").lower().strip()
+    if view not in ("all", "yesterday"):
+        view = "all"
+
+    where = "WHERE user_id = %s"
+    params = [user_id]
+
+    if view == "yesterday":
+        where += " AND scan_date_ct = %s"
+        params.append(yesterday_ct_date())
+
+    sql = f"""
+    SELECT
+      id, user_id, scan_id, scan_date_ct,
+      ticker, bucket, subtype, confidence, plan,
+      trigger, stop, scan_close, move_pct, dollar_vol, range_pct, hold_pct, rel_vol, si_pct_ff, ctb, avail,
+      entry_price, entry_time_ct, exit_price, exit_time_ct, shares,
+      review_flags,
+      CASE
+        WHEN exit_price IS NULL OR entry_price IS NULL OR shares IS NULL THEN NULL
+        ELSE (exit_price - entry_price) * shares
+      END AS pnl_dollars,
+      CASE
+        WHEN exit_price IS NULL OR entry_price IS NULL OR entry_price = 0 THEN NULL
+        ELSE (exit_price - entry_price) / entry_price
+      END AS pnl_pct
+    FROM trades
+    {where}
+    ORDER BY created_at_utc DESC
+    LIMIT 500;
+    """
+
+    with db_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+
+    # normalize JSON fields
+    for r in rows:
+        r["review_flags"] = json.dumps(compute_flags(r))
+    return rows
+
+
+# -------------------- FastAPI app --------------------
 app = FastAPI()
 
-# If you ever open this from another domain, CORS helps.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -34,19 +168,20 @@ OUT_DIR.mkdir(exist_ok=True)
 app.mount("/outputs", StaticFiles(directory=str(OUT_DIR)), name="outputs")
 
 
-# -------------------- simple in-memory state --------------------
-STATE_LOCK = threading.Lock()
+@app.on_event("startup")
+def _startup():
+    # create DB table on boot (so notebook persists across deploys)
+    db_init()
 
+
+# -------------------- simple in-memory scan state --------------------
+STATE_LOCK = threading.Lock()
 STATE = {
     "running": False,
     "scan_id": None,
     "started_at_ct": None,
-
-    # streaming buffers
     "logs": deque(maxlen=2500),
     "rows": deque(maxlen=200),
-
-    # meta (what UI wants)
     "meta": {
         "mode": "auto",
         "ortex_requested": "auto",
@@ -55,19 +190,14 @@ STATE = {
         "date": None,
         "scanned_count": None,
     },
-
-    # completion
     "done": False,
     "ok": True,
     "html_path": None,
-
-    # monotonically increasing “version” for SSE
     "log_seq": 0,
     "row_seq": 0,
     "meta_seq": 0,
     "done_seq": 0,
 }
-
 
 def _state_snapshot():
     with STATE_LOCK:
@@ -85,21 +215,16 @@ def _state_snapshot():
             "done_seq": STATE["done_seq"],
         }))
 
-
 def push_log(line: str):
-    # parse useful meta out of logs (so you don’t have to in UI)
     scanned = None
     window_name = None
 
-    # examples:
-    # Snapshot tickers received: 4212
     if "Snapshot tickers received:" in line:
         try:
             scanned = int(line.split("Snapshot tickers received:")[1].strip().split()[0])
         except Exception:
             scanned = None
 
-    # Market window: PREMARKET (03:00–07:12 CT)
     if line.startswith("Market window:"):
         try:
             window_name = line.split("Market window:")[1].strip().split(" (")[0].strip()
@@ -121,12 +246,10 @@ def push_log(line: str):
         if changed:
             STATE["meta_seq"] += 1
 
-
 def push_row(row: dict):
     with STATE_LOCK:
         STATE["rows"].append(row)
         STATE["row_seq"] += 1
-
 
 def mark_done(ok: bool, html_path: str | None):
     with STATE_LOCK:
@@ -140,9 +263,12 @@ def mark_done(ok: bool, html_path: str | None):
 # -------------------- routes --------------------
 @app.get("/")
 def root():
-    # Your Render primary URL will now show the UI (no more {"detail":"Not Found"})
     return RedirectResponse(url="/static/index.html")
 
+@app.get("/health")
+def health():
+    snap = _state_snapshot()
+    return {"ok": True, "running": snap["running"], "scan_id": snap["scan_id"], "meta": snap["meta"]}
 
 @app.post("/clear_log")
 def clear_log():
@@ -153,13 +279,11 @@ def clear_log():
         STATE["row_seq"] += 1
     return {"ok": True}
 
-
 @app.post("/run_scan")
 def run_scan(request: Request, mode: str = "auto", ortex: str = "auto"):
     mode = (mode or "auto").strip().lower()
     ortex = (ortex or "auto").strip().lower()
 
-    # normalize to what scanner expects
     if mode not in ("auto", "day", "night"):
         mode = "auto"
     if ortex not in ("auto", "on", "off"):
@@ -182,42 +306,32 @@ def run_scan(request: Request, mode: str = "auto", ortex: str = "auto"):
         STATE["meta_seq"] += 1
         STATE["done_seq"] += 1
 
-        # compute meta BEFORE scan starts (no log parsing needed for these)
         dt = scanner.now_ct()
         window_name, w_start, w_end = scanner.current_market_window(dt)
         date_str = scanner.ct_date_str(w_start)
 
-        # handle your scanner’s two conventions:
-        # - if mode is auto, decide day/night based on time window (simple rule)
         if mode == "auto":
-            # during market hours -> day, otherwise night
-            if window_name in ("PREMARKET", "REGULAR", "AFTERHOURS"):
-                eff_mode = "day"
-            else:
-                eff_mode = "night"
+            eff_mode = "day" if window_name in ("PREMARKET", "REGULAR", "AFTERHOURS") else "night"
         else:
             eff_mode = mode
 
-        # use scanner’s resolve_ortex_on if it exists (your latest scanner has it)
+        # use scanner resolve_ortex_on if present
         try:
             ortex_on, ortex_label = scanner.resolve_ortex_on(eff_mode, ortex, dt)
         except Exception:
             ortex_on = (ortex == "on")
             ortex_label = "ON" if ortex_on else "OFF"
 
-        started_at_ct = dt.strftime("%-I:%M %p CT") if "%" in "%-I" else dt.strftime("%I:%M %p CT").lstrip("0")
-
-        STATE["started_at_ct"] = started_at_ct
+        STATE["started_at_ct"] = now_ct_str()
         STATE["meta"] = {
             "mode": eff_mode,
             "ortex_requested": ortex,
             "ortex_effective": ortex_label,
             "window": window_name,
             "date": date_str,
-            "scanned_count": None,  # filled once snapshot arrives
+            "scanned_count": None,
         }
 
-    # start thread
     th = threading.Thread(
         target=_scan_worker,
         args=(scan_id, STATE["meta"]["mode"], ortex),
@@ -225,7 +339,6 @@ def run_scan(request: Request, mode: str = "auto", ortex: str = "auto"):
     )
     th.start()
 
-    # return meta immediately
     snap = _state_snapshot()
     return {
         "ok": True,
@@ -238,7 +351,6 @@ def run_scan(request: Request, mode: str = "auto", ortex: str = "auto"):
         "started_at_ct": snap["started_at_ct"],
         "scanned_count": snap["meta"]["scanned_count"],
     }
-
 
 def _scan_worker(scan_id: str, mode: str, ortex: str):
     try:
@@ -263,17 +375,14 @@ def _scan_worker(scan_id: str, mode: str, ortex: str):
         push_log(f"[FATAL] {type(e).__name__}: {str(e)[:200]}")
         mark_done(False, None)
 
-
 @app.get("/stream/{scan_id}")
 def stream(scan_id: str):
-    # SSE stream: sends log, row, meta, done events
     def event_gen():
         last_log = 0
         last_row = 0
         last_meta = 0
         last_done = 0
 
-        # quick sanity: only allow current scan_id
         snap = _state_snapshot()
         if snap["scan_id"] != scan_id:
             yield _sse("done", {"ok": False, "error": "Unknown scan_id"})
@@ -282,34 +391,26 @@ def stream(scan_id: str):
         while True:
             snap = _state_snapshot()
 
-            # flush new logs
             if snap["log_seq"] != last_log:
                 with STATE_LOCK:
                     logs = list(STATE["logs"])
                     seq = STATE["log_seq"]
-                # send only new lines (best-effort: since deque can truncate)
-                # easiest: just send the most recent chunk each time seq changes
-                # but keep it light: last 50 lines
                 for line in logs[-50:]:
                     yield _sse("log", {"line": line})
                 last_log = seq
 
-            # flush new meta
             if snap["meta_seq"] != last_meta:
                 yield _sse("meta", snap["meta"])
                 last_meta = snap["meta_seq"]
 
-            # flush new rows
             if snap["row_seq"] != last_row:
                 with STATE_LOCK:
                     rows = list(STATE["rows"])
                     seq = STATE["row_seq"]
-                # send only last 10 rows each time (your scanner already only streams top 10 total)
                 for r in rows[-10:]:
                     yield _sse("row", r)
                 last_row = seq
 
-            # done?
             if snap["done_seq"] != last_done and snap["done"]:
                 payload = {"ok": snap["ok"], "html_path": snap["html_path"]}
                 yield _sse("done", payload)
@@ -319,18 +420,111 @@ def stream(scan_id: str):
 
     return _sse_response(event_gen)
 
-
 def _sse(event_name: str, data_obj: dict):
     return f"event: {event_name}\ndata: {json.dumps(data_obj, ensure_ascii=False)}\n\n"
-
 
 def _sse_response(gen_fn):
     from starlette.responses import StreamingResponse
     return StreamingResponse(gen_fn(), media_type="text/event-stream")
 
 
-# ---- OPTIONAL: quick “health” ----
-@app.get("/health")
-def health():
-    snap = _state_snapshot()
-    return {"ok": True, "running": snap["running"], "scan_id": snap["scan_id"], "meta": snap["meta"]}
+# -------------------- TRADES API (THIS FIXES NOTEBOOK) --------------------
+@app.get("/api/trades")
+def api_get_trades(view: str = "all", user_id: str = "demo"):
+    try:
+        rows = trades_select(view=view, user_id=user_id)
+        return {"ok": True, "trades": rows}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=500)
+
+@app.post("/api/trades")
+async def api_create_trade(request: Request):
+    payload = await request.json()
+
+    user_id = payload.get("user_id") or "demo"
+    trade_id = str(uuid.uuid4())
+
+    # prefer scan meta date if provided
+    scan_date_ct = payload.get("scan_date_ct") or (STATE.get("meta", {}).get("date") if STATE else None) or ct_date()
+
+    entry_price = payload.get("entry_price")
+    shares = payload.get("shares")
+
+    # store times as CT strings for your UI
+    entry_time_ct = payload.get("entry_time_ct") or now_ct_str()
+
+    row = {
+        "id": trade_id,
+        "user_id": user_id,
+        "scan_id": payload.get("scan_id"),
+        "scan_date_ct": scan_date_ct,
+
+        "ticker": payload.get("ticker"),
+        "bucket": payload.get("bucket"),
+        "subtype": payload.get("subtype"),
+        "confidence": payload.get("confidence"),
+        "plan": payload.get("plan"),
+
+        "trigger": payload.get("trigger"),
+        "stop": payload.get("stop"),
+        "scan_close": payload.get("scan_close"),
+        "move_pct": payload.get("move_pct"),
+        "dollar_vol": payload.get("dollar_vol"),
+        "range_pct": payload.get("range_pct"),
+        "hold_pct": payload.get("hold_pct"),
+        "rel_vol": payload.get("rel_vol"),
+        "si_pct_ff": payload.get("si_pct_ff"),
+        "ctb": payload.get("ctb"),
+        "avail": payload.get("avail"),
+
+        "entry_price": float(entry_price) if entry_price is not None else None,
+        "entry_time_ct": entry_time_ct,
+        "exit_price": None,
+        "exit_time_ct": None,
+        "shares": float(shares) if shares is not None else None,
+
+        "review_flags": json.dumps(payload.get("review_flags") or []),
+    }
+
+    try:
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                INSERT INTO trades (
+                  id, user_id, scan_id, scan_date_ct,
+                  ticker, bucket, subtype, confidence, plan,
+                  trigger, stop, scan_close, move_pct, dollar_vol, range_pct, hold_pct, rel_vol, si_pct_ff, ctb, avail,
+                  entry_price, entry_time_ct, exit_price, exit_time_ct, shares, review_flags
+                ) VALUES (
+                  %(id)s, %(user_id)s, %(scan_id)s, %(scan_date_ct)s,
+                  %(ticker)s, %(bucket)s, %(subtype)s, %(confidence)s, %(plan)s,
+                  %(trigger)s, %(stop)s, %(scan_close)s, %(move_pct)s, %(dollar_vol)s, %(range_pct)s, %(hold_pct)s, %(rel_vol)s, %(si_pct_ff)s, %(ctb)s, %(avail)s,
+                  %(entry_price)s, %(entry_time_ct)s, %(exit_price)s, %(exit_time_ct)s, %(shares)s, %(review_flags)s
+                );
+                """, row)
+                conn.commit()
+        return {"ok": True, "id": trade_id}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=500)
+
+@app.patch("/api/trades/{trade_id}")
+async def api_close_trade(trade_id: str, request: Request, user_id: str = "demo"):
+    payload = await request.json()
+    exit_price = payload.get("exit_price")
+    if exit_price is None:
+        return JSONResponse({"ok": False, "error": "exit_price is required"}, status_code=400)
+
+    exit_time_ct = payload.get("exit_time_ct") or now_ct_str()
+
+    try:
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                UPDATE trades
+                SET exit_price = %s, exit_time_ct = %s
+                WHERE id = %s AND user_id = %s
+                """, (float(exit_price), exit_time_ct, trade_id, user_id))
+                conn.commit()
+        return {"ok": True}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=500)
