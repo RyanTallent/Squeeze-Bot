@@ -40,7 +40,7 @@
       padding:7px 10px; border-radius:999px; font-size:13px;
     }
     .chip b{color:var(--text)}
-    .btnrow{display:flex; justify-content:center; gap:10px; margin: 14px 0 18px;}
+    .btnrow{display:flex; justify-content:center; gap:10px; margin: 14px 0 18px; flex-wrap:wrap;}
     button{
       border:1px solid rgba(255,255,255,.08);
       background: linear-gradient(180deg, rgba(30,163,74,.95), rgba(22,128,58,.95));
@@ -211,7 +211,7 @@
       gap:10px; margin-bottom:10px;
     }
     label{display:block; font-size:12px; color:var(--muted); font-weight:900; margin-bottom:6px}
-    input, textarea{
+    input, textarea, select{
       width:100%;
       background: rgba(6,10,18,.65);
       border:1px solid rgba(35,50,77,.7);
@@ -252,6 +252,7 @@
     <div class="topbar">
       <div class="chip">Window: <b id="chipWindow">—</b></div>
       <div class="chip">ORTEX: <b id="chipOrtex">—</b></div>
+      <div class="chip">Mode: <b id="chipMode">—</b></div>
       <div class="chip">Last scan: <b id="chipTime">—</b></div>
       <div class="chip">Report: <a id="reportLink" href="#" target="_blank" style="display:none;">Open</a></div>
 
@@ -260,9 +261,23 @@
       </div>
     </div>
 
+    <!-- Mode explainer -->
+    <div class="panel" style="margin: 10px 0 14px; padding:14px;">
+      <div style="font-weight:900; font-size:16px; margin-bottom:6px;">Mode</div>
+      <div class="muted" id="modeExplainer" style="line-height:1.5;">—</div>
+    </div>
+
     <div class="btnrow">
       <button id="scanBtn">Scan Stocks</button>
       <button id="clearBtn" class="secondary">Clear Log</button>
+
+      <div class="chip" style="display:flex;gap:10px;align-items:center;">
+        <b>Scan Mode</b>
+        <select id="modeSelect" style="width:auto; padding:8px 10px; border-radius:10px; font-weight:900;">
+          <option value="day">DAY (Full Power)</option>
+          <option value="night">NIGHT (Afterhours)</option>
+        </select>
+      </div>
     </div>
 
     <div class="grid">
@@ -476,8 +491,35 @@
 
   const chipWindow = document.getElementById("chipWindow");
   const chipOrtex = document.getElementById("chipOrtex");
+  const chipMode = document.getElementById("chipMode");
   const chipTime = document.getElementById("chipTime");
   const reportLink = document.getElementById("reportLink");
+
+  // Mode UI
+  const modeSelect = document.getElementById("modeSelect");
+  const modeExplainer = document.getElementById("modeExplainer");
+
+  // Your measured ORTEX cost per scan
+  const ORTEX_CREDITS_PER_SCAN = 93.6;
+  const USD_PER_CREDIT = 100 / 5000; // $0.02
+  const ORTEX_USD_PER_SCAN = ORTEX_CREDITS_PER_SCAN * USD_PER_CREDIT; // $1.872
+
+  function refreshModeExplainer(){
+    const mode = modeSelect.value;
+    chipMode.textContent = mode.toUpperCase();
+    if (mode === "day") {
+      modeExplainer.innerHTML =
+        `DAY (Full Power) uses <b>Polygon + ORTEX</b> for best squeeze accuracy.<br>` +
+        `Estimated ORTEX cost per scan: <b>$${ORTEX_USD_PER_SCAN.toFixed(2)}</b> (≈ ${ORTEX_CREDITS_PER_SCAN} credits).<br>` +
+        `<span class="muted">Polygon API cost depends on your Polygon plan.</span>`;
+    } else {
+      modeExplainer.innerHTML =
+        `NIGHT (Afterhours) uses <b>Polygon only</b> (no ORTEX calls).<br>` +
+        `Estimated ORTEX cost per scan: <b>$0.00</b>.<br>` +
+        `<span class="muted">Polygon API cost depends on your Polygon plan.</span>`;
+    }
+  }
+  modeSelect.addEventListener("change", refreshModeExplainer);
 
   // Notebook
   const nbCounts = document.getElementById("nbCounts");
@@ -630,7 +672,6 @@
       `;
 
       tr.addEventListener("click", (ev)=>{
-        // don’t expand if user clicked the Add button
         if (ev.target && ev.target.dataset && ev.target.dataset.add) return;
         tr.classList.toggle("rowOpen");
         ex.style.display = tr.classList.contains("rowOpen") ? "table-row" : "none";
@@ -664,11 +705,18 @@
     streamStateEl.textContent = "Connecting…";
     logEl.textContent = "";
 
-    const res = await fetch("/run_scan", {method:"POST"});
+    const mode = (modeSelect?.value || "day");
+    chipMode.textContent = mode.toUpperCase();
+
+    const res = await fetch("/run_scan", {
+      method:"POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ mode })
+    });
     const data = await res.json();
     const scanId = data.scan_id;
 
-    window._lastScanId = scanId; // used to link notebook trades
+    window._lastScanId = scanId;
     window._lastScanDate = new Date().toISOString();
 
     if (es) es.close();
@@ -686,6 +734,11 @@
       }
       if (j.line.includes("ORTEX mode:")) {
         chipOrtex.textContent = j.line.includes("ON") ? "ON" : "OFF";
+      }
+      if (j.line.includes("Mode:")) {
+        // scanner logs "Mode: DAY..." or "Mode: NIGHT..."
+        const mm = j.line.split("Mode:")[1].trim().split(" ")[0];
+        chipMode.textContent = mm.toUpperCase();
       }
 
       statusEl.textContent = "Running…";
@@ -785,7 +838,6 @@
         </td>
       `;
 
-      // Expand row for scanner snapshot
       const ex = document.createElement("tr");
       ex.className = "expand";
       ex.innerHTML = `
@@ -846,7 +898,6 @@
     addTitle.textContent = `Add Trade • ${scanRow.ticker}`;
     addTicker.value = scanRow.ticker;
 
-    // default entry = trigger (your choice)
     const trig = scanRow.trigger ?? scanRow.close ?? 0;
     addEntry.value = trig ? Number(trig).toFixed(4) : "";
     addEntryHint.textContent = `Trigger: ${(scanRow.trigger ?? 0).toFixed(4)} • Stop: ${(scanRow.stop ?? 0).toFixed(4)}`;
@@ -882,12 +933,9 @@
 
     const payload = {
       user_id: "demo",
-
-      // link to scan
       scan_id: window._lastScanId || null,
       scan_date_ct: window._lastScanDate || null,
 
-      // snapshot from scan row
       ticker: pendingScanRow.ticker,
       bucket: pendingScanRow.bucket,
       subtype: pendingScanRow.subtype,
@@ -903,7 +951,6 @@
       hold_pct: pendingScanRow.hold_pct,
       rel_vol: pendingScanRow.rel_vol,
 
-      // execution
       entry_price: entry,
       shares: shares,
       notes: addNotes.value || "",
@@ -927,7 +974,7 @@
 
   // ---------- Edit Modal ----------
   let editingTrade = null;
-  let selectedFlags = []; // review_flags override
+  let selectedFlags = [];
 
   function openEditModal(trade){
     editingTrade = trade;
@@ -942,7 +989,6 @@
     editNotes.value = trade.notes ?? "";
     editLesson.value = trade.lesson ?? "";
 
-    // flags (default to review_flags if set else auto_flags)
     const rf = safeJson(trade.review_flags);
     const af = safeJson(trade.auto_flags);
     selectedFlags = (rf && rf.length ? rf : (af || []));
@@ -990,7 +1036,6 @@
 
   function renderEditFlags(){
     editFlags.innerHTML = "";
-    // Source list: we want to show auto_flags from the trade too, as suggestions
     const auto = safeJson(editingTrade.auto_flags) || [];
     const merged = new Map();
     for (const f of auto) merged.set(f.key, f);
@@ -1000,7 +1045,7 @@
 
     for (const f of merged.values()){
       const pill = document.createElement("span");
-      pill.className = `pill clickable ${clsForFlag(f.level)}${selectedKeys.has(f.key) ? "" : ""}`;
+      pill.className = `pill clickable ${clsForFlag(f.level)}`;
       pill.textContent = `${f.icon} ${f.label}`;
       pill.style.opacity = selectedKeys.has(f.key) ? "1.0" : "0.45";
       pill.title = selectedKeys.has(f.key) ? "Included in Review Flags (click to remove)" : "Not included (click to include)";
@@ -1084,8 +1129,9 @@
 
   // ---------- Page init ----------
   window.addEventListener("load", ()=>{
+    refreshModeExplainer();
     renderScan();
-    loadNotebook(); // auto-load (your choice)
+    loadNotebook();
   });
 </script>
 </body>
