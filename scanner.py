@@ -8,17 +8,17 @@ from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
 # ============================================================
-# ENGINE V2.1 — DAY/NIGHT MODES + ALWAYS-FILLED SQUEEZE TAB
+# ENGINE V2.2 — TRUE DAY/NIGHT + ORTEX FINALISTS (2-PASS)
 # ============================================================
 
 # UI sizing
 TOP_N_PER_BUCKET = 5
 
-# DAY mode (more deep analysis; ORTEX enrich on finalists)
+# DAY mode (deeper + ORTEX enrich top finalists)
 DEEP_ANALYZE_TOP_DAY = 75
 ORTEX_FINALISTS_DAY = 25
 
-# NIGHT mode (cheaper; Polygon-only; fewer deep checks)
+# NIGHT mode (cheap; Polygon-only)
 DEEP_ANALYZE_TOP_NIGHT = 35
 ORTEX_FINALISTS_NIGHT = 0
 
@@ -49,7 +49,7 @@ POLYGON_KEY = os.getenv("POLYGON_API_KEY")
 ORTEX_KEY = os.getenv("ORTEX_API_KEY")
 
 SESSION = requests.Session()
-SESSION.headers.update({"User-Agent": "squeeze-bot/engine-v2.1"})
+SESSION.headers.update({"User-Agent": "squeeze-bot/engine-v2.2"})
 
 OUT_DIR = Path("outputs")
 OUT_DIR.mkdir(exist_ok=True)
@@ -349,7 +349,7 @@ def pick_snapshot_candidates(snap: list[dict], price_min: float, price_max: floa
 
 
 # ============================================================
-# Deep analysis
+# Deep analysis (Polygon)
 # ============================================================
 def compute_rel_vol(window_vol: float, avg_daily_vol: float | None, window_minutes: int) -> float | None:
     if avg_daily_vol is None or avg_daily_vol <= 0:
@@ -437,7 +437,7 @@ def analyze_ticker_window(
 def compute_scores(feat: dict) -> tuple[float, float, float]:
     """
     Returns (base_score, prob, pressure_score)
-    pressure_score is used to build "SQUEEZE WATCH" when no true squeezes exist.
+    pressure_score is also used to build "SQUEEZE WATCH".
     """
     si = feat.get("si_pct_ff") or 0.0
     si_chg = feat.get("si_pct_chg") or 0.0
@@ -502,10 +502,8 @@ def is_true_squeeze(feat: dict, ortex_on: bool) -> bool:
     return True
 
 def setup_subtype(feat: dict, label: str) -> str:
-    # label in {"TRUE_SQUEEZE","SQUEEZE_WATCH","MOMENTUM"}
     if label == "TRUE_SQUEEZE":
         return "true squeeze breakout" if (feat.get("hold_pct") or 0) >= 0.30 else "true squeeze pullback"
-
     if label == "SQUEEZE_WATCH":
         return "squeeze watch"
 
@@ -524,7 +522,7 @@ def trade_plan(feat: dict) -> str:
 
 
 # ============================================================
-# HTML report (unchanged look)
+# HTML report
 # ============================================================
 def write_html_report(meta: dict, squeeze_rows: list[dict], momentum_rows: list[dict]) -> str:
     ts = now_ct().strftime("%Y-%m-%d_%H-%M-%S")
@@ -609,7 +607,7 @@ th {{ text-align:left; color:#93a4bd; font-weight:700; }}
 
 
 # ============================================================
-# Public entrypoint
+# Public entrypoint (2-PASS)
 # ============================================================
 def run_scan(log_fn=None, row_fn=None, mode: str = "day") -> str | None:
     mode = (mode or "day").lower().strip()
@@ -620,7 +618,7 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day") -> str | None:
     window, w_start, w_end = current_market_window(dt)
     date_str = ct_date_str(w_start)
 
-    # ORTEX only if: day mode + allowed hours + key exists
+    # ORTEX ON only if: day mode + allowed hours + key exists
     ortex_on = (mode == "day") and ortex_allowed_now(dt) and bool(ORTEX_KEY)
 
     deep_top = DEEP_ANALYZE_TOP_DAY if mode == "day" else DEEP_ANALYZE_TOP_NIGHT
@@ -631,11 +629,15 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day") -> str | None:
         log_fn(f"Date: {date_str}")
         log_fn(f"Market window: {window} ({w_start.strftime('%H:%M')}–{w_end.strftime('%H:%M')} CT)")
         log_fn(f"ORTEX mode: {'ON' if ortex_on else 'OFF'} (ON only 7:30AM–4:00PM CT)")
+        if ortex_on:
+            log_fn(f"ORTEX finalists: {ortex_finalists}")
 
+    # 1) Snapshot
     snap = get_snapshot_all_tickers(log_fn=log_fn)
     if log_fn:
         log_fn(f"Snapshot tickers received: {len(snap)}")
 
+    # 2) Build candidate list from snapshot tiers
     candidates: list[tuple[float, str, dict]] = []
     for pmin, pmax in PRICE_TIERS:
         candidates.extend(pick_snapshot_candidates(snap, pmin, pmax))
@@ -645,45 +647,32 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day") -> str | None:
     if log_fn:
         log_fn(f"Deep-analyze list: {len(deep_list)} tickers (Top {deep_top})")
 
-    analyzed: list[dict] = []
-
+    # 3) PASS 1 — Polygon deep features for all deep candidates
+    analyzed: dict[str, dict] = {}
     for idx, (_proxy_score, ticker, snap_meta) in enumerate(deep_list, start=1):
         if log_fn and idx % 10 == 0:
-            log_fn(f"Analyzing {idx}/{len(deep_list)}...")
+            log_fn(f"Analyzing (Polygon) {idx}/{len(deep_list)}...")
 
         try:
             feat = analyze_ticker_window(ticker, date_str, w_start, w_end, snap_meta, log_fn=log_fn)
             if not feat:
                 continue
 
-            # ORTEX enrich only for finalists (DAY mode only)
-            if ortex_on and idx <= ortex_finalists:
-                si = ortex_short_interest_features(ticker, log_fn=log_fn) or {}
-                feat["si_pct_ff"] = si.get("si_pct_ff")
-                feat["si_pct_chg"] = si.get("si_pct_chg")
-                feat["ctb"] = ortex_ctb_latest(ticker, log_fn=log_fn)
-                feat["avail"] = ortex_availability_latest(ticker, log_fn=log_fn)
-            else:
-                feat["si_pct_ff"] = None
-                feat["si_pct_chg"] = None
-                feat["ctb"] = None
-                feat["avail"] = None
-
-            true_sq = is_true_squeeze(feat, ortex_on=ortex_on)
+            # no ortex in pass1
+            feat["si_pct_ff"] = None
+            feat["si_pct_chg"] = None
+            feat["ctb"] = None
+            feat["avail"] = None
 
             base_score, prob, pressure = compute_scores(feat)
-            has_borrow = (feat.get("ctb") is not None and feat.get("avail") is not None)
-            conf = confidence_1_to_10(prob, ortex_on=ortex_on, has_borrow=has_borrow)
-
-            label = "TRUE_SQUEEZE" if true_sq else "MOMENTUM"
-            subtype = setup_subtype(feat, label=label)
-            plan = trade_plan(feat)
+            has_borrow = False
+            conf = confidence_1_to_10(prob, ortex_on=False, has_borrow=has_borrow)
 
             row = {
                 "ticker": ticker,
-                "bucket": "SQUEEZE" if true_sq else "MOMENTUM",
-                "subtype": subtype,
-                "confidence": conf,
+                "bucket": "MOMENTUM",  # will be upgraded later if true squeeze
+                "subtype": setup_subtype(feat, label="MOMENTUM"),
+                "confidence": conf,  # provisional
                 "prob": round(prob, 4),
                 "base_score": round(base_score, 2),
                 "pressure_score": round(pressure, 2),
@@ -696,52 +685,134 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day") -> str | None:
                 "rel_vol": feat.get("rel_vol"),
                 "float_shares": feat.get("float_shares"),
 
-                "si_pct_ff": feat.get("si_pct_ff"),
-                "ctb": feat.get("ctb"),
-                "avail": feat.get("avail"),
+                "si_pct_ff": None,
+                "ctb": None,
+                "avail": None,
 
                 "trigger": feat.get("trigger"),
                 "stop": feat.get("stop"),
-                "plan": plan,
+                "plan": trade_plan(feat),
             }
 
-            analyzed.append(row)
-            if row_fn:
-                row_fn(row)
+            analyzed[ticker] = row
 
         except Exception:
             continue
 
-    # Build buckets
-    squeezes_true = [r for r in analyzed if r["bucket"] == "SQUEEZE"]
+    if not analyzed:
+        if log_fn:
+            log_fn("No tickers passed deep analysis.")
+        return None
+
+    # 4) Choose ORTEX finalists (IMPORTANT: best candidates, not first-in-list)
+    finalists = []
+    if ortex_on and ortex_finalists > 0:
+        # Rank by (provisional base_score + structure quality proxies)
+        finalists = sorted(
+            analyzed.values(),
+            key=lambda r: (
+                r.get("base_score", 0),
+                r.get("pressure_score", 0),
+                (r.get("hold_pct") or 0),
+                (r.get("range_pct") or 0),
+                (r.get("dollar_vol") or 0),
+            ),
+            reverse=True
+        )[:ortex_finalists]
+
+        if log_fn:
+            log_fn(f"ORTEX enrich: {len(finalists)} finalists selected.")
+
+    # 5) PASS 2 — ORTEX enrich finalists and recompute
+    for f in finalists:
+        ticker = f["ticker"]
+        try:
+            si = ortex_short_interest_features(ticker, log_fn=log_fn) or {}
+            ctb = ortex_ctb_latest(ticker, log_fn=log_fn)
+            avail = ortex_availability_latest(ticker, log_fn=log_fn)
+
+            f["si_pct_ff"] = si.get("si_pct_ff")
+            f["ctb"] = ctb
+            f["avail"] = avail
+
+            # recompute with borrow data
+            feat = dict(f)
+            feat["si_pct_chg"] = si.get("si_pct_chg")
+
+            base_score, prob, pressure = compute_scores(feat)
+            has_borrow = (ctb is not None and avail is not None)
+            conf = confidence_1_to_10(prob, ortex_on=True, has_borrow=has_borrow)
+
+            f["base_score"] = round(base_score, 2)
+            f["prob"] = round(prob, 4)
+            f["pressure_score"] = round(pressure, 2)
+            f["confidence"] = conf
+
+            # upgrade to true squeeze if confirmed
+            true_sq = is_true_squeeze(feat, ortex_on=True)
+            if true_sq:
+                f["bucket"] = "SQUEEZE"
+                f["subtype"] = setup_subtype(feat, label="TRUE_SQUEEZE")
+            else:
+                f["bucket"] = "MOMENTUM"
+                f["subtype"] = setup_subtype(feat, label="MOMENTUM")
+
+            f["plan"] = trade_plan(feat)
+
+        except Exception:
+            continue
+
+    # 6) Stream rows (after scoring is finalized)
+    #    Always send both buckets; UI will filter tabs.
+    if row_fn:
+        for r in analyzed.values():
+            row_fn(r)
+
+    # 7) Build SQUEEZE + MOMENTUM lists
+    squeezes_true = [r for r in analyzed.values() if r.get("bucket") == "SQUEEZE"]
 
     momentum = [
-        r for r in analyzed
-        if r["bucket"] == "MOMENTUM"
+        r for r in analyzed.values()
+        if r.get("bucket") != "SQUEEZE"
         and (r.get("move_pct") is not None)
         and (r["move_pct"] > 0)
     ]
 
-    # If no true squeezes => create SQUEEZE WATCH list from best pressure setups
-    # (still shows something in SQUEEZE tab every scan)
+    # Always fill SQUEEZE tab:
     if not squeezes_true:
-        candidates_watch = sorted(analyzed, key=lambda r: (r.get("pressure_score", 0), r.get("base_score", 0)), reverse=True)
-        watch = []
-        for r in candidates_watch:
+        # SQUEEZE WATCH based on best pressure-ish + opportunity
+        watch_sorted = sorted(
+            analyzed.values(),
+            key=lambda r: (
+                r.get("pressure_score", 0),
+                r.get("base_score", 0),
+                (r.get("rel_vol") or 0),
+                (r.get("dollar_vol") or 0),
+            ),
+            reverse=True
+        )
+        squeezes = []
+        for r in watch_sorted:
             rr = dict(r)
             rr["bucket"] = "SQUEEZE"
             rr["subtype"] = "squeeze watch"
-            # keep confidence honest in watch mode
             rr["confidence"] = min(int(rr.get("confidence") or 1), 7)
             rr["plan"] = (rr.get("plan") or "") + " (Watchlist: ORTEX confirmation not present.)"
-            watch.append(rr)
-            if len(watch) >= TOP_N_PER_BUCKET:
+            squeezes.append(rr)
+            if len(squeezes) >= TOP_N_PER_BUCKET:
                 break
-        squeezes = watch
     else:
-        squeezes = sorted(squeezes_true, key=lambda r: (r["confidence"], r.get("base_score", 0)), reverse=True)[:TOP_N_PER_BUCKET]
+        squeezes = sorted(
+            squeezes_true,
+            key=lambda r: (r.get("confidence", 0), r.get("base_score", 0)),
+            reverse=True
+        )[:TOP_N_PER_BUCKET]
 
-    momentum = sorted(momentum, key=lambda r: (r["confidence"], r.get("base_score", 0)), reverse=True)[:TOP_N_PER_BUCKET]
+    momentum = sorted(
+        momentum,
+        key=lambda r: (r.get("confidence", 0), r.get("base_score", 0)),
+        reverse=True
+    )[:TOP_N_PER_BUCKET]
 
     meta = {
         "date": date_str,
