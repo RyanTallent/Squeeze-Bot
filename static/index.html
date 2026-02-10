@@ -186,6 +186,11 @@
             <button class="tbtn" id="modeDay" data-mode="day">Day</button>
             <button class="tbtn" id="modeNight" data-mode="night">Night</button>
           </div>
+<div class="toggle" aria-label="ORTEX selector">
+  <button class="tbtn" id="ortexAuto" data-ortex="auto">ORTEX Auto</button>
+  <button class="tbtn" id="ortexOn" data-ortex="on">ORTEX On</button>
+  <button class="tbtn" id="ortexOff" data-ortex="off">ORTEX Off</button>
+</div>
 
           <button class="btn" id="btnScan">Scan Stocks</button>
           <button class="btn secondary" id="btnClear">Clear Log</button>
@@ -285,6 +290,8 @@
   // State
   // -------------------------
   let selectedMode = localStorage.getItem("squeeze_mode") || "auto";
+  let selectedOrtex = localStorage.getItem("squeeze_ortex") || "auto";
+
   let showing = "SQUEEZE";
   let scanId = null;
   let es = null;
@@ -307,6 +314,19 @@
 
     el("pillMode").textContent = `Mode: ${mode}`;
   }
+function setOrtex(v){
+  selectedOrtex = v;
+  localStorage.setItem("squeeze_ortex", v);
+
+  // button UI (only for ortex buttons)
+  document.querySelectorAll(".tbtn[data-ortex]").forEach(b => b.classList.remove("active"));
+  const btn = document.querySelector(`.tbtn[data-ortex="${v}"]`);
+  if(btn) btn.classList.add("active");
+
+  // update pill immediately (backend will later override with actual status)
+  const label = (v === "auto") ? "AUTO" : (v === "on" ? "ON" : "OFF");
+  el("pillOrtex").textContent = `ORTEX: ${label}`;
+}
 
   // -------------------------
   // UI helpers
@@ -416,9 +436,16 @@
   // -------------------------
   // Mode toggle buttons
   // -------------------------
-  document.querySelectorAll(".tbtn").forEach(b => {
-    b.addEventListener("click", () => setMode(b.getAttribute("data-mode")));
-  });
+  // Mode buttons
+document.querySelectorAll(".tbtn[data-mode]").forEach(b => {
+  b.addEventListener("click", () => setMode(b.getAttribute("data-mode")));
+});
+
+// ORTEX buttons
+document.querySelectorAll(".tbtn[data-ortex]").forEach(b => {
+  b.addEventListener("click", () => setOrtex(b.getAttribute("data-ortex")));
+});
+
 
   // -------------------------
   // Scan flow
@@ -436,7 +463,9 @@
     if(es){ try{ es.close(); }catch(e){} es = null; }
 
     const mode = selectedMode || "auto";
-    const resp = await fetch(`/run_scan?mode=${encodeURIComponent(mode)}`, { method:"POST" });
+    const ortex = selectedOrtex || "auto";
+const resp = await fetch(`/run_scan?mode=${encodeURIComponent(mode)}&ortex=${encodeURIComponent(ortex)}`, { method:"POST" });
+
     const data = await resp.json();
     if(!data.ok){
       el("logStatus").textContent = "Error starting scan.";
@@ -626,6 +655,8 @@
   // Boot
   // -------------------------
   setMode(selectedMode);
+  setOrtex(selectedOrtex);
+
   el("pillWindow").textContent = "Window: —";
   el("pillOrtex").textContent = "ORTEX: —";
   el("pillLast").textContent = "Last scan: —";
