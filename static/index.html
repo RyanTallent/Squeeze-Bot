@@ -8,984 +8,625 @@
     :root{
       --bg:#070a10;
       --panel:#0b1220;
+      --panel2:#0e1930;
       --border:#23324d;
       --text:#e7eefc;
       --muted:#93a4bd;
       --green:#48d17d;
       --red:#ff5c5c;
       --yellow:#ffd166;
+      --btn:#1ea34a;
+      --btn2:#143a22;
+      --chip:#101c33;
     }
     *{box-sizing:border-box}
     body{
-      margin:0; font-family: Arial, sans-serif;
-      background: radial-gradient(900px 420px at 50% -50px, rgba(72,209,125,.22), transparent 60%),
-                  radial-gradient(900px 500px at 50% 120%, rgba(72,209,125,.10), transparent 65%),
-                  var(--bg);
+      margin:0;
+      font-family: Arial, sans-serif;
+      background:
+        radial-gradient(900px 420px at 50% -50px, rgba(72,209,125,.22), transparent 60%),
+        radial-gradient(900px 500px at 50% 120%, rgba(72,209,125,.10), transparent 65%),
+        var(--bg);
       color:var(--text);
     }
-    .wrap{max-width:1180px; margin:0 auto; padding:26px 18px 34px;}
-    .title{ text-align:center; font-size:34px; letter-spacing:.4px; margin: 8px 0 16px; }
-    .topbar{
-      display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap;
+    .wrap{max-width:1200px;margin:0 auto;padding:18px}
+    .card{
+      background:linear-gradient(180deg, rgba(14,25,48,.9), rgba(11,18,32,.92));
+      border:1px solid var(--border);
+      border-radius:18px;
+      padding:14px;
+      box-shadow:0 10px 25px rgba(0,0,0,.25);
       margin-bottom:14px;
     }
-    .chip{
-      background: rgba(12,23,43,.65);
-      border:1px solid var(--border);
-      color: var(--muted);
-      padding:7px 10px; border-radius:999px; font-size:13px;
+    .topbar{
+      display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;
     }
-    .chip b{color:var(--text)}
-    .btnrow{display:flex; justify-content:center; gap:10px; margin: 14px 0 18px; flex-wrap:wrap;}
-    button{
-      border:1px solid rgba(255,255,255,.08);
-      background: linear-gradient(180deg, rgba(30,163,74,.95), rgba(22,128,58,.95));
-      color:white; font-weight:800;
-      padding:12px 18px; border-radius:12px;
-      cursor:pointer; min-width:160px;
-      box-shadow: 0 10px 30px rgba(0,0,0,.35);
-    }
-    button.secondary{
-      background: linear-gradient(180deg, rgba(26,43,74,.95), rgba(17,28,49,.95));
-      min-width:140px;
-    }
-    button.mini{
-      min-width:auto; padding:7px 10px; border-radius:10px;
-      font-weight:900; font-size:12px;
-    }
-    button.danger{
-      background: linear-gradient(180deg, rgba(255,92,92,.95), rgba(180,50,50,.95));
+    h1{margin:0;font-size:20px;letter-spacing:.2px}
+    .meta{color:var(--muted);font-size:13px;display:flex;gap:10px;flex-wrap:wrap}
+    .pill{
+      padding:6px 10px; border:1px solid var(--border); border-radius:999px;
+      background:rgba(7,10,16,.45); color:var(--muted); font-size:12px;
     }
 
-    .grid{
-      display:grid;
-      grid-template-columns: 1fr 1.25fr;
-      gap:14px;
-      margin-top: 8px;
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    @media (max-width: 980px){ .grid{grid-template-columns:1fr} }
+
+    .controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .btn{
+      border:none; border-radius:14px; padding:10px 14px;
+      background:var(--btn); color:#04110a; font-weight:800; cursor:pointer;
     }
-    .panel{
-      background: rgba(11,18,32,.72);
+    .btn:disabled{opacity:.55; cursor:not-allowed}
+    .btn.secondary{
+      background:rgba(255,255,255,.06); color:var(--text);
       border:1px solid var(--border);
-      border-radius:18px;
-      overflow:hidden;
-      box-shadow: 0 18px 70px rgba(0,0,0,.35);
-      backdrop-filter: blur(10px);
+      font-weight:700;
     }
-    .panelHead{
-      padding:14px 14px 10px;
-      border-bottom:1px solid rgba(35,50,77,.7);
-      display:flex; align-items:center; justify-content:space-between;
-      gap:10px;
+
+    /* MODE TOGGLE */
+    .toggle{
+      display:flex; gap:6px; padding:6px;
+      border:1px solid var(--border); border-radius:16px;
+      background:rgba(7,10,16,.35);
     }
-    .panelHead .h{font-weight:900; font-size:18px;}
-    .panelHead .s{
-      font-size:13px; color:var(--muted);
-      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-      max-width: 58%;
-      text-align:right;
+    .tbtn{
+      border:1px solid transparent;
+      background:transparent;
+      color:var(--muted);
+      padding:8px 12px;
+      border-radius:12px;
+      cursor:pointer;
+      font-weight:800;
+      font-size:13px;
+      min-width:72px;
     }
-    .log{
-      height: 520px;
-      padding:12px 14px;
-      background: rgba(6,10,18,.65);
-      color:#cfe3ff;
-      overflow:auto;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-      font-size: 12.5px;
-      user-select:text;
+    .tbtn.active{
+      background:rgba(72,209,125,.16);
+      color:var(--text);
+      border:1px solid rgba(72,209,125,.35);
+    }
+
+    .logbox{
+      height:260px; overflow:auto;
+      background:rgba(0,0,0,.25);
+      border:1px solid var(--border);
+      border-radius:14px;
+      padding:10px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size:12px;
+      line-height:1.35;
+      color:#cfe2ff;
       white-space:pre-wrap;
     }
-    .tabs{display:flex; gap:8px; padding:10px 12px;}
+
+    .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
     .tab{
-      padding:8px 10px; border-radius:999px;
+      padding:8px 10px;border-radius:999px;
       border:1px solid var(--border);
-      background: rgba(12,23,43,.55);
+      background:rgba(7,10,16,.35);
       color:var(--muted);
-      cursor:pointer; font-weight:800; font-size:13px;
-      user-select:none;
+      cursor:pointer;
+      font-weight:800;
+      font-size:12px;
     }
     .tab.active{
-      background: rgba(72,209,125,.14);
-      color: var(--text);
-      border-color: rgba(72,209,125,.35);
-    }
-
-    table{width:100%; border-collapse: collapse;}
-    th, td{
-      padding:10px 12px;
-      border-bottom:1px solid rgba(35,50,77,.55);
-      font-size: 13px;
-      vertical-align:top;
-    }
-    th{
-      color: var(--muted);
-      font-weight:900;
-      text-align:left;
-      background: rgba(9,14,25,.35);
-      position: sticky; top: 0;
-      cursor:pointer;
-    }
-    tr:hover td{background: rgba(72,209,125,.06)}
-    .badge{
-      display:inline-block; padding:4px 9px; border-radius:999px;
-      background: rgba(12,23,43,.75);
-      border:1px solid rgba(35,50,77,.7);
-      font-weight:900;
-    }
-    .pos{color: var(--green); font-weight:900}
-    .neg{color: var(--red); font-weight:900}
-    .expand{
-      display:none;
-      padding: 10px 12px 14px;
-      color: var(--muted);
-      background: rgba(6,10,18,.35);
-      border-bottom:1px solid rgba(35,50,77,.55);
-    }
-    .rowOpen + .expand{display:table-row}
-    .rightBody{max-height: 520px; overflow:auto}
-    .footerRow{
-      display:flex; align-items:center; justify-content:space-between;
-      padding: 10px 12px;
-      color: var(--muted);
-    }
-    a {color:#7ddcff; font-weight:900; text-decoration:none}
-
-    .section{ margin-top: 14px; }
-    .sectionBody{ max-height: 520px; overflow:auto; }
-
-    .pill{
-      display:inline-flex; gap:6px; align-items:center;
-      padding:4px 10px; border-radius:999px; font-weight:900; font-size:12px;
-      border:1px solid rgba(255,255,255,.10);
-      background: rgba(12,23,43,.55);
-      margin-right:6px; margin-top:6px;
-      user-select:none;
-    }
-    .pill.good{border-color: rgba(72,209,125,.35); background: rgba(72,209,125,.10)}
-    .pill.warn{border-color: rgba(255,209,102,.35); background: rgba(255,209,102,.10)}
-    .pill.bad{border-color: rgba(255,92,92,.35); background: rgba(255,92,92,.10)}
-    .pill.clickable{cursor:pointer}
-    .muted{color:var(--muted)}
-
-    .modalBack{
-      position:fixed; inset:0;
-      background: rgba(0,0,0,.55);
-      display:none;
-      align-items:center; justify-content:center;
-      padding: 18px;
-      z-index: 9999;
-    }
-    .modal{
-      width: min(720px, 96vw);
-      background: rgba(11,18,32,.95);
-      border:1px solid var(--border);
-      border-radius:18px;
-      box-shadow: 0 22px 90px rgba(0,0,0,.60);
-      overflow:hidden;
-    }
-    .modalHead{
-      padding:14px 14px 10px;
-      border-bottom:1px solid rgba(35,50,77,.7);
-      display:flex; align-items:center; justify-content:space-between;
-      gap:10px;
-    }
-    .modalHead .h{font-weight:900; font-size:18px;}
-    .modalBody{padding:14px}
-    .row{ display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:10px; }
-    .row3{ display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px; margin-bottom:10px; }
-    label{display:block; font-size:12px; color:var(--muted); font-weight:900; margin-bottom:6px}
-    input, textarea, select{
-      width:100%;
-      background: rgba(6,10,18,.65);
-      border:1px solid rgba(35,50,77,.7);
       color:var(--text);
-      border-radius:12px;
-      padding:10px 10px;
-      outline:none;
-      font-size:14px;
+      background:rgba(72,209,125,.12);
+      border-color:rgba(72,209,125,.35);
     }
-    textarea{min-height: 80px; resize: vertical}
-    .modalFoot{
-      padding: 12px 14px;
-      border-top:1px solid rgba(35,50,77,.7);
-      display:flex; align-items:center; justify-content:space-between;
-      gap:10px;
-    }
-    .hint{font-size:12px; color:var(--muted)}
-    .inline{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-    .miniNote{ font-size:12px; color:var(--muted); margin-top:6px; }
 
-    @media (max-width: 980px){
-      .grid{grid-template-columns:1fr}
-      .log{height: 360px}
-      .rightBody{max-height: 360px}
-      .sectionBody{max-height: 420px}
-      .row, .row3{grid-template-columns:1fr}
+    table{width:100%;border-collapse:collapse}
+    th,td{border-bottom:1px solid rgba(35,50,77,.75);padding:10px 8px;font-size:13px;vertical-align:top}
+    th{color:var(--muted);text-align:left;font-weight:800}
+    tr:hover td{background:rgba(255,255,255,.03)}
+    .right{ text-align:right }
+    .small{font-size:12px;color:var(--muted)}
+    .good{color:var(--green);font-weight:800}
+    .bad{color:var(--red);font-weight:800}
+    .warn{color:var(--yellow);font-weight:800}
+
+    .addbtn{
+      padding:7px 10px; border-radius:12px;
+      border:1px solid rgba(72,209,125,.35);
+      background:rgba(72,209,125,.12);
+      color:var(--text);
+      cursor:pointer;
+      font-weight:900;
     }
+
+    .rowexp{
+      margin:10px 0 0 0;
+      padding:10px;
+      border:1px dashed rgba(147,164,189,.35);
+      border-radius:12px;
+      background:rgba(7,10,16,.25);
+      color:#dbe8ff;
+      font-size:12px;
+      display:none;
+      white-space:pre-wrap;
+    }
+
+    .notehead{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center}
+    .select{
+      padding:9px 10px;border-radius:12px;
+      border:1px solid var(--border);
+      background:rgba(7,10,16,.35);
+      color:var(--text);
+      font-weight:800;
+    }
+    .mutedline{color:var(--muted);font-size:12px;margin-top:6px}
   </style>
 </head>
 <body>
   <div class="wrap">
-    <div class="title">Squeeze Bot</div>
 
-    <div class="topbar">
-      <div class="chip">Window: <b id="chipWindow">—</b></div>
-      <div class="chip">ORTEX: <b id="chipOrtex">—</b></div>
-      <div class="chip">Mode: <b id="chipMode">—</b></div>
-      <div class="chip">Last scan: <b id="chipTime">—</b></div>
-      <div class="chip">Report: <a id="reportLink" href="#" target="_blank" style="display:none;">Open</a></div>
+    <div class="card">
+      <div class="topbar">
+        <div>
+          <h1>Short Squeeze Scanner</h1>
+          <div class="meta">
+            <div class="pill" id="pillWindow">Window: —</div>
+            <div class="pill" id="pillOrtex">ORTEX: —</div>
+            <div class="pill" id="pillLast">Last scan: —</div>
+            <div class="pill" id="pillMode">Mode: auto</div>
+            <div class="pill"><a id="pillReport" href="#" style="color:var(--text);text-decoration:none;opacity:.9" target="_blank">Report: —</a></div>
+          </div>
+        </div>
 
-      <div class="chip">
-        Hours (CT): <b>Pre</b> 3:00–8:29 • <b>Reg</b> 8:30–3:00 • <b>AH</b> 3:00–7:00
-      </div>
-    </div>
+        <div class="controls">
+          <div class="toggle" aria-label="Mode selector">
+            <button class="tbtn" id="modeAuto" data-mode="auto">Auto</button>
+            <button class="tbtn" id="modeDay" data-mode="day">Day</button>
+            <button class="tbtn" id="modeNight" data-mode="night">Night</button>
+          </div>
 
-    <!-- Mode explainer -->
-    <div class="panel" style="margin: 10px 0 14px; padding:14px;">
-      <div style="font-weight:900; font-size:16px; margin-bottom:6px;">Scan Settings</div>
-      <div class="muted" id="modeExplainer" style="line-height:1.55;">—</div>
-    </div>
-
-    <div class="btnrow">
-      <button id="scanBtn">Scan Stocks</button>
-      <button id="clearBtn" class="secondary">Clear Log</button>
-
-      <div class="chip" style="display:flex;gap:10px;align-items:center;">
-        <b>Scan</b>
-        <select id="modeSelect" style="width:auto; padding:8px 10px; border-radius:10px; font-weight:900;">
-          <option value="day">DAY (Best Accuracy)</option>
-          <option value="night">NIGHT (Cheaper)</option>
-        </select>
+          <button class="btn" id="btnScan">Scan Stocks</button>
+          <button class="btn secondary" id="btnClear">Clear Log</button>
+        </div>
       </div>
 
-      <div class="chip" style="display:flex;gap:10px;align-items:center;">
-        <b>ORTEX</b>
-        <select id="ortexSelect" style="width:auto; padding:8px 10px; border-radius:10px; font-weight:900;">
-          <option value="auto">AUTO (recommended)</option>
-          <option value="on">ON (force)</option>
-          <option value="off">OFF (force)</option>
-        </select>
+      <div class="mutedline">
+        Hours (CT): Pre 3:00–8:29 • Reg 8:30–3:00 • AH 3:00–7:00
       </div>
     </div>
 
     <div class="grid">
-      <div class="panel">
-        <div class="panelHead">
-          <div class="h">Live Log</div>
-          <div class="s" id="status">Click “Scan Stocks”</div>
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+          <div>
+            <div style="font-weight:900">Live Log</div>
+            <div class="small" id="logStatus">Idle.</div>
+          </div>
         </div>
-        <pre class="log" id="log"></pre>
+        <div class="logbox" id="logBox"></div>
       </div>
 
-      <div class="panel">
-        <div class="panelHead">
-          <div class="h">Stock Scanning Results</div>
-          <div class="s" id="counts">Streaming…</div>
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:10px;flex-wrap:wrap">
+          <div>
+            <div style="font-weight:900">Stock Scanning Results</div>
+            <div class="small" id="countsLine">SQUEEZE: 0 • MOMENTUM: 0 • Showing: SQUEEZE</div>
+          </div>
         </div>
 
         <div class="tabs">
-          <div class="tab active" data-tab="SQUEEZE">SQUEEZE</div>
-          <div class="tab" data-tab="MOMENTUM">MOMENTUM</div>
+          <button class="tab active" id="tabSqueeze">SQUEEZE</button>
+          <button class="tab" id="tabMomentum">MOMENTUM</button>
         </div>
 
-        <div class="rightBody">
+        <div style="overflow:auto;margin-top:8px">
           <table>
             <thead>
               <tr>
-                <th data-sort="ticker">Ticker</th>
-                <th data-sort="confidence">Conf</th>
-                <th data-sort="subtype">Subtype</th>
-                <th data-sort="close">Price</th>
-                <th data-sort="move_pct">Move</th>
-                <th data-sort="dollar_vol">$Vol</th>
-                <th style="width:90px;">Add</th>
+                <th>Ticker</th>
+                <th>Conf</th>
+                <th>Subtype</th>
+                <th class="right">Price</th>
+                <th class="right">Move</th>
+                <th class="right">$Vol</th>
+                <th class="right">Add</th>
               </tr>
             </thead>
-            <tbody id="tbody"></tbody>
+            <tbody id="resultsBody"></tbody>
           </table>
         </div>
 
-        <div class="footerRow">
-          <div>Click a row to expand the plan.</div>
-          <div id="streamState">Idle</div>
-        </div>
+        <div class="rowexp" id="planBox"></div>
+        <div class="small" style="margin-top:8px">Click a row to expand the plan.</div>
       </div>
     </div>
 
-    <!-- NOTEBOOK -->
-    <div class="section panel">
-      <div class="panelHead">
-        <div class="h">Notebook</div>
-        <div class="s" id="nbCounts">Loading…</div>
+    <div class="card">
+      <div class="notehead">
+        <div>
+          <div style="font-weight:900">Notebook</div>
+          <div class="small" id="noteCounts">Total: 0 • Open: 0 • Closed: 0 • View: all</div>
+        </div>
+        <select class="select" id="noteView">
+          <option value="all">all</option>
+          <option value="yesterday">yesterday</option>
+        </select>
       </div>
 
-      <div class="tabs">
-        <div class="tab active" data-nbtab="all">ALL TRADES</div>
-        <div class="tab" data-nbtab="yesterday">YESTERDAY REVIEW</div>
-      </div>
-
-      <div class="sectionBody">
+      <div style="overflow:auto;margin-top:10px">
         <table>
           <thead>
             <tr>
               <th>Ticker</th>
               <th>Setup</th>
               <th>Conf</th>
-              <th>Entry</th>
-              <th>Exit</th>
-              <th>Shares</th>
-              <th>P/L $</th>
-              <th>P/L %</th>
+              <th class="right">Entry</th>
+              <th class="right">Exit</th>
+              <th class="right">Shares</th>
+              <th class="right">P/L $</th>
+              <th class="right">P/L %</th>
               <th>Flags</th>
-              <th>Review</th>
-              <th style="width:140px;">Actions</th>
+              <th class="right">Actions</th>
             </tr>
           </thead>
-          <tbody id="nbTbody"></tbody>
+          <tbody id="noteBody"></tbody>
         </table>
       </div>
 
-      <div class="footerRow">
-        <div class="muted">Click a trade row to expand “Scanner Snapshot”.</div>
-        <div class="muted">Edit uses a modal (safer).</div>
-      </div>
+      <div class="small" style="margin-top:8px">Click a trade row to expand “Scanner Snapshot”.</div>
     </div>
-  </div>
 
-  <!-- ADD TRADE MODAL -->
-  <div class="modalBack" id="addModalBack">
-    <div class="modal">
-      <div class="modalHead">
-        <div class="h" id="addTitle">Add Trade</div>
-        <button class="mini secondary" id="addCloseBtn">Close</button>
-      </div>
-      <div class="modalBody">
-        <div class="row3">
-          <div>
-            <label>Ticker</label>
-            <input id="addTicker" disabled />
-          </div>
-          <div>
-            <label>Entry Price (default = trigger)</label>
-            <input id="addEntry" type="number" step="0.0001" />
-            <div class="miniNote" id="addEntryHint"></div>
-          </div>
-          <div>
-            <label>Shares (required)</label>
-            <input id="addShares" type="number" step="0.01" />
-          </div>
-        </div>
-        <div class="row">
-          <div>
-            <label>Notes (optional)</label>
-            <textarea id="addNotes" placeholder="Why are you taking it? What’s the plan?"></textarea>
-          </div>
-          <div>
-            <label>Plan (from scanner)</label>
-            <textarea id="addPlan" disabled></textarea>
-          </div>
-        </div>
-        <div class="hint">Saved to server (Postgres). In Version 1, user_id defaults to <b>demo</b>.</div>
-      </div>
-      <div class="modalFoot">
-        <div class="hint" id="addError"></div>
-        <div class="inline">
-          <button class="secondary mini" id="addCancelBtn">Cancel</button>
-          <button class="mini" id="addSaveBtn">Save Trade</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- EDIT TRADE MODAL -->
-  <div class="modalBack" id="editModalBack">
-    <div class="modal">
-      <div class="modalHead">
-        <div class="h" id="editTitle">Edit Trade</div>
-        <button class="mini secondary" id="editCloseBtn">Close</button>
-      </div>
-      <div class="modalBody">
-        <div class="row3">
-          <div>
-            <label>Entry Price</label>
-            <input id="editEntry" type="number" step="0.0001" />
-          </div>
-          <div>
-            <label>Exit Price</label>
-            <input id="editExit" type="number" step="0.0001" />
-            <div class="miniNote">Saving an exit will auto-create flags instantly.</div>
-          </div>
-          <div>
-            <label>Shares</label>
-            <input id="editShares" type="number" step="0.01" />
-          </div>
-        </div>
-
-        <div class="row3">
-          <div>
-            <label>Review Tomorrow</label>
-            <input id="editReviewTomorrow" type="checkbox" style="width:auto; transform:scale(1.2);" />
-            <div class="miniNote">Toggle this if you want it to show up in review.</div>
-          </div>
-          <div>
-            <label>Grade (1–10)</label>
-            <input id="editGrade" type="number" min="1" max="10" step="1" />
-            <div class="miniNote">Execution grade (not “did it go up”).</div>
-          </div>
-          <div>
-            <label>P/L Preview</label>
-            <input id="editPnlPreview" disabled />
-            <div class="miniNote" id="editPnlPctPreview"></div>
-          </div>
-        </div>
-
-        <div class="row">
-          <div>
-            <label>Notes</label>
-            <textarea id="editNotes"></textarea>
-          </div>
-          <div>
-            <label>Lesson learned (1 sentence)</label>
-            <textarea id="editLesson" placeholder="What will you do differently next time?"></textarea>
-          </div>
-        </div>
-
-        <div style="margin-top:8px;">
-          <div class="muted" style="font-weight:900; margin-bottom:6px;">Flags (click to toggle / override)</div>
-          <div id="editFlags"></div>
-          <div class="miniNote">These default to auto-flags when you close a trade, but you can override them.</div>
-        </div>
-      </div>
-
-      <div class="modalFoot">
-        <div class="hint" id="editError"></div>
-        <div class="inline">
-          <button class="secondary mini" id="editCancelBtn">Cancel</button>
-          <button class="mini" id="editSaveBtn">Save Changes</button>
-        </div>
-      </div>
-    </div>
   </div>
 
 <script>
-  // ---------- Elements ----------
-  const logEl = document.getElementById("log");
-  const statusEl = document.getElementById("status");
-  const scanBtn = document.getElementById("scanBtn");
-  const clearBtn = document.getElementById("clearBtn");
-  const tbody = document.getElementById("tbody");
-  const countsEl = document.getElementById("counts");
-  const streamStateEl = document.getElementById("streamState");
-
-  const chipWindow = document.getElementById("chipWindow");
-  const chipOrtex = document.getElementById("chipOrtex");
-  const chipMode = document.getElementById("chipMode");
-  const chipTime = document.getElementById("chipTime");
-  const reportLink = document.getElementById("reportLink");
-
-  // Settings
-  const modeSelect = document.getElementById("modeSelect");
-  const ortexSelect = document.getElementById("ortexSelect");
-  const modeExplainer = document.getElementById("modeExplainer");
-
-  // Your ORTEX cost math
-  const ORTEX_CREDITS_PER_SCAN = 93.6;           // 5000 -> 4906.4 means 93.6 spent
-  const USD_PER_CREDIT = 100 / 5000;             // $0.02
-  const ORTEX_USD_PER_SCAN = ORTEX_CREDITS_PER_SCAN * USD_PER_CREDIT; // $1.872
-
-  function refreshExplainer(){
-    const mode = modeSelect.value;     // day/night
-    const oset = ortexSelect.value;    // auto/on/off
-
-    chipMode.textContent = mode.toUpperCase();
-
-    let ortexText = "";
-    let ortexCostText = "";
-
-    if (oset === "off") {
-      ortexText = "OFF (forced)";
-      ortexCostText = "$0.00 ORTEX";
-    } else if (oset === "on") {
-      ortexText = "ON (forced)";
-      ortexCostText = `~$${ORTEX_USD_PER_SCAN.toFixed(2)} per scan (≈ ${ORTEX_CREDITS_PER_SCAN} credits)`;
-    } else {
-      ortexText = "AUTO";
-      ortexCostText = `AUTO = ON only during your ORTEX hours. When ON: ~$${ORTEX_USD_PER_SCAN.toFixed(2)} per scan.`;
-    }
-
-    // optimistic header; real value will be set from logs
-    chipOrtex.textContent = ortexText;
-
-    const modeLine = (mode === "day")
-      ? `<b>DAY</b>: Best accuracy (deep analysis).`
-      : `<b>NIGHT</b>: Cheaper + faster (Polygon-only by default).`;
-
-    const ortexLine = `<b>ORTEX</b>: ${ortexText} • ${ortexCostText}`;
-
-    modeExplainer.innerHTML =
-      `${modeLine}<br>` +
-      `${ortexLine}<br>` +
-      `<span class="muted">Polygon costs depend on your Polygon plan.</span>`;
-  }
-
-  modeSelect.addEventListener("change", refreshExplainer);
-  ortexSelect.addEventListener("change", refreshExplainer);
-
-  // Notebook
-  const nbCounts = document.getElementById("nbCounts");
-  const nbTbody = document.getElementById("nbTbody");
-  let nbTab = "all";
-  let notebookTrades = [];
-
-  // Modals
-  const addModalBack = document.getElementById("addModalBack");
-  const addCloseBtn = document.getElementById("addCloseBtn");
-  const addCancelBtn = document.getElementById("addCancelBtn");
-  const addSaveBtn = document.getElementById("addSaveBtn");
-  const addError = document.getElementById("addError");
-  const addTitle = document.getElementById("addTitle");
-  const addTicker = document.getElementById("addTicker");
-  const addEntry = document.getElementById("addEntry");
-  const addShares = document.getElementById("addShares");
-  const addNotes = document.getElementById("addNotes");
-  const addPlan = document.getElementById("addPlan");
-  const addEntryHint = document.getElementById("addEntryHint");
-
-  const editModalBack = document.getElementById("editModalBack");
-  const editCloseBtn = document.getElementById("editCloseBtn");
-  const editCancelBtn = document.getElementById("editCancelBtn");
-  const editSaveBtn = document.getElementById("editSaveBtn");
-  const editError = document.getElementById("editError");
-  const editTitle = document.getElementById("editTitle");
-  const editEntry = document.getElementById("editEntry");
-  const editExit = document.getElementById("editExit");
-  const editShares = document.getElementById("editShares");
-  const editReviewTomorrow = document.getElementById("editReviewTomorrow");
-  const editGrade = document.getElementById("editGrade");
-  const editNotes = document.getElementById("editNotes");
-  const editLesson = document.getElementById("editLesson");
-  const editFlags = document.getElementById("editFlags");
-  const editPnlPreview = document.getElementById("editPnlPreview");
-  const editPnlPctPreview = document.getElementById("editPnlPctPreview");
-
-  let pausePoll = false;
-  logEl.addEventListener("mousedown", () => { pausePoll = true; });
-  window.addEventListener("mouseup", () => { setTimeout(() => pausePoll = false, 300); });
-
-  // ---------- Scan results ----------
-  let activeTab = "SQUEEZE";
-  let rows = [];
-  let seen = new Set();
-  let sortKey = "confidence";
-  let sortDir = "desc";
+  // -------------------------
+  // State
+  // -------------------------
+  let selectedMode = localStorage.getItem("squeeze_mode") || "auto";
+  let showing = "SQUEEZE";
+  let scanId = null;
   let es = null;
 
+  const results = {
+    SQUEEZE: [],
+    MOMENTUM: []
+  };
+
+  const el = (id) => document.getElementById(id);
+
+  function setMode(mode){
+    selectedMode = mode;
+    localStorage.setItem("squeeze_mode", mode);
+
+    // button UI
+    document.querySelectorAll(".tbtn").forEach(b => b.classList.remove("active"));
+    const btn = document.querySelector(`.tbtn[data-mode="${mode}"]`);
+    if(btn) btn.classList.add("active");
+
+    el("pillMode").textContent = `Mode: ${mode}`;
+  }
+
+  // -------------------------
+  // UI helpers
+  // -------------------------
+  function log(line){
+    const box = el("logBox");
+    box.textContent += (line + "\n");
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function fmtNum(x, nd=2){
+    if(x === null || x === undefined) return "NA";
+    const n = Number(x);
+    if(Number.isNaN(n)) return "NA";
+    return n.toFixed(nd);
+  }
+
   function fmtPct(x){
-    const v = (x ?? 0) * 100;
-    const s = (Math.round(v*10)/10).toFixed(1) + "%";
-    return (v >= 0 ? `<span class="pos">+${s}</span>` : `<span class="neg">${s}</span>`);
-  }
-  function fmtNum(x){
-    if (x === null || x === undefined) return "NA";
+    if(x === null || x === undefined) return "NA";
     const n = Number(x);
-    if (Number.isNaN(n)) return "NA";
-    if (n >= 1_000_000_000) return (n/1_000_000_000).toFixed(2)+"B";
-    if (n >= 1_000_000) return (n/1_000_000).toFixed(2)+"M";
-    if (n >= 1_000) return (n/1_000).toFixed(2)+"K";
-    return String(Math.round(n));
+    if(Number.isNaN(n)) return "NA";
+    const p = n * 100;
+    const sign = p > 0 ? "+" : "";
+    return sign + p.toFixed(1) + "%";
   }
-  function money(x){
-    if (x === null || x === undefined) return "—";
+
+  function fmtMoneyInt(x){
+    if(x === null || x === undefined) return "NA";
     const n = Number(x);
-    if (Number.isNaN(n)) return "—";
-    const sign = n >= 0 ? "+" : "-";
-    return sign + "$" + Math.abs(n).toFixed(2);
-  }
-  function pct2(x){
-    if (x === null || x === undefined) return "—";
-    const n = Number(x);
-    if (Number.isNaN(n)) return "—";
-    const v = n * 100;
-    const sign = v >= 0 ? "+" : "-";
-    return sign + Math.abs(v).toFixed(2) + "%";
-  }
-  function clsForFlag(level){
-    if (level === "good") return "good";
-    if (level === "warn") return "warn";
-    return "bad";
+    if(Number.isNaN(n)) return "NA";
+    return Math.round(n).toLocaleString();
   }
 
-  function setTab(tab){
-    activeTab = tab;
-    document.querySelectorAll(".tab[data-tab]").forEach(t=>{
-      t.classList.toggle("active", t.dataset.tab === tab);
-    });
-    renderScan();
+  function renderCounts(){
+    el("countsLine").textContent =
+      `SQUEEZE: ${results.SQUEEZE.length} • MOMENTUM: ${results.MOMENTUM.length} • Showing: ${showing}`;
   }
-  document.querySelectorAll(".tab[data-tab]").forEach(t=>{
-    t.addEventListener("click", ()=>setTab(t.dataset.tab));
-  });
 
-  document.querySelectorAll("th[data-sort]").forEach(th=>{
-    th.addEventListener("click", ()=>{
-      const key = th.dataset.sort;
-      if (sortKey === key) sortDir = (sortDir === "asc" ? "desc" : "asc");
-      else { sortKey = key; sortDir = "desc"; }
-      renderScan();
-    });
-  });
-
-  function renderScan(){
-    let view = rows.filter(r => r.bucket === activeTab);
-
-    view.sort((a,b)=>{
-      const av = a[sortKey];
-      const bv = b[sortKey];
-      if (av === undefined || av === null) return 1;
-      if (bv === undefined || bv === null) return -1;
-
-      if (typeof av === "string") {
-        return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
-      }
-      return sortDir === "asc" ? (av - bv) : (bv - av);
-    });
-
-    tbody.innerHTML = "";
-    for (const r of view){
+  function renderResults(){
+    renderCounts();
+    const body = el("resultsBody");
+    body.innerHTML = "";
+    const list = results[showing] || [];
+    for(const r of list){
       const tr = document.createElement("tr");
+      tr.style.cursor = "pointer";
       tr.innerHTML = `
-        <td><b>${r.ticker}</b></td>
-        <td><span class="badge">${r.confidence}</span></td>
+        <td><b>${r.ticker || ""}</b></td>
+        <td>${r.confidence ?? ""}</td>
         <td>${r.subtype || ""}</td>
-        <td>${(r.close ?? 0).toFixed ? (r.close ?? 0).toFixed(2) : (r.close ?? "NA")}</td>
-        <td>${fmtPct(r.move_pct)}</td>
-        <td>${fmtNum(r.dollar_vol)}</td>
-        <td><button class="mini" data-add="${r.ticker}">➕ Add</button></td>
+        <td class="right">${fmtNum(r.close,2)}</td>
+        <td class="right">${fmtPct(r.move_pct)}</td>
+        <td class="right">${fmtMoneyInt(r.dollar_vol)}</td>
+        <td class="right"><button class="addbtn" data-t="${r.ticker}">➕ Add</button></td>
       `;
-
-      const ex = document.createElement("tr");
-      ex.className = "expand";
-      ex.innerHTML = `
-        <td colspan="7">
-          <div style="margin-bottom:6px;"><b>Plan:</b> ${r.plan || ""}</div>
-          <div>
-            <span class="badge">Trigger</span> ${(r.trigger ?? 0).toFixed(4)}&nbsp;
-            <span class="badge">Stop</span> ${(r.stop ?? 0).toFixed(4)}&nbsp;
-            <span class="badge">RelVol</span> ${((r.rel_vol ?? 0).toFixed ? (r.rel_vol ?? 0).toFixed(2) : "NA")}&nbsp;
-            <span class="badge">Range</span> ${fmtPct(r.range_pct)}&nbsp;
-            <span class="badge">Hold</span> ${((r.hold_pct ?? 0).toFixed ? (r.hold_pct ?? 0).toFixed(2) : "NA")}
-          </div>
-        </td>
-      `;
-
-      tr.addEventListener("click", (ev)=>{
-        if (ev.target && ev.target.dataset && ev.target.dataset.add) return;
-        tr.classList.toggle("rowOpen");
-        ex.style.display = tr.classList.contains("rowOpen") ? "table-row" : "none";
+      tr.addEventListener("click", (e) => {
+        // don't toggle plan if clicking Add
+        if(e.target && e.target.matches("button.addbtn")) return;
+        const planBox = el("planBox");
+        planBox.style.display = "block";
+        planBox.textContent =
+          `${r.ticker} — ${r.subtype}\n\n` +
+          (r.plan || "(no plan)") + "\n\n" +
+          `Trigger: ${fmtNum(r.trigger,4)} | Stop: ${fmtNum(r.stop,4)}\n` +
+          `Range: ${fmtPct(r.range_pct)} | Hold: ${fmtPct(r.hold_pct)} | RelVol: ${fmtNum(r.rel_vol,2)}\n` +
+          `SI%: ${fmtNum(r.si_pct_ff,1)} | CTB: ${fmtNum(r.ctb,1)} | Avail: ${fmtMoneyInt(r.avail)}`
       });
-
-      tr.querySelector('button[data-add]')?.addEventListener("click", (ev)=>{
-        ev.stopPropagation();
-        openAddModal(r);
-      });
-
-      tbody.appendChild(tr);
-      tbody.appendChild(ex);
+      body.appendChild(tr);
     }
 
-    const sq = rows.filter(r=>r.bucket==="SQUEEZE").length;
-    const mo = rows.filter(r=>r.bucket==="MOMENTUM").length;
-    countsEl.textContent = `SQUEEZE: ${sq} • MOMENTUM: ${mo} • Showing: ${activeTab}`;
-  }
+    // hook Add buttons
+    body.querySelectorAll("button.addbtn").forEach(btn => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const tkr = btn.getAttribute("data-t");
+        const row = (results.SQUEEZE.concat(results.MOMENTUM)).find(x => x.ticker === tkr);
+        if(!row) return;
 
-  // ---------- Scan ----------
-  async function startScan(){
-    rows = [];
-    seen = new Set();
-    renderScan();
+        const entry = prompt(`Entry price for ${tkr}?`, row.close ? String(row.close) : "");
+        if(entry === null) return;
+        const shares = prompt(`Shares for ${tkr}?`, "100");
+        if(shares === null) return;
 
-    reportLink.style.display = "none";
-    reportLink.href = "#";
-
-    chipTime.textContent = new Date().toLocaleTimeString();
-    statusEl.textContent = "Starting scan…";
-    streamStateEl.textContent = "Connecting…";
-    logEl.textContent = "";
-
-    const mode = modeSelect.value;
-    const ortex = ortexSelect.value;
-
-    chipMode.textContent = mode.toUpperCase();
-    chipOrtex.textContent = (ortex === "on") ? "ON (forced)" : (ortex === "off" ? "OFF (forced)" : "AUTO");
-
-    const res = await fetch(`/run_scan?mode=${encodeURIComponent(mode)}&ortex=${encodeURIComponent(ortex)}`, {
-      method: "POST"
-    });
-
-    const data = await res.json();
-    const scanId = data.scan_id;
-
-    window._lastScanId = scanId;
-    window._lastScanDate = new Date().toISOString();
-
-    if (es) es.close();
-    es = new EventSource(`/stream/${scanId}`);
-
-    es.addEventListener("log", (e)=>{
-      if (pausePoll) return;
-      const j = JSON.parse(e.data);
-      logEl.textContent += j.line + "\n";
-      logEl.scrollTop = logEl.scrollHeight;
-
-      if (j.line.includes("Market window:")) {
-        const m = j.line.split("Market window:")[1].trim();
-        // keep "AFTERHOURS (LAST)" not just "AFTERHOURS"
-        chipWindow.textContent = m.replace(/\s*\(.*$/, "").trim();
-      }
-      if (j.line.includes("ORTEX mode:")) {
-        const isOn = j.line.includes("ORTEX mode: ON");
-        chipOrtex.textContent = isOn ? "ON" : "OFF";
-      }
-      if (j.line.includes("Mode:")) {
-        const mm = j.line.split("Mode:")[1].trim().split(" ")[0];
-        chipMode.textContent = mm.toUpperCase();
-      }
-
-      statusEl.textContent = "Running…";
-      streamStateEl.textContent = "Streaming…";
-    });
-
-    es.addEventListener("row", (e)=>{
-      const r = JSON.parse(e.data);
-      if (!seen.has(r.ticker)){
-        rows.push(r);
-        seen.add(r.ticker);
-      } else {
-        const idx = rows.findIndex(x=>x.ticker===r.ticker);
-        if (idx >= 0) rows[idx] = r;
-      }
-      renderScan();
-    });
-
-    es.addEventListener("done", (e)=>{
-      const j = JSON.parse(e.data);
-      statusEl.textContent = j.ok ? "Done." : "Done (errors).";
-      streamStateEl.textContent = "Completed";
-
-      if (j.report_url) {
-        reportLink.href = j.report_url;
-        reportLink.style.display = "inline";
-      }
-      if (es) es.close();
-    });
-
-    es.onerror = ()=>{
-      streamStateEl.textContent = "Stream error (auto reconnect)…";
-    };
-  }
-
-  async function clearLog(){
-    await fetch("/clear_log", {method:"POST"});
-    logEl.textContent = "";
-    statusEl.textContent = "Log cleared.";
-  }
-
-  scanBtn.addEventListener("click", startScan);
-  clearBtn.addEventListener("click", clearLog);
-
-  // ---------- Notebook ----------
-  function setNbTab(tab){
-    nbTab = tab;
-    document.querySelectorAll(".tab[data-nbtab]").forEach(t=>{
-      t.classList.toggle("active", t.dataset.nbtab === tab);
-    });
-    loadNotebook();
-  }
-  document.querySelectorAll(".tab[data-nbtab]").forEach(t=>{
-    t.addEventListener("click", ()=>setNbTab(t.dataset.nbtab));
-  });
-
-  async function loadNotebook(){
-    nbCounts.textContent = "Loading…";
-    const res = await fetch(`/api/trades?view=${encodeURIComponent(nbTab)}&user_id=demo`);
-    const data = await res.json();
-    notebookTrades = data.trades || [];
-    renderNotebook();
-  }
-
-  function safeJson(x){
-    if (!x) return null;
-    if (Array.isArray(x)) return x;
-    try { return JSON.parse(x); } catch(e){ return null; }
-  }
-
-  function renderNotebook(){
-    nbTbody.innerHTML = "";
-    const openCount = notebookTrades.filter(t => t.exit_price === null || t.exit_price === undefined).length;
-    const closedCount = notebookTrades.length - openCount;
-    nbCounts.textContent = `Total: ${notebookTrades.length} • Open: ${openCount} • Closed: ${closedCount} • View: ${nbTab}`;
-
-    for (const t of notebookTrades){
-      const tr = document.createElement("tr");
-      const setup = `${t.bucket || ""} • ${t.subtype || ""}`.trim();
-
-      const flags = safeJson(t.review_flags) || safeJson(t.auto_flags) || [];
-      const flagsHtml = flags.slice(0, 3).map(f=>{
-        const cls = clsForFlag(f.level);
-        return `<span class="pill ${cls}">${f.icon} ${f.label}</span>`;
-      }).join("");
-      const more = flags.length > 3 ? `<span class="pill warn">+${flags.length-3} more</span>` : "";
-
-      tr.innerHTML = `
-        <td><b>${t.ticker}</b></td>
-        <td>${setup}</td>
-        <td><span class="badge">${t.confidence ?? "—"}</span></td>
-        <td>${t.entry_price?.toFixed ? t.entry_price.toFixed(4) : (t.entry_price ?? "—")}</td>
-        <td>${t.exit_price?.toFixed ? t.exit_price.toFixed(4) : "—"}</td>
-        <td>${t.shares ?? "—"}</td>
-        <td>${t.pnl_dollars === null || t.pnl_dollars === undefined ? "—" : money(t.pnl_dollars)}</td>
-        <td>${t.pnl_pct === null || t.pnl_pct === undefined ? "—" : pct2(t.pnl_pct)}</td>
-        <td>${flagsHtml}${more}</td>
-        <td>${t.review_tomorrow ? `<span class="pill warn">⚠️ Review</span>` : `<span class="pill good">✅ Good</span>`}</td>
-        <td>
-          <button class="mini secondary" data-edit="${t.id}">Edit</button>
-          <button class="mini danger" data-del="${t.id}">Delete</button>
-        </td>
-      `;
-
-      const ex = document.createElement("tr");
-      ex.className = "expand";
-      ex.innerHTML = `
-        <td colspan="11">
-          <div style="margin-bottom:6px;"><b>Plan:</b> ${t.plan || ""}</div>
-          <div class="muted" style="font-weight:900; margin: 6px 0;">Scanner Snapshot</div>
-          <div>
-            <span class="badge">Trigger</span> ${(t.trigger ?? 0).toFixed ? (t.trigger ?? 0).toFixed(4) : (t.trigger ?? "NA")}&nbsp;
-            <span class="badge">Stop</span> ${(t.stop ?? 0).toFixed ? (t.stop ?? 0).toFixed(4) : (t.stop ?? "NA")}&nbsp;
-            <span class="badge">Scan Price</span> ${(t.scan_close ?? 0).toFixed ? (t.scan_close ?? 0).toFixed(4) : (t.scan_close ?? "NA")}&nbsp;
-            <span class="badge">Move</span> ${fmtPct(t.move_pct)}&nbsp;
-            <span class="badge">$Vol</span> ${fmtNum(t.dollar_vol)}&nbsp;
-            <span class="badge">Range</span> ${fmtPct(t.range_pct)}&nbsp;
-            <span class="badge">Hold</span> ${(t.hold_pct ?? 0).toFixed ? (t.hold_pct ?? 0).toFixed(2) : (t.hold_pct ?? "NA")}&nbsp;
-            <span class="badge">RelVol</span> ${(t.rel_vol ?? 0).toFixed ? (t.rel_vol ?? 0).toFixed(2) : (t.rel_vol ?? "NA")}
-          </div>
-        </td>
-      `;
-
-      tr.addEventListener("click", (ev)=>{
-        if (ev.target && ev.target.dataset && (ev.target.dataset.edit || ev.target.dataset.del)) return;
-        tr.classList.toggle("rowOpen");
-        ex.style.display = tr.classList.contains("rowOpen") ? "table-row" : "none";
-      });
-
-      tr.querySelector('button[data-del]')?.addEventListener("click", async (ev)=>{
-        ev.stopPropagation();
-        const id = ev.target.dataset.del;
-        if (!confirm("Delete this trade? This cannot be undone.")) return;
-        await fetch(`/api/trades/${id}?user_id=demo`, { method: "DELETE" });
+        await createTradeFromRow(row, entry, shares);
         await loadNotebook();
       });
+    });
+  }
 
-      // NOTE: Edit modal behavior kept out for brevity — your backend already supports it.
-      tr.querySelector('button[data-edit]')?.addEventListener("click", (ev)=>{
-        ev.stopPropagation();
-        alert("Edit modal is still in your old file. If you want, we’ll paste it back next.");
+  // -------------------------
+  // Tabs
+  // -------------------------
+  el("tabSqueeze").addEventListener("click", () => {
+    showing = "SQUEEZE";
+    el("tabSqueeze").classList.add("active");
+    el("tabMomentum").classList.remove("active");
+    renderResults();
+  });
+
+  el("tabMomentum").addEventListener("click", () => {
+    showing = "MOMENTUM";
+    el("tabMomentum").classList.add("active");
+    el("tabSqueeze").classList.remove("active");
+    renderResults();
+  });
+
+  // -------------------------
+  // Mode toggle buttons
+  // -------------------------
+  document.querySelectorAll(".tbtn").forEach(b => {
+    b.addEventListener("click", () => setMode(b.getAttribute("data-mode")));
+  });
+
+  // -------------------------
+  // Scan flow
+  // -------------------------
+  async function runScan(){
+    el("btnScan").disabled = true;
+    el("logStatus").textContent = "Running…";
+    el("planBox").style.display = "none";
+    el("planBox").textContent = "";
+    results.SQUEEZE = [];
+    results.MOMENTUM = [];
+    renderResults();
+
+    // close old stream
+    if(es){ try{ es.close(); }catch(e){} es = null; }
+
+    const mode = selectedMode || "auto";
+    const resp = await fetch(`/run_scan?mode=${encodeURIComponent(mode)}`, { method:"POST" });
+    const data = await resp.json();
+    if(!data.ok){
+      el("logStatus").textContent = "Error starting scan.";
+      el("btnScan").disabled = false;
+      return;
+    }
+
+    scanId = data.scan_id;
+    el("pillLast").textContent = `Last scan: ${new Date().toLocaleTimeString()}`;
+    el("pillMode").textContent = `Mode: ${data.mode || mode}`;
+
+    // open SSE
+    es = new EventSource(`/stream/${scanId}`);
+
+    es.addEventListener("log", (ev) => {
+      try{
+        const j = JSON.parse(ev.data);
+        log(j.line || ev.data);
+      }catch(e){
+        log(ev.data);
+      }
+    });
+
+    es.addEventListener("row", (ev) => {
+      let r;
+      try{ r = JSON.parse(ev.data); }catch(e){ return; }
+      const bucket = (r.bucket || "").toUpperCase() === "SQUEEZE" ? "SQUEEZE" : "MOMENTUM";
+
+      // keep only top 5 coming from backend; still safety-cap here
+      const arr = results[bucket];
+      arr.push(r);
+      results[bucket] = arr.slice(0,5);
+
+      renderResults();
+    });
+
+    es.addEventListener("done", (ev) => {
+      let j = {};
+      try{ j = JSON.parse(ev.data); }catch(e){}
+      el("logStatus").textContent = j.ok ? "Done." : "Done (error).";
+      el("btnScan").disabled = false;
+
+      if(j.report_url){
+        el("pillReport").textContent = "Report: Open";
+        el("pillReport").href = j.report_url;
+      }else{
+        el("pillReport").textContent = "Report: —";
+        el("pillReport").href = "#";
+      }
+
+      // Leave stream open for a second; then close
+      setTimeout(() => { if(es){ try{ es.close(); }catch(e){} es=null; } }, 1200);
+    });
+  }
+
+  el("btnScan").addEventListener("click", runScan);
+
+  // -------------------------
+  // Clear log
+  // -------------------------
+  el("btnClear").addEventListener("click", async () => {
+    await fetch("/clear_log", { method:"POST" });
+    el("logBox").textContent = "";
+    el("logStatus").textContent = "Cleared.";
+  });
+
+  // -------------------------
+  // Notebook
+  // -------------------------
+  async function loadNotebook(){
+    const view = el("noteView").value;
+    const resp = await fetch(`/api/trades?view=${encodeURIComponent(view)}&user_id=demo`);
+    const data = await resp.json();
+    if(!data.ok) return;
+
+    const rows = data.trades || [];
+    const total = rows.length;
+    const open = rows.filter(r => r.exit_price == null).length;
+    const closed = total - open;
+
+    el("noteCounts").textContent = `Total: ${total} • Open: ${open} • Closed: ${closed} • View: ${view}`;
+
+    const body = el("noteBody");
+    body.innerHTML = "";
+
+    for(const t of rows){
+      const pnlD = t.pnl_dollars;
+      const pnlP = t.pnl_pct;
+
+      const pnlDStr = (pnlD == null) ? "—" : (pnlD >= 0 ? "+" : "") + pnlD.toFixed(2);
+      const pnlPStr = (pnlP == null) ? "—" : (pnlP >= 0 ? "+" : "") + (pnlP*100).toFixed(1) + "%";
+
+      const flags = (() => {
+        try{ return JSON.parse(t.review_flags || "[]"); }catch(e){ return []; }
+      })();
+
+      const flagsStr = (flags || []).map(f => `${f.icon||""} ${f.label||""}`.trim()).join(" • ");
+      const tr = document.createElement("tr");
+      tr.style.cursor = "pointer";
+      tr.innerHTML = `
+        <td><b>${t.ticker}</b></td>
+        <td>${t.subtype || ""}</td>
+        <td>${t.confidence ?? ""}</td>
+        <td class="right">${t.entry_price != null ? Number(t.entry_price).toFixed(2) : "—"}</td>
+        <td class="right">${t.exit_price != null ? Number(t.exit_price).toFixed(2) : "—"}</td>
+        <td class="right">${t.shares != null ? Number(t.shares).toFixed(0) : "—"}</td>
+        <td class="right">${pnlDStr}</td>
+        <td class="right">${pnlPStr}</td>
+        <td>${flagsStr || ""}</td>
+        <td class="right">
+          ${t.exit_price == null ? `<button class="addbtn" data-close="${t.id}">Close</button>` : ""}
+        </td>
+      `;
+
+      tr.addEventListener("click", (e) => {
+        if(e.target && e.target.matches("button")) return;
+        const planBox = el("planBox");
+        planBox.style.display = "block";
+        planBox.textContent =
+          `TRADE ${t.ticker}\n\n` +
+          `Setup: ${t.subtype || ""} | Conf: ${t.confidence ?? ""}\n` +
+          `Entry: ${t.entry_price} @ ${t.entry_time_ct}\n` +
+          `Exit: ${t.exit_price ?? "—"} @ ${t.exit_time_ct ?? "—"}\n\n` +
+          `Scanner Snapshot:\n` +
+          `Trigger: ${t.trigger ?? "—"} | Stop: ${t.stop ?? "—"}\n` +
+          `Move: ${t.move_pct ?? "—"} | $Vol: ${t.dollar_vol ?? "—"}\n` +
+          `Range: ${t.range_pct ?? "—"} | Hold: ${t.hold_pct ?? "—"} | RelVol: ${t.rel_vol ?? "—"}\n` +
+          `SI%: ${t.si_pct_ff ?? "—"} | CTB: ${t.ctb ?? "—"} | Avail: ${t.avail ?? "—"}\n\n` +
+          (t.plan || "");
       });
 
-      nbTbody.appendChild(tr);
-      nbTbody.appendChild(ex);
-    }
-  }
-
-  // ---------- Add Modal ----------
-  let pendingScanRow = null;
-
-  function openAddModal(scanRow){
-    pendingScanRow = scanRow;
-    addError.textContent = "";
-    addTitle.textContent = `Add Trade • ${scanRow.ticker}`;
-    addTicker.value = scanRow.ticker;
-
-    const trig = scanRow.trigger ?? scanRow.close ?? 0;
-    addEntry.value = trig ? Number(trig).toFixed(4) : "";
-    addEntryHint.textContent = `Trigger: ${(scanRow.trigger ?? 0).toFixed(4)} • Stop: ${(scanRow.stop ?? 0).toFixed(4)}`;
-
-    addShares.value = "";
-    addNotes.value = "";
-    addPlan.value = scanRow.plan || "";
-
-    addModalBack.style.display = "flex";
-  }
-  function closeAddModal(){
-    addModalBack.style.display = "none";
-    pendingScanRow = null;
-  }
-  addCloseBtn.addEventListener("click", closeAddModal);
-  addCancelBtn.addEventListener("click", closeAddModal);
-  addModalBack.addEventListener("click", (e)=>{ if (e.target === addModalBack) closeAddModal(); });
-
-  addSaveBtn.addEventListener("click", async ()=>{
-    addError.textContent = "";
-    if (!pendingScanRow) return;
-
-    const entry = Number(addEntry.value);
-    const shares = Number(addShares.value);
-    if (!entry || entry <= 0){
-      addError.textContent = "Entry price must be > 0.";
-      return;
-    }
-    if (!shares || shares <= 0){
-      addError.textContent = "Shares must be > 0.";
-      return;
+      body.appendChild(tr);
     }
 
+    // Close buttons
+    body.querySelectorAll("button[data-close]").forEach(btn => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const id = btn.getAttribute("data-close");
+        const px = prompt("Exit price?", "");
+        if(px === null) return;
+        await fetch(`/api/trades/${id}?user_id=demo`, {
+          method:"PATCH",
+          headers:{ "Content-Type":"application/json" },
+          body: JSON.stringify({ exit_price: px })
+        });
+        await loadNotebook();
+      });
+    });
+  }
+
+  async function createTradeFromRow(row, entryPrice, shares){
     const payload = {
       user_id: "demo",
-      scan_id: window._lastScanId || null,
-      scan_date_ct: window._lastScanDate || null,
+      scan_id: scanId,
+      scan_date_ct: null,
 
-      ticker: pendingScanRow.ticker,
-      bucket: pendingScanRow.bucket,
-      subtype: pendingScanRow.subtype,
-      confidence: pendingScanRow.confidence,
-      plan: pendingScanRow.plan,
+      ticker: row.ticker,
+      bucket: row.bucket,
+      subtype: row.subtype,
+      confidence: row.confidence,
+      plan: row.plan,
 
-      trigger: pendingScanRow.trigger,
-      stop: pendingScanRow.stop,
-      scan_close: pendingScanRow.close,
-      move_pct: pendingScanRow.move_pct,
-      dollar_vol: pendingScanRow.dollar_vol,
-      range_pct: pendingScanRow.range_pct,
-      hold_pct: pendingScanRow.hold_pct,
-      rel_vol: pendingScanRow.rel_vol,
+      trigger: row.trigger,
+      stop: row.stop,
+      scan_close: row.close,
+      move_pct: row.move_pct,
+      dollar_vol: row.dollar_vol,
+      range_pct: row.range_pct,
+      hold_pct: row.hold_pct,
+      rel_vol: row.rel_vol,
 
-      entry_price: entry,
-      shares: shares,
-      notes: addNotes.value || "",
-      review_tomorrow: false
+      entry_price: entryPrice,
+      shares: shares
     };
 
-    const res = await fetch("/api/trades", {
-      method: "POST",
-      headers: {"Content-Type":"application/json"},
+    await fetch("/api/trades", {
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
       body: JSON.stringify(payload)
     });
-    const data = await res.json();
-    if (!data.ok){
-      addError.textContent = data.detail || "Could not save trade.";
-      return;
-    }
+  }
 
-    closeAddModal();
-    await loadNotebook();
-  });
+  el("noteView").addEventListener("change", loadNotebook);
 
-  // ---------- Init ----------
-  window.addEventListener("load", ()=>{
-    refreshExplainer();
-    renderScan();
-    loadNotebook();
-  });
+  // -------------------------
+  // Boot
+  // -------------------------
+  setMode(selectedMode);
+  el("pillWindow").textContent = "Window: —";
+  el("pillOrtex").textContent = "ORTEX: —";
+  el("pillLast").textContent = "Last scan: —";
+  el("pillReport").textContent = "Report: —";
+  el("pillReport").href = "#";
+
+  // load notebook once on page load
+  loadNotebook().catch(()=>{});
 </script>
 </body>
 </html>
