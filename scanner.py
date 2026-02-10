@@ -643,6 +643,9 @@ def run_scan(log_fn=None, row_fn=None) -> str | None:
         log_fn(f"Date: {date_str}")
         log_fn(f"Market window: {window} ({w_start.strftime('%H:%M')}–{w_end.strftime('%H:%M')} CT)")
         log_fn(f"ORTEX mode: {'ON' if ortex_on else 'OFF'} (ON only 7:30AM–4:00PM CT)")
+if log_fn:
+    log_fn(f"POLYGON key present: {bool(POLYGON_KEY)}")
+    log_fn("Fetching Polygon snapshot...")
 
     snap = get_snapshot_all_tickers(log_fn=log_fn)
     if log_fn:
