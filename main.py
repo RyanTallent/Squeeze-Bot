@@ -225,13 +225,14 @@ def pnl_calc(entry_price, exit_price, shares):
 # ---------------------------
 # Scanner thread
 # ---------------------------
-def do_scan(scan_id: str):
+def do_scan(scan_id: str, mode: str):
     try:
         log_line(scan_id, "Scanner thread started.")
 
         html_path = scanner.run_scan(
             log_fn=lambda m: log_line(scan_id, m),
             row_fn=lambda row: publish(scan_id, "row", row),
+            mode=mode,
         )
 
         with STATE_LOCK:
@@ -268,7 +269,12 @@ def home():
 
 
 @app.post("/run_scan")
-def run_scan():
+def run_scan(payload: dict = None):
+    payload = payload or {}
+    mode = (payload.get("mode") or "day").lower().strip()
+    if mode not in ("day", "night"):
+        mode = "day"
+
     scan_id = str(uuid.uuid4())
     started = datetime.now(timezone.utc).isoformat()
 
@@ -280,12 +286,13 @@ def run_scan():
             "started_utc": started,
         }
 
-    publish(scan_id, "meta", {"scan_id": scan_id, "started_utc": started})
+    publish(scan_id, "meta", {"scan_id": scan_id, "started_utc": started, "mode": mode})
 
-    t = threading.Thread(target=do_scan, args=(scan_id,), daemon=True)
+    t = threading.Thread(target=do_scan, args=(scan_id, mode), daemon=True)
     t.start()
 
     return JSONResponse({"ok": True, "scan_id": scan_id})
+
 
 
 @app.get("/stream/{scan_id}")
