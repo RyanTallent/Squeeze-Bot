@@ -7,10 +7,15 @@ import traceback
 from pathlib import Path
 from datetime import datetime, timezone, timedelta, date
 
-from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import (
+    FileResponse,
+    JSONResponse,
+    RedirectResponse,
+    StreamingResponse,
+    PlainTextResponse,
+)
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import StreamingResponse
 
 import scanner
 
@@ -26,6 +31,15 @@ except Exception:
     CT_TZ = timezone(timedelta(hours=-6))
 
 app = FastAPI()
+
+@app.get("/", include_in_schema=False)
+async def root():
+    return RedirectResponse(url="/static/index.html")
+
+@app.head("/", include_in_schema=False)
+async def root_head(request: Request):
+    return PlainTextResponse("OK")
+
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
