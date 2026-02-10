@@ -105,16 +105,24 @@ def compute_flags(t: dict) -> list[dict]:
     except Exception:
         return []
 
-def trades_select(view: str, user_id: str) -> list[dict]:
+def trades_select(view: str, user_id: str | None) -> list[dict]:
     view = (view or "all").lower().strip()
     if view not in ("all", "yesterday"):
         view = "all"
 
-    where = "WHERE user_id = %s"
-    params = [user_id]
+    where = ""
+    params = []
+
+    # only filter if user_id was provided
+    if user_id:
+        where = "WHERE user_id = %s"
+        params.append(user_id)
 
     if view == "yesterday":
-        where += " AND scan_date_ct = %s"
+        if where:
+            where += " AND scan_date_ct = %s"
+        else:
+            where = "WHERE scan_date_ct = %s"
         params.append(yesterday_ct_date())
 
     sql = f"""
@@ -143,10 +151,18 @@ def trades_select(view: str, user_id: str) -> list[dict]:
             cur.execute(sql, params)
             rows = cur.fetchall()
 
-    # normalize JSON fields
     for r in rows:
-        r["review_flags"] = json.dumps(compute_flags(r))
+        # keep it always JSON-string for UI
+        try:
+            if r.get("review_flags") is None:
+                r["review_flags"] = "[]"
+            elif not isinstance(r["review_flags"], str):
+                r["review_flags"] = json.dumps(r["review_flags"])
+        except Exception:
+            r["review_flags"] = "[]"
+
     return rows
+
 
 
 # -------------------- FastAPI app --------------------
@@ -429,29 +445,32 @@ def _sse_response(gen_fn):
 
 
 # -------------------- TRADES API (THIS FIXES NOTEBOOK) --------------------
+# -------------------- TRADES API (NOTEBOOK) --------------------
 @app.get("/api/trades")
-def api_get_trades(view: str = "all", user_id: str = "demo"):
+def api_get_trades(view: str = "all", user_id: str | None = None):
+    """
+    If user_id is not provided, return ALL trades (single-user app behavior).
+    """
     try:
         rows = trades_select(view=view, user_id=user_id)
         return {"ok": True, "trades": rows}
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=500)
 
+
 @app.post("/api/trades")
 async def api_create_trade(request: Request):
     payload = await request.json()
 
-    user_id = payload.get("user_id") or "demo"
+    # If UI doesn't send user_id, store under "default"
+    user_id = payload.get("user_id") or "default"
     trade_id = str(uuid.uuid4())
 
-    # prefer scan meta date if provided
     scan_date_ct = payload.get("scan_date_ct") or (STATE.get("meta", {}).get("date") if STATE else None) or ct_date()
+    entry_time_ct = payload.get("entry_time_ct") or now_ct_str()
 
     entry_price = payload.get("entry_price")
     shares = payload.get("shares")
-
-    # store times as CT strings for your UI
-    entry_time_ct = payload.get("entry_time_ct") or now_ct_str()
 
     row = {
         "id": trade_id,
@@ -503,9 +522,43 @@ async def api_create_trade(request: Request):
                 );
                 """, row)
                 conn.commit()
-        return {"ok": True, "id": trade_id}
+        return {"ok": True, "id": trade_id, "user_id": user_id}
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=500)
+
+
+@app.patch("/api/trades/{trade_id}")
+async def api_close_trade(trade_id: str, request: Request, user_id: str | None = None):
+    """
+    If user_id is not provided, allow update by id alone (single-user app behavior).
+    """
+    payload = await request.json()
+    exit_price = payload.get("exit_price")
+    if exit_price is None:
+        return JSONResponse({"ok": False, "error": "exit_price is required"}, status_code=400)
+
+    exit_time_ct = payload.get("exit_time_ct") or now_ct_str()
+
+    try:
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                if user_id:
+                    cur.execute("""
+                    UPDATE trades
+                    SET exit_price = %s, exit_time_ct = %s
+                    WHERE id = %s AND user_id = %s
+                    """, (float(exit_price), exit_time_ct, trade_id, user_id))
+                else:
+                    cur.execute("""
+                    UPDATE trades
+                    SET exit_price = %s, exit_time_ct = %s
+                    WHERE id = %s
+                    """, (float(exit_price), exit_time_ct, trade_id))
+                conn.commit()
+        return {"ok": True}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=500)
+
 
 @app.patch("/api/trades/{trade_id}")
 async def api_close_trade(trade_id: str, request: Request, user_id: str = "demo"):
