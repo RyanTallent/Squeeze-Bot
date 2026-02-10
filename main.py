@@ -283,12 +283,7 @@ def home():
 
 
 @app.post("/run_scan")
-def run_scan(payload: dict = None):
-    payload = payload or {}
-    mode = (payload.get("mode") or "day").lower().strip()
-    if mode not in ("day", "night"):
-        mode = "day"
-
+def run_scan(mode: str = Query("auto", pattern="^(auto|day|night)$")):
     scan_id = str(uuid.uuid4())
     started = datetime.now(timezone.utc).isoformat()
 
@@ -298,7 +293,16 @@ def run_scan(payload: dict = None):
             "q": queue.Queue(),
             "last_report": None,
             "started_utc": started,
+            "mode": mode,  # save it
         }
+
+    publish(scan_id, "meta", {"scan_id": scan_id, "started_utc": started, "mode": mode})
+
+    t = threading.Thread(target=do_scan, args=(scan_id,), daemon=True)
+    t.start()
+
+    return JSONResponse({"ok": True, "scan_id": scan_id})
+
 
     publish(scan_id, "meta", {"scan_id": scan_id, "started_utc": started, "mode": mode})
 
