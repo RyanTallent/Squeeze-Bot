@@ -27,7 +27,7 @@
     .wrap{max-width:1180px; margin:0 auto; padding:26px 18px 34px;}
     .title{
       text-align:center; font-size:34px; letter-spacing:.4px;
-      margin: 8px 0 16px;
+      margin: 8px 0 12px;
     }
     .topbar{
       display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap;
@@ -154,6 +154,79 @@
     }
     a {color:#7ddcff; font-weight:900; text-decoration:none}
 
+    /* ====== Day/Night Mode Cards ====== */
+    .modeWrap{padding:14px;}
+    .modeTitleRow{
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+      margin-bottom:10px;
+    }
+    .modeTitleRow .h{
+      font-weight:900; font-size:16px;
+    }
+    .modeTitleRow .hint{
+      font-size:12px; color:var(--muted); font-weight:900;
+    }
+    .modeGrid{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:12px;
+    }
+    .modeCard{
+      border:1px solid var(--border);
+      background: rgba(12,23,43,.55);
+      border-radius:16px;
+      padding:14px;
+      cursor:pointer;
+      transition: transform .08s ease, border-color .08s ease, background .08s ease;
+      user-select:none;
+    }
+    .modeCard:hover{ transform: translateY(-1px); }
+    .modeCard.active{
+      border-color: rgba(72,209,125,.50);
+      background: rgba(72,209,125,.10);
+    }
+    .modeCardTop{
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+      margin-bottom:8px;
+    }
+    .modeCardTop .name{
+      font-weight:900; font-size:15px;
+      letter-spacing:.2px;
+    }
+    .modePill{
+      font-size:12px; padding:4px 10px; border-radius:999px;
+      border:1px solid rgba(255,255,255,.10);
+      background: rgba(6,10,18,.35);
+      color: var(--muted);
+      font-weight:900;
+      white-space:nowrap;
+    }
+    .modeBody{
+      color:var(--muted);
+      font-size:13px;
+      line-height:1.45;
+    }
+    .modeStats{
+      margin-top:10px;
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+      align-items:center;
+    }
+    .modeStats .chip{margin:0}
+    .inlineInput{
+      width: 120px;
+      background: rgba(6,10,18,.65);
+      border:1px solid rgba(35,50,77,.7);
+      color:var(--text);
+      border-radius:10px;
+      padding:8px 10px;
+      outline:none;
+      font-weight:900;
+      font-size:13px;
+    }
+    .fine{font-size:12px; color:var(--muted); margin-top:8px; line-height:1.4}
+
     /* Notebook section */
     .section{
       margin-top: 14px;
@@ -242,6 +315,7 @@
       .rightBody{max-height: 360px}
       .sectionBody{max-height: 420px}
       .row, .row3{grid-template-columns:1fr}
+      .modeGrid{grid-template-columns:1fr}
     }
   </style>
 </head>
@@ -255,29 +329,85 @@
       <div class="chip">Mode: <b id="chipMode">—</b></div>
       <div class="chip">Last scan: <b id="chipTime">—</b></div>
       <div class="chip">Report: <a id="reportLink" href="#" target="_blank" style="display:none;">Open</a></div>
-
       <div class="chip">
         Hours (CT): <b>Pre</b> 3:00–8:29 • <b>Reg</b> 8:30–3:00 • <b>AH</b> 3:00–7:00
       </div>
     </div>
 
-    <!-- Mode explainer -->
-    <div class="panel" style="margin: 10px 0 14px; padding:14px;">
-      <div style="font-weight:900; font-size:16px; margin-bottom:6px;">Mode</div>
-      <div class="muted" id="modeExplainer" style="line-height:1.5;">—</div>
+    <!-- DAY / NIGHT SELECTOR (CLICKABLE) -->
+    <div class="panel">
+      <div class="modeWrap">
+        <div class="modeTitleRow">
+          <div class="h">Choose Scan Mode</div>
+          <div class="hint">Click Day or Night, then hit “Scan Stocks”.</div>
+        </div>
+
+        <div class="modeGrid">
+          <!-- DAY -->
+          <div class="modeCard" id="cardDay" data-mode="day">
+            <div class="modeCardTop">
+              <div class="name">DAY SCAN (Premium)</div>
+              <div class="modePill">Polygon + ORTEX</div>
+            </div>
+            <div class="modeBody">
+              Best for <b>confirming true squeezes</b> during market hours.
+              Uses ORTEX (SI / borrow / utilization) + Polygon pricing/volume for <b>higher confidence</b>.
+            </div>
+            <div class="modeStats">
+              <div class="chip">ORTEX est: <b id="dayCostUsd">$—</b> / scan</div>
+              <div class="chip">Burn: <b id="dayBurnCredits">—</b> credits</div>
+              <div class="chip">Scans left: <b id="dayScansLeft">—</b></div>
+            </div>
+          </div>
+
+          <!-- NIGHT -->
+          <div class="modeCard" id="cardNight" data-mode="night">
+            <div class="modeCardTop">
+              <div class="name">NIGHT SCAN (Free)</div>
+              <div class="modePill">Polygon only</div>
+            </div>
+            <div class="modeBody">
+              Best for <b>watchlists</b>, after-hours/prep, and early momentum.
+              No ORTEX calls → <b>$0 ORTEX cost</b>, faster, simpler.
+            </div>
+            <div class="modeStats">
+              <div class="chip">ORTEX: <b>$0.00</b> / scan</div>
+              <div class="chip">Confidence: <b>Lower squeeze certainty</b></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="fine">
+          Your ORTEX math (editable): you paid <b>$100</b> for <b>5000 credits</b> → <b>$0.02/credit</b>.
+          Your last scan used <b>93.6 credits</b> → about <b>$1.87</b> per Day scan.
+        </div>
+
+        <div class="modeStats" style="margin-top:10px;">
+          <div class="chip">
+            ORTEX credits remaining:
+            <input id="creditsRemaining" class="inlineInput" type="number" step="0.1" value="4906.4" />
+          </div>
+          <div class="chip">
+            Credits per Day scan:
+            <input id="creditsPerScan" class="inlineInput" type="number" step="0.1" value="93.6" />
+          </div>
+          <div class="chip">
+            $ per credit:
+            <input id="usdPerCredit" class="inlineInput" type="number" step="0.001" value="0.02" />
+          </div>
+
+          <!-- Hidden select so your JS uses modeSelect.value without breaking -->
+          <select id="modeSelect" style="display:none;">
+            <option value="day">day</option>
+            <option value="night">night</option>
+          </select>
+        </div>
+      </div>
     </div>
 
     <div class="btnrow">
       <button id="scanBtn">Scan Stocks</button>
       <button id="clearBtn" class="secondary">Clear Log</button>
-
-      <div class="chip" style="display:flex;gap:10px;align-items:center;">
-        <b>Scan Mode</b>
-        <select id="modeSelect" style="width:auto; padding:8px 10px; border-radius:10px; font-weight:900;">
-          <option value="day">DAY (Full Power)</option>
-          <option value="night">NIGHT (Afterhours)</option>
-        </select>
-      </div>
     </div>
 
     <div class="grid">
@@ -480,7 +610,7 @@
   </div>
 
 <script>
-  // ---------- Elements ----------
+  // ========== Elements ==========
   const logEl = document.getElementById("log");
   const statusEl = document.getElementById("status");
   const scanBtn = document.getElementById("scanBtn");
@@ -495,36 +625,59 @@
   const chipTime = document.getElementById("chipTime");
   const reportLink = document.getElementById("reportLink");
 
-  // Mode UI
-  const modeSelect = document.getElementById("modeSelect");
-  const modeExplainer = document.getElementById("modeExplainer");
+  // Day/Night selector
+  const cardDay = document.getElementById("cardDay");
+  const cardNight = document.getElementById("cardNight");
+  const modeSelect = document.getElementById("modeSelect"); // hidden but used everywhere
 
-  // Your measured ORTEX cost per scan
-  const ORTEX_CREDITS_PER_SCAN = 93.6;
-  const USD_PER_CREDIT = 100 / 5000; // $0.02
-  const ORTEX_USD_PER_SCAN = ORTEX_CREDITS_PER_SCAN * USD_PER_CREDIT; // $1.872
+  // Pricing inputs
+  const creditsRemainingEl = document.getElementById("creditsRemaining");
+  const creditsPerScanEl = document.getElementById("creditsPerScan");
+  const usdPerCreditEl = document.getElementById("usdPerCredit");
 
-  function refreshModeExplainer(){
-    const mode = modeSelect.value;
-    chipMode.textContent = mode.toUpperCase();
-    if (mode === "day") {
-      modeExplainer.innerHTML =
-        `DAY (Full Power) uses <b>Polygon + ORTEX</b> for best squeeze accuracy.<br>` +
-        `Estimated ORTEX cost per scan: <b>$${ORTEX_USD_PER_SCAN.toFixed(2)}</b> (≈ ${ORTEX_CREDITS_PER_SCAN} credits).<br>` +
-        `<span class="muted">Polygon API cost depends on your Polygon plan.</span>`;
-    } else {
-      modeExplainer.innerHTML =
-        `NIGHT (Afterhours) uses <b>Polygon only</b> (no ORTEX calls).<br>` +
-        `Estimated ORTEX cost per scan: <b>$0.00</b>.<br>` +
-        `<span class="muted">Polygon API cost depends on your Polygon plan.</span>`;
-    }
+  // Stats outputs
+  const dayCostUsdEl = document.getElementById("dayCostUsd");
+  const dayBurnCreditsEl = document.getElementById("dayBurnCredits");
+  const dayScansLeftEl = document.getElementById("dayScansLeft");
+
+  function clampNum(x, fallback){
+    const n = Number(x);
+    if (!Number.isFinite(n) || n < 0) return fallback;
+    return n;
   }
-  modeSelect.addEventListener("change", refreshModeExplainer);
+
+  function setMode(mode){
+    modeSelect.value = mode;
+    cardDay.classList.toggle("active", mode === "day");
+    cardNight.classList.toggle("active", mode === "night");
+    chipMode.textContent = mode.toUpperCase();
+    chipOrtex.textContent = (mode === "day") ? "ON (expected)" : "OFF";
+  }
+
+  function refreshPricing(){
+    const creditsRemaining = clampNum(creditsRemainingEl.value, 0);
+    const creditsPerScan = clampNum(creditsPerScanEl.value, 1);
+    const usdPerCredit = clampNum(usdPerCreditEl.value, 0.02);
+
+    const usdPerScan = creditsPerScan * usdPerCredit;
+    const scansLeft = Math.floor(creditsRemaining / creditsPerScan);
+
+    dayBurnCreditsEl.textContent = creditsPerScan.toFixed(1);
+    dayCostUsdEl.textContent = "$" + usdPerScan.toFixed(2);
+    dayScansLeftEl.textContent = String(scansLeft);
+  }
+
+  cardDay.addEventListener("click", ()=>{ setMode("day"); });
+  cardNight.addEventListener("click", ()=>{ setMode("night"); });
+
+  creditsRemainingEl.addEventListener("input", refreshPricing);
+  creditsPerScanEl.addEventListener("input", refreshPricing);
+  usdPerCreditEl.addEventListener("input", refreshPricing);
 
   // Notebook
   const nbCounts = document.getElementById("nbCounts");
   const nbTbody = document.getElementById("nbTbody");
-  let nbTab = "all"; // all | yesterday
+  let nbTab = "all";
   let notebookTrades = [];
 
   // Modals
@@ -562,7 +715,7 @@
   logEl.addEventListener("mousedown", () => { pausePoll = true; });
   window.addEventListener("mouseup", () => { setTimeout(() => pausePoll = false, 300); });
 
-  // ---------- Scan results state ----------
+  // Scan results state
   let activeTab = "SQUEEZE";
   let rows = [];
   let seen = new Set();
@@ -570,7 +723,7 @@
   let sortDir = "desc";
   let es = null;
 
-  // ---------- Helpers ----------
+  // Helpers
   function fmtPct(x){
     const v = (x ?? 0) * 100;
     const s = (Math.round(v*10)/10).toFixed(1) + "%";
@@ -606,7 +759,7 @@
     return "bad";
   }
 
-  // ---------- Tabs (scanner) ----------
+  // Tabs (scanner)
   function setTab(tab){
     activeTab = tab;
     document.querySelectorAll(".tab[data-tab]").forEach(t=>{
@@ -618,7 +771,7 @@
     t.addEventListener("click", ()=>setTab(t.dataset.tab));
   });
 
-  // ---------- Sort (scanner table) ----------
+  // Sort
   document.querySelectorAll("th[data-sort]").forEach(th=>{
     th.addEventListener("click", ()=>{
       const key = th.dataset.sort;
@@ -691,7 +844,7 @@
     countsEl.textContent = `SQUEEZE: ${sq} • MOMENTUM: ${mo} • Showing: ${activeTab}`;
   }
 
-  // ---------- Scan ----------
+  // Scan
   async function startScan(){
     rows = [];
     seen = new Set();
@@ -708,10 +861,8 @@
     const mode = (modeSelect?.value || "day");
     chipMode.textContent = mode.toUpperCase();
     chipOrtex.textContent = (mode === "day") ? "ON (expected)" : "OFF";
-const res = await fetch(`/run_scan?mode=${encodeURIComponent(mode)}`, {
-  method: "POST"
-});
 
+    const res = await fetch(`/run_scan?mode=${encodeURIComponent(mode)}`, { method: "POST" });
     const data = await res.json();
     const scanId = data.scan_id;
 
@@ -735,7 +886,6 @@ const res = await fetch(`/run_scan?mode=${encodeURIComponent(mode)}`, {
         chipOrtex.textContent = j.line.includes("ON") ? "ON" : "OFF";
       }
       if (j.line.includes("Mode:")) {
-        // scanner logs "Mode: DAY..." or "Mode: NIGHT..."
         const mm = j.line.split("Mode:")[1].trim().split(" ")[0];
         chipMode.textContent = mm.toUpperCase();
       }
@@ -782,7 +932,7 @@ const res = await fetch(`/run_scan?mode=${encodeURIComponent(mode)}`, {
   scanBtn.addEventListener("click", startScan);
   clearBtn.addEventListener("click", clearLog);
 
-  // ---------- Notebook tabs ----------
+  // Notebook tabs
   function setNbTab(tab){
     nbTab = tab;
     document.querySelectorAll(".tab[data-nbtab]").forEach(t=>{
@@ -794,7 +944,7 @@ const res = await fetch(`/run_scan?mode=${encodeURIComponent(mode)}`, {
     t.addEventListener("click", ()=>setNbTab(t.dataset.nbtab));
   });
 
-  // ---------- Notebook load + render ----------
+  // Notebook load + render
   async function loadNotebook(){
     nbCounts.textContent = "Loading…";
     const res = await fetch(`/api/trades?view=${encodeURIComponent(nbTab)}&user_id=demo`);
@@ -888,7 +1038,7 @@ const res = await fetch(`/run_scan?mode=${encodeURIComponent(mode)}`, {
     try { return JSON.parse(x); } catch(e){ return null; }
   }
 
-  // ---------- Add Modal ----------
+  // Add Modal
   let pendingScanRow = null;
 
   function openAddModal(scanRow){
@@ -971,7 +1121,7 @@ const res = await fetch(`/run_scan?mode=${encodeURIComponent(mode)}`, {
     await loadNotebook();
   });
 
-  // ---------- Edit Modal ----------
+  // Edit Modal
   let editingTrade = null;
   let selectedFlags = [];
 
@@ -1126,9 +1276,10 @@ const res = await fetch(`/run_scan?mode=${encodeURIComponent(mode)}`, {
     await loadNotebook();
   });
 
-  // ---------- Page init ----------
+  // Page init
   window.addEventListener("load", ()=>{
-    refreshModeExplainer();
+    setMode("day");       // default
+    refreshPricing();     // compute cost + scans left
     renderScan();
     loadNotebook();
   });
