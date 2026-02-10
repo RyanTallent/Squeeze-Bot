@@ -8,6 +8,7 @@
     :root{
       --bg:#070a10;
       --panel:#0b1220;
+      --panel2:#0a1020;
       --border:#23324d;
       --text:#e7eefc;
       --muted:#93a4bd;
@@ -15,20 +16,19 @@
       --red:#ff5c5c;
       --yellow:#ffd166;
       --btn:#1ea34a;
+      --shadow: 0 18px 70px rgba(0,0,0,.35);
     }
     *{box-sizing:border-box}
     body{
       margin:0; font-family: Arial, sans-serif;
-      background: radial-gradient(900px 420px at 50% -50px, rgba(72,209,125,.22), transparent 60%),
-                  radial-gradient(900px 500px at 50% 120%, rgba(72,209,125,.10), transparent 65%),
-                  var(--bg);
+      background:
+        radial-gradient(900px 420px at 50% -50px, rgba(72,209,125,.22), transparent 60%),
+        radial-gradient(900px 500px at 50% 120%, rgba(72,209,125,.10), transparent 65%),
+        var(--bg);
       color:var(--text);
     }
     .wrap{max-width:1180px; margin:0 auto; padding:26px 18px 34px;}
-    .title{
-      text-align:center; font-size:34px; letter-spacing:.4px;
-      margin: 8px 0 12px;
-    }
+    .title{ text-align:center; font-size:34px; letter-spacing:.4px; margin: 8px 0 14px; font-weight:900;}
     .topbar{
       display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap;
       margin-bottom:14px;
@@ -38,15 +38,94 @@
       border:1px solid var(--border);
       color: var(--muted);
       padding:7px 10px; border-radius:999px; font-size:13px;
+      display:flex; gap:6px; align-items:center;
     }
     .chip b{color:var(--text)}
-    .btnrow{display:flex; justify-content:center; gap:10px; margin: 14px 0 18px; flex-wrap:wrap;}
+    a {color:#7ddcff; font-weight:900; text-decoration:none}
+
+    .panel{
+      background: rgba(11,18,32,.72);
+      border:1px solid var(--border);
+      border-radius:18px;
+      overflow:hidden;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+    }
+    .panelHead{
+      padding:14px 14px 10px;
+      border-bottom:1px solid rgba(35,50,77,.7);
+      display:flex; align-items:center; justify-content:space-between;
+      gap:10px;
+    }
+    .panelHead .h{font-weight:900; font-size:18px;}
+    .panelHead .s{
+      font-size:13px; color:var(--muted);
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+      max-width: 58%;
+      text-align:right;
+    }
+
+    /* MODE SWITCHER */
+    .modeWrap{
+      margin: 10px 0 14px;
+      padding:14px;
+    }
+    .modeGrid{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:12px;
+      margin-top:10px;
+    }
+    .modeCard{
+      border:1px solid rgba(35,50,77,.7);
+      border-radius:16px;
+      padding:14px;
+      background: rgba(6,10,18,.35);
+      cursor:pointer;
+      transition: transform .08s ease, border-color .12s ease;
+      user-select:none;
+    }
+    .modeCard:hover{ transform: translateY(-1px); }
+    .modeCard.active{
+      border-color: rgba(72,209,125,.55);
+      background: rgba(72,209,125,.10);
+    }
+    .modeTop{
+      display:flex; align-items:flex-start; justify-content:space-between; gap:10px;
+      margin-bottom:6px;
+    }
+    .modeTitle{
+      font-weight:900; font-size:16px;
+    }
+    .modeBadge{
+      font-weight:900; font-size:12px;
+      padding:4px 10px; border-radius:999px;
+      border:1px solid rgba(255,255,255,.10);
+      background: rgba(12,23,43,.55);
+      color: var(--muted);
+      white-space:nowrap;
+    }
+    .modeCard.active .modeBadge{
+      border-color: rgba(72,209,125,.55);
+      color: var(--text);
+      background: rgba(72,209,125,.14);
+    }
+    .modeDesc{ color: var(--muted); line-height:1.45; font-size:13px;}
+    .modeBullets{ margin:10px 0 0; padding-left:18px; color: var(--muted); font-size:13px; }
+    .modeBullets li{ margin:6px 0; }
+    .modeBullets b{ color: var(--text); }
+
+    /* Buttons */
+    .btnrow{
+      display:flex; justify-content:center; gap:10px; margin: 14px 0 18px; flex-wrap:wrap;
+      align-items:center;
+    }
     button{
       border:1px solid rgba(255,255,255,.08);
       background: linear-gradient(180deg, rgba(30,163,74,.95), rgba(22,128,58,.95));
-      color:white; font-weight:800;
+      color:white; font-weight:900;
       padding:12px 18px; border-radius:12px;
-      cursor:pointer; min-width:160px;
+      cursor:pointer; min-width:170px;
       box-shadow: 0 10px 30px rgba(0,0,0,.35);
     }
     button.secondary{
@@ -67,27 +146,7 @@
       gap:14px;
       margin-top: 8px;
     }
-    .panel{
-      background: rgba(11,18,32,.72);
-      border:1px solid var(--border);
-      border-radius:18px;
-      overflow:hidden;
-      box-shadow: 0 18px 70px rgba(0,0,0,.35);
-      backdrop-filter: blur(10px);
-    }
-    .panelHead{
-      padding:14px 14px 10px;
-      border-bottom:1px solid rgba(35,50,77,.7);
-      display:flex; align-items:center; justify-content:space-between;
-      gap:10px;
-    }
-    .panelHead .h{font-weight:900; font-size:18px;}
-    .panelHead .s{
-      font-size:13px; color:var(--muted);
-      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-      max-width: 58%;
-      text-align:right;
-    }
+
     .log{
       height: 520px;
       padding:12px 14px;
@@ -99,13 +158,14 @@
       user-select:text;
       white-space:pre-wrap;
     }
+
     .tabs{display:flex; gap:8px; padding:10px 12px;}
     .tab{
       padding:8px 10px; border-radius:999px;
       border:1px solid var(--border);
       background: rgba(12,23,43,.55);
       color:var(--muted);
-      cursor:pointer; font-weight:800; font-size:13px;
+      cursor:pointer; font-weight:900; font-size:13px;
       user-select:none;
     }
     .tab.active{
@@ -152,89 +212,10 @@
       padding: 10px 12px;
       color: var(--muted);
     }
-    a {color:#7ddcff; font-weight:900; text-decoration:none}
 
-    /* ====== Day/Night Mode Cards ====== */
-    .modeWrap{padding:14px;}
-    .modeTitleRow{
-      display:flex; align-items:center; justify-content:space-between; gap:10px;
-      margin-bottom:10px;
-    }
-    .modeTitleRow .h{
-      font-weight:900; font-size:16px;
-    }
-    .modeTitleRow .hint{
-      font-size:12px; color:var(--muted); font-weight:900;
-    }
-    .modeGrid{
-      display:grid;
-      grid-template-columns: 1fr 1fr;
-      gap:12px;
-    }
-    .modeCard{
-      border:1px solid var(--border);
-      background: rgba(12,23,43,.55);
-      border-radius:16px;
-      padding:14px;
-      cursor:pointer;
-      transition: transform .08s ease, border-color .08s ease, background .08s ease;
-      user-select:none;
-    }
-    .modeCard:hover{ transform: translateY(-1px); }
-    .modeCard.active{
-      border-color: rgba(72,209,125,.50);
-      background: rgba(72,209,125,.10);
-    }
-    .modeCardTop{
-      display:flex; align-items:center; justify-content:space-between; gap:10px;
-      margin-bottom:8px;
-    }
-    .modeCardTop .name{
-      font-weight:900; font-size:15px;
-      letter-spacing:.2px;
-    }
-    .modePill{
-      font-size:12px; padding:4px 10px; border-radius:999px;
-      border:1px solid rgba(255,255,255,.10);
-      background: rgba(6,10,18,.35);
-      color: var(--muted);
-      font-weight:900;
-      white-space:nowrap;
-    }
-    .modeBody{
-      color:var(--muted);
-      font-size:13px;
-      line-height:1.45;
-    }
-    .modeStats{
-      margin-top:10px;
-      display:flex;
-      flex-wrap:wrap;
-      gap:8px;
-      align-items:center;
-    }
-    .modeStats .chip{margin:0}
-    .inlineInput{
-      width: 120px;
-      background: rgba(6,10,18,.65);
-      border:1px solid rgba(35,50,77,.7);
-      color:var(--text);
-      border-radius:10px;
-      padding:8px 10px;
-      outline:none;
-      font-weight:900;
-      font-size:13px;
-    }
-    .fine{font-size:12px; color:var(--muted); margin-top:8px; line-height:1.4}
-
-    /* Notebook section */
-    .section{
-      margin-top: 14px;
-    }
-    .sectionBody{
-      max-height: 520px;
-      overflow:auto;
-    }
+    /* Notebook */
+    .section{ margin-top: 14px; }
+    .sectionBody{ max-height: 520px; overflow:auto; }
 
     .pill{
       display:inline-flex; gap:6px; align-items:center;
@@ -249,8 +230,9 @@
     .pill.bad{border-color: rgba(255,92,92,.35); background: rgba(255,92,92,.10)}
     .pill.clickable{cursor:pointer}
     .muted{color:var(--muted)}
+    .miniNote{ font-size:12px; color:var(--muted); margin-top:6px; }
 
-    /* Modal */
+    /* Modals */
     .modalBack{
       position:fixed; inset:0;
       background: rgba(0,0,0,.55);
@@ -275,16 +257,10 @@
     }
     .modalHead .h{font-weight:900; font-size:18px;}
     .modalBody{padding:14px}
-    .row{
-      display:grid; grid-template-columns: 1fr 1fr;
-      gap:10px; margin-bottom:10px;
-    }
-    .row3{
-      display:grid; grid-template-columns: 1fr 1fr 1fr;
-      gap:10px; margin-bottom:10px;
-    }
+    .row{ display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:10px; }
+    .row3{ display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px; margin-bottom:10px; }
     label{display:block; font-size:12px; color:var(--muted); font-weight:900; margin-bottom:6px}
-    input, textarea, select{
+    input, textarea{
       width:100%;
       background: rgba(6,10,18,.65);
       border:1px solid rgba(35,50,77,.7);
@@ -302,23 +278,18 @@
       gap:10px;
     }
     .hint{font-size:12px; color:var(--muted)}
-    .inline{
-      display:flex; gap:10px; align-items:center; flex-wrap:wrap;
-    }
-    .miniNote{
-      font-size:12px; color:var(--muted); margin-top:6px;
-    }
+    .inline{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
 
     @media (max-width: 980px){
       .grid{grid-template-columns:1fr}
       .log{height: 360px}
       .rightBody{max-height: 360px}
       .sectionBody{max-height: 420px}
-      .row, .row3{grid-template-columns:1fr}
-      .modeGrid{grid-template-columns:1fr}
+      .row, .row3, .modeGrid{grid-template-columns:1fr}
     }
   </style>
 </head>
+
 <body>
   <div class="wrap">
     <div class="title">Squeeze Bot</div>
@@ -329,80 +300,55 @@
       <div class="chip">Mode: <b id="chipMode">—</b></div>
       <div class="chip">Last scan: <b id="chipTime">—</b></div>
       <div class="chip">Report: <a id="reportLink" href="#" target="_blank" style="display:none;">Open</a></div>
-      <div class="chip">
-        Hours (CT): <b>Pre</b> 3:00–8:29 • <b>Reg</b> 8:30–3:00 • <b>AH</b> 3:00–7:00
-      </div>
+      <div class="chip">Hours (CT): <b>Pre</b> 3:00–8:29 • <b>Reg</b> 8:30–3:00 • <b>AH</b> 3:00–7:00</div>
     </div>
 
-    <!-- DAY / NIGHT SELECTOR (CLICKABLE) -->
-    <div class="panel">
-      <div class="modeWrap">
-        <div class="modeTitleRow">
-          <div class="h">Choose Scan Mode</div>
-          <div class="hint">Click Day or Night, then hit “Scan Stocks”.</div>
+    <!-- MODE SWITCH (BIG) -->
+    <div class="panel modeWrap">
+      <div style="font-weight:900; font-size:16px;">Scan Mode</div>
+      <div class="muted" style="margin-top:6px; line-height:1.5;">
+        Pick the mode first. Then hit <b>Scan Stocks</b>.
+      </div>
+
+      <div class="modeGrid">
+        <div class="modeCard active" id="cardDay" data-mode="day">
+          <div class="modeTop">
+            <div>
+              <div class="modeTitle">DAY (Full Power)</div>
+              <div class="muted" style="margin-top:4px;">Best accuracy for true squeezes.</div>
+            </div>
+            <div class="modeBadge" id="badgeDay">Costs ~$1.87/scan</div>
+          </div>
+          <div class="modeDesc">
+            Uses <b>Polygon + ORTEX</b> (during ORTEX hours) to confirm real short pressure.
+          </div>
+          <ul class="modeBullets">
+            <li><b>Pros:</b> Higher confidence, confirmed squeeze metrics (SI/CTB/Avail).</li>
+            <li><b>Cons:</b> Costs ORTEX credits each scan.</li>
+            <li><b>Best for:</b> Morning + regular session trading.</li>
+          </ul>
         </div>
 
-        <div class="modeGrid">
-          <!-- DAY -->
-          <div class="modeCard" id="cardDay" data-mode="day">
-            <div class="modeCardTop">
-              <div class="name">DAY SCAN (Premium)</div>
-              <div class="modePill">Polygon + ORTEX</div>
+        <div class="modeCard" id="cardNight" data-mode="night">
+          <div class="modeTop">
+            <div>
+              <div class="modeTitle">NIGHT (Afterhours)</div>
+              <div class="muted" style="margin-top:4px;">Cheaper scouting + watchlists.</div>
             </div>
-            <div class="modeBody">
-              Best for <b>confirming true squeezes</b> during market hours.
-              Uses ORTEX (SI / borrow / utilization) + Polygon pricing/volume for <b>higher confidence</b>.
-            </div>
-            <div class="modeStats">
-              <div class="chip">ORTEX est: <b id="dayCostUsd">$—</b> / scan</div>
-              <div class="chip">Burn: <b id="dayBurnCredits">—</b> credits</div>
-              <div class="chip">Scans left: <b id="dayScansLeft">—</b></div>
-            </div>
+            <div class="modeBadge">Costs $0 ORTEX</div>
           </div>
-
-          <!-- NIGHT -->
-          <div class="modeCard" id="cardNight" data-mode="night">
-            <div class="modeCardTop">
-              <div class="name">NIGHT SCAN (Free)</div>
-              <div class="modePill">Polygon only</div>
-            </div>
-            <div class="modeBody">
-              Best for <b>watchlists</b>, after-hours/prep, and early momentum.
-              No ORTEX calls → <b>$0 ORTEX cost</b>, faster, simpler.
-            </div>
-            <div class="modeStats">
-              <div class="chip">ORTEX: <b>$0.00</b> / scan</div>
-              <div class="chip">Confidence: <b>Lower squeeze certainty</b></div>
-            </div>
+          <div class="modeDesc">
+            Uses <b>Polygon only</b>. No ORTEX calls (so it’s cheaper).
           </div>
-        </div>
-
-        <div class="fine">
-          Your ORTEX math (editable): you paid <b>$100</b> for <b>5000 credits</b> → <b>$0.02/credit</b>.
-          Your last scan used <b>93.6 credits</b> → about <b>$1.87</b> per Day scan.
-        </div>
-
-        <div class="modeStats" style="margin-top:10px;">
-          <div class="chip">
-            ORTEX credits remaining:
-            <input id="creditsRemaining" class="inlineInput" type="number" step="0.1" value="4906.4" />
-          </div>
-          <div class="chip">
-            Credits per Day scan:
-            <input id="creditsPerScan" class="inlineInput" type="number" step="0.1" value="93.6" />
-          </div>
-          <div class="chip">
-            $ per credit:
-            <input id="usdPerCredit" class="inlineInput" type="number" step="0.001" value="0.02" />
-          </div>
-
-          <!-- Hidden select so your JS uses modeSelect.value without breaking -->
-          <select id="modeSelect" style="display:none;">
-            <option value="day">day</option>
-            <option value="night">night</option>
-          </select>
+          <ul class="modeBullets">
+            <li><b>Pros:</b> Free ORTEX, fast scouting.</li>
+            <li><b>Cons:</b> No confirmed short data → confidence is lower.</li>
+            <li><b>Best for:</b> Building watchlists after hours.</li>
+          </ul>
         </div>
       </div>
+
+      <div class="muted" style="margin-top:10px; line-height:1.5;" id="modeSummary">—</div>
     </div>
 
     <div class="btnrow">
@@ -454,7 +400,7 @@
       </div>
     </div>
 
-    <!-- NOTEBOOK (FULL WIDTH) -->
+    <!-- NOTEBOOK -->
     <div class="section panel">
       <div class="panelHead">
         <div class="h">Notebook</div>
@@ -595,7 +541,7 @@
         <div style="margin-top:8px;">
           <div class="muted" style="font-weight:900; margin-bottom:6px;">Flags (click to toggle / override)</div>
           <div id="editFlags"></div>
-          <div class="miniNote">These default to auto-flags when you close a trade, but you can override them.</div>
+          <div class="miniNote">Defaults to auto-flags when you close a trade.</div>
         </div>
       </div>
 
@@ -610,7 +556,14 @@
   </div>
 
 <script>
-  // ========== Elements ==========
+  // ---------- ORTEX cost math (your numbers) ----------
+  // You bought 5000 credits for $100 => $0.02/credit
+  // After one scan you had 4906.4 => spent 93.6 credits/scan => $1.87/scan
+  const ORTEX_CREDITS_PER_SCAN = 93.6;
+  const USD_PER_CREDIT = 100 / 5000; // 0.02
+  const ORTEX_USD_PER_SCAN = ORTEX_CREDITS_PER_SCAN * USD_PER_CREDIT; // 1.872
+
+  // ---------- Elements ----------
   const logEl = document.getElementById("log");
   const statusEl = document.getElementById("status");
   const scanBtn = document.getElementById("scanBtn");
@@ -625,97 +578,40 @@
   const chipTime = document.getElementById("chipTime");
   const reportLink = document.getElementById("reportLink");
 
-  // Day/Night selector
+  // Mode cards
   const cardDay = document.getElementById("cardDay");
   const cardNight = document.getElementById("cardNight");
-  const modeSelect = document.getElementById("modeSelect"); // hidden but used everywhere
+  const badgeDay = document.getElementById("badgeDay");
+  const modeSummary = document.getElementById("modeSummary");
 
-  // Pricing inputs
-  const creditsRemainingEl = document.getElementById("creditsRemaining");
-  const creditsPerScanEl = document.getElementById("creditsPerScan");
-  const usdPerCreditEl = document.getElementById("usdPerCredit");
+  let selectedMode = "day"; // day | night
 
-  // Stats outputs
-  const dayCostUsdEl = document.getElementById("dayCostUsd");
-  const dayBurnCreditsEl = document.getElementById("dayBurnCredits");
-  const dayScansLeftEl = document.getElementById("dayScansLeft");
-
-  function clampNum(x, fallback){
-    const n = Number(x);
-    if (!Number.isFinite(n) || n < 0) return fallback;
-    return n;
-  }
+  badgeDay.textContent = `Costs ~$${ORTEX_USD_PER_SCAN.toFixed(2)}/scan`;
 
   function setMode(mode){
-    modeSelect.value = mode;
-    cardDay.classList.toggle("active", mode === "day");
-    cardNight.classList.toggle("active", mode === "night");
-    chipMode.textContent = mode.toUpperCase();
-    chipOrtex.textContent = (mode === "day") ? "ON (expected)" : "OFF";
+    selectedMode = (mode === "night") ? "night" : "day";
+    cardDay.classList.toggle("active", selectedMode === "day");
+    cardNight.classList.toggle("active", selectedMode === "night");
+
+    chipMode.textContent = selectedMode.toUpperCase();
+
+    if (selectedMode === "day"){
+      modeSummary.innerHTML =
+        `✅ <b>DAY</b> = best squeeze accuracy.<br>` +
+        `ORTEX estimate: <b>${ORTEX_CREDITS_PER_SCAN} credits</b> per scan ≈ <b>$${ORTEX_USD_PER_SCAN.toFixed(2)}</b>.<br>` +
+        `<span class="muted">Polygon usage depends on your Polygon plan.</span>`;
+    } else {
+      modeSummary.innerHTML =
+        `🌙 <b>NIGHT</b> = cheaper scouting / watchlists.<br>` +
+        `ORTEX estimate: <b>$0.00</b> (no ORTEX calls).<br>` +
+        `<span class="muted">Polygon usage depends on your Polygon plan.</span>`;
+    }
   }
 
-  function refreshPricing(){
-    const creditsRemaining = clampNum(creditsRemainingEl.value, 0);
-    const creditsPerScan = clampNum(creditsPerScanEl.value, 1);
-    const usdPerCredit = clampNum(usdPerCreditEl.value, 0.02);
+  cardDay.addEventListener("click", ()=>setMode("day"));
+  cardNight.addEventListener("click", ()=>setMode("night"));
 
-    const usdPerScan = creditsPerScan * usdPerCredit;
-    const scansLeft = Math.floor(creditsRemaining / creditsPerScan);
-
-    dayBurnCreditsEl.textContent = creditsPerScan.toFixed(1);
-    dayCostUsdEl.textContent = "$" + usdPerScan.toFixed(2);
-    dayScansLeftEl.textContent = String(scansLeft);
-  }
-
-  cardDay.addEventListener("click", ()=>{ setMode("day"); });
-  cardNight.addEventListener("click", ()=>{ setMode("night"); });
-
-  creditsRemainingEl.addEventListener("input", refreshPricing);
-  creditsPerScanEl.addEventListener("input", refreshPricing);
-  usdPerCreditEl.addEventListener("input", refreshPricing);
-
-  // Notebook
-  const nbCounts = document.getElementById("nbCounts");
-  const nbTbody = document.getElementById("nbTbody");
-  let nbTab = "all";
-  let notebookTrades = [];
-
-  // Modals
-  const addModalBack = document.getElementById("addModalBack");
-  const addCloseBtn = document.getElementById("addCloseBtn");
-  const addCancelBtn = document.getElementById("addCancelBtn");
-  const addSaveBtn = document.getElementById("addSaveBtn");
-  const addError = document.getElementById("addError");
-  const addTitle = document.getElementById("addTitle");
-  const addTicker = document.getElementById("addTicker");
-  const addEntry = document.getElementById("addEntry");
-  const addShares = document.getElementById("addShares");
-  const addNotes = document.getElementById("addNotes");
-  const addPlan = document.getElementById("addPlan");
-  const addEntryHint = document.getElementById("addEntryHint");
-
-  const editModalBack = document.getElementById("editModalBack");
-  const editCloseBtn = document.getElementById("editCloseBtn");
-  const editCancelBtn = document.getElementById("editCancelBtn");
-  const editSaveBtn = document.getElementById("editSaveBtn");
-  const editError = document.getElementById("editError");
-  const editTitle = document.getElementById("editTitle");
-  const editEntry = document.getElementById("editEntry");
-  const editExit = document.getElementById("editExit");
-  const editShares = document.getElementById("editShares");
-  const editReviewTomorrow = document.getElementById("editReviewTomorrow");
-  const editGrade = document.getElementById("editGrade");
-  const editNotes = document.getElementById("editNotes");
-  const editLesson = document.getElementById("editLesson");
-  const editFlags = document.getElementById("editFlags");
-  const editPnlPreview = document.getElementById("editPnlPreview");
-  const editPnlPctPreview = document.getElementById("editPnlPctPreview");
-
-  let pausePoll = false;
-  logEl.addEventListener("mousedown", () => { pausePoll = true; });
-  window.addEventListener("mouseup", () => { setTimeout(() => pausePoll = false, 300); });
-
-  // Scan results state
+  // ---------- Scan results state ----------
   let activeTab = "SQUEEZE";
   let rows = [];
   let seen = new Set();
@@ -723,7 +619,10 @@
   let sortDir = "desc";
   let es = null;
 
-  // Helpers
+  let pausePoll = false;
+  logEl.addEventListener("mousedown", () => { pausePoll = true; });
+  window.addEventListener("mouseup", () => { setTimeout(() => pausePoll = false, 300); });
+
   function fmtPct(x){
     const v = (x ?? 0) * 100;
     const s = (Math.round(v*10)/10).toFixed(1) + "%";
@@ -738,26 +637,6 @@
     if (n >= 1_000) return (n/1_000).toFixed(2)+"K";
     return String(Math.round(n));
   }
-  function money(x){
-    if (x === null || x === undefined) return "—";
-    const n = Number(x);
-    if (Number.isNaN(n)) return "—";
-    const sign = n >= 0 ? "+" : "-";
-    return sign + "$" + Math.abs(n).toFixed(2);
-  }
-  function pct2(x){
-    if (x === null || x === undefined) return "—";
-    const n = Number(x);
-    if (Number.isNaN(n)) return "—";
-    const v = n * 100;
-    const sign = v >= 0 ? "+" : "-";
-    return sign + Math.abs(v).toFixed(2) + "%";
-  }
-  function clsForFlag(level){
-    if (level === "good") return "good";
-    if (level === "warn") return "warn";
-    return "bad";
-  }
 
   // Tabs (scanner)
   function setTab(tab){
@@ -771,7 +650,7 @@
     t.addEventListener("click", ()=>setTab(t.dataset.tab));
   });
 
-  // Sort
+  // Sort (scanner)
   document.querySelectorAll("th[data-sort]").forEach(th=>{
     th.addEventListener("click", ()=>{
       const key = th.dataset.sort;
@@ -790,9 +669,7 @@
       if (av === undefined || av === null) return 1;
       if (bv === undefined || bv === null) return -1;
 
-      if (typeof av === "string") {
-        return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
-      }
+      if (typeof av === "string") return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
       return sortDir === "asc" ? (av - bv) : (bv - av);
     });
 
@@ -844,7 +721,7 @@
     countsEl.textContent = `SQUEEZE: ${sq} • MOMENTUM: ${mo} • Showing: ${activeTab}`;
   }
 
-  // Scan
+  // ---------- Scan ----------
   async function startScan(){
     rows = [];
     seen = new Set();
@@ -858,11 +735,11 @@
     streamStateEl.textContent = "Connecting…";
     logEl.textContent = "";
 
-    const mode = (modeSelect?.value || "day");
-    chipMode.textContent = mode.toUpperCase();
-    chipOrtex.textContent = (mode === "day") ? "ON (expected)" : "OFF";
+    // reflect expected ORTEX status instantly
+    chipMode.textContent = selectedMode.toUpperCase();
+    chipOrtex.textContent = (selectedMode === "day") ? "ON (expected)" : "OFF";
 
-    const res = await fetch(`/run_scan?mode=${encodeURIComponent(mode)}`, { method: "POST" });
+    const res = await fetch(`/run_scan?mode=${encodeURIComponent(selectedMode)}`, { method: "POST" });
     const data = await res.json();
     const scanId = data.scan_id;
 
@@ -910,7 +787,6 @@
       const j = JSON.parse(e.data);
       statusEl.textContent = j.ok ? "Done." : "Done (errors).";
       streamStateEl.textContent = "Completed";
-
       if (j.report_url) {
         reportLink.href = j.report_url;
         reportLink.style.display = "inline";
@@ -932,7 +808,275 @@
   scanBtn.addEventListener("click", startScan);
   clearBtn.addEventListener("click", clearLog);
 
-  // Notebook tabs
+  // ---------- Notebook ----------
+  const nbCounts = document.getElementById("nbCounts");
+  const nbTbody = document.getElementById("nbTbody");
+  let nbTab = "all";
+  let notebookTrades = [];
+
+  // Modals (same behavior as your old file)
+  const addModalBack = document.getElementById("addModalBack");
+  const addCloseBtn = document.getElementById("addCloseBtn");
+  const addCancelBtn = document.getElementById("addCancelBtn");
+  const addSaveBtn = document.getElementById("addSaveBtn");
+  const addError = document.getElementById("addError");
+  const addTitle = document.getElementById("addTitle");
+  const addTicker = document.getElementById("addTicker");
+  const addEntry = document.getElementById("addEntry");
+  const addShares = document.getElementById("addShares");
+  const addNotes = document.getElementById("addNotes");
+  const addPlan = document.getElementById("addPlan");
+  const addEntryHint = document.getElementById("addEntryHint");
+
+  const editModalBack = document.getElementById("editModalBack");
+  const editCloseBtn = document.getElementById("editCloseBtn");
+  const editCancelBtn = document.getElementById("editCancelBtn");
+  const editSaveBtn = document.getElementById("editSaveBtn");
+  const editError = document.getElementById("editError");
+  const editTitle = document.getElementById("editTitle");
+  const editEntry = document.getElementById("editEntry");
+  const editExit = document.getElementById("editExit");
+  const editShares = document.getElementById("editShares");
+  const editReviewTomorrow = document.getElementById("editReviewTomorrow");
+  const editGrade = document.getElementById("editGrade");
+  const editNotes = document.getElementById("editNotes");
+  const editLesson = document.getElementById("editLesson");
+  const editFlags = document.getElementById("editFlags");
+  const editPnlPreview = document.getElementById("editPnlPreview");
+  const editPnlPctPreview = document.getElementById("editPnlPctPreview");
+
+  let pendingScanRow = null;
+
+  function money(x){
+    if (x === null || x === undefined) return "—";
+    const n = Number(x);
+    if (Number.isNaN(n)) return "—";
+    const sign = n >= 0 ? "+" : "-";
+    return sign + "$" + Math.abs(n).toFixed(2);
+  }
+  function pct2(x){
+    if (x === null || x === undefined) return "—";
+    const n = Number(x);
+    if (Number.isNaN(n)) return "—";
+    const v = n * 100;
+    const sign = v >= 0 ? "+" : "-";
+    return sign + Math.abs(v).toFixed(2) + "%";
+  }
+  function clsForFlag(level){
+    if (level === "good") return "good";
+    if (level === "warn") return "warn";
+    return "bad";
+  }
+  function safeJson(x){
+    if (!x) return null;
+    if (Array.isArray(x)) return x;
+    try { return JSON.parse(x); } catch(e){ return null; }
+  }
+
+  function openAddModal(scanRow){
+    pendingScanRow = scanRow;
+    addError.textContent = "";
+    addTitle.textContent = `Add Trade • ${scanRow.ticker}`;
+    addTicker.value = scanRow.ticker;
+
+    const trig = scanRow.trigger ?? scanRow.close ?? 0;
+    addEntry.value = trig ? Number(trig).toFixed(4) : "";
+    addEntryHint.textContent = `Trigger: ${(scanRow.trigger ?? 0).toFixed(4)} • Stop: ${(scanRow.stop ?? 0).toFixed(4)}`;
+
+    addShares.value = "";
+    addNotes.value = "";
+    addPlan.value = scanRow.plan || "";
+
+    addModalBack.style.display = "flex";
+  }
+  function closeAddModal(){
+    addModalBack.style.display = "none";
+    pendingScanRow = null;
+  }
+  addCloseBtn.addEventListener("click", closeAddModal);
+  addCancelBtn.addEventListener("click", closeAddModal);
+  addModalBack.addEventListener("click", (e)=>{ if (e.target === addModalBack) closeAddModal(); });
+
+  addSaveBtn.addEventListener("click", async ()=>{
+    addError.textContent = "";
+    if (!pendingScanRow) return;
+
+    const entry = Number(addEntry.value);
+    const shares = Number(addShares.value);
+    if (!entry || entry <= 0){ addError.textContent = "Entry price must be > 0."; return; }
+    if (!shares || shares <= 0){ addError.textContent = "Shares must be > 0."; return; }
+
+    const payload = {
+      user_id: "demo",
+      scan_id: window._lastScanId || null,
+      scan_date_ct: window._lastScanDate || null,
+
+      ticker: pendingScanRow.ticker,
+      bucket: pendingScanRow.bucket,
+      subtype: pendingScanRow.subtype,
+      confidence: pendingScanRow.confidence,
+      plan: pendingScanRow.plan,
+
+      trigger: pendingScanRow.trigger,
+      stop: pendingScanRow.stop,
+      scan_close: pendingScanRow.close,
+      move_pct: pendingScanRow.move_pct,
+      dollar_vol: pendingScanRow.dollar_vol,
+      range_pct: pendingScanRow.range_pct,
+      hold_pct: pendingScanRow.hold_pct,
+      rel_vol: pendingScanRow.rel_vol,
+
+      entry_price: entry,
+      shares: shares,
+      notes: addNotes.value || "",
+      review_tomorrow: false
+    };
+
+    const res = await fetch("/api/trades", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!data.ok){ addError.textContent = data.detail || "Could not save trade."; return; }
+
+    closeAddModal();
+    await loadNotebook();
+  });
+
+  // Edit modal (unchanged)
+  let editingTrade = null;
+  let selectedFlags = [];
+
+  function openEditModal(trade){
+    editingTrade = trade;
+    editError.textContent = "";
+    editTitle.textContent = `Edit Trade • ${trade.ticker}`;
+
+    editEntry.value = trade.entry_price ?? "";
+    editExit.value = trade.exit_price ?? "";
+    editShares.value = trade.shares ?? "";
+    editReviewTomorrow.checked = !!trade.review_tomorrow;
+    editGrade.value = trade.grade_1_10 ?? "";
+    editNotes.value = trade.notes ?? "";
+    editLesson.value = trade.lesson ?? "";
+
+    const rf = safeJson(trade.review_flags);
+    const af = safeJson(trade.auto_flags);
+    selectedFlags = (rf && rf.length ? rf : (af || []));
+
+    renderEditFlags();
+    updatePnlPreview();
+    editModalBack.style.display = "flex";
+  }
+  function closeEditModal(){
+    editModalBack.style.display = "none";
+    editingTrade = null;
+    selectedFlags = [];
+  }
+  editCloseBtn.addEventListener("click", closeEditModal);
+  editCancelBtn.addEventListener("click", closeEditModal);
+  editModalBack.addEventListener("click", (e)=>{ if (e.target === editModalBack) closeEditModal(); });
+
+  function updatePnlPreview(){
+    const entry = Number(editEntry.value);
+    const exitp = Number(editExit.value);
+    const shares = Number(editShares.value);
+
+    if (!entry || entry <= 0 || !shares || shares <= 0 || !exitp){
+      editPnlPreview.value = "—";
+      editPnlPctPreview.textContent = "";
+      return;
+    }
+    const pnlD = (exitp - entry) * shares;
+    const pnlP = (exitp - entry) / entry;
+    editPnlPreview.value = money(pnlD);
+    editPnlPctPreview.textContent = pct2(pnlP);
+  }
+  editEntry.addEventListener("input", updatePnlPreview);
+  editExit.addEventListener("input", updatePnlPreview);
+  editShares.addEventListener("input", updatePnlPreview);
+
+  function flagKeySet(list){ return new Set(list.map(x=>x.key)); }
+
+  function renderEditFlags(){
+    editFlags.innerHTML = "";
+    const auto = safeJson(editingTrade.auto_flags) || [];
+    const merged = new Map();
+    for (const f of auto) merged.set(f.key, f);
+    for (const f of selectedFlags) merged.set(f.key, f);
+
+    const selectedKeys = flagKeySet(selectedFlags);
+
+    for (const f of merged.values()){
+      const pill = document.createElement("span");
+      pill.className = `pill clickable ${clsForFlag(f.level)}`;
+      pill.textContent = `${f.icon} ${f.label}`;
+      pill.style.opacity = selectedKeys.has(f.key) ? "1.0" : "0.45";
+      pill.title = selectedKeys.has(f.key) ? "Included (click to remove)" : "Not included (click to include)";
+      pill.addEventListener("click", ()=>{
+        if (selectedKeys.has(f.key)) selectedFlags = selectedFlags.filter(x=>x.key !== f.key);
+        else selectedFlags = [...selectedFlags, f];
+        renderEditFlags();
+      });
+      editFlags.appendChild(pill);
+    }
+
+    if (!merged.size){
+      const s = document.createElement("div");
+      s.className = "muted";
+      s.textContent = "No flags yet. Add an exit price and save to generate auto-flags.";
+      editFlags.appendChild(s);
+    }
+  }
+
+  editSaveBtn.addEventListener("click", async ()=>{
+    editError.textContent = "";
+    if (!editingTrade) return;
+
+    const entry = Number(editEntry.value);
+    const shares = Number(editShares.value);
+    const exitpRaw = editExit.value.trim();
+    const exitp = exitpRaw === "" ? null : Number(exitpRaw);
+
+    if (!entry || entry <= 0){ editError.textContent = "Entry price must be > 0."; return; }
+    if (!shares || shares <= 0){ editError.textContent = "Shares must be > 0."; return; }
+    if (exitpRaw !== "" && (!exitp || exitp <= 0)){ editError.textContent = "Exit price must be > 0 (or blank)."; return; }
+
+    const gradeRaw = editGrade.value.trim();
+    let grade = null;
+    if (gradeRaw !== ""){
+      grade = Number(gradeRaw);
+      if (!Number.isInteger(grade) || grade < 1 || grade > 10){
+        editError.textContent = "Grade must be an integer 1–10.";
+        return;
+      }
+    }
+
+    const payload = {
+      entry_price: entry,
+      shares: shares,
+      exit_price: exitp,
+      review_tomorrow: editReviewTomorrow.checked,
+      grade_1_10: grade,
+      notes: editNotes.value || "",
+      lesson: editLesson.value || "",
+      review_flags: selectedFlags
+    };
+
+    const res = await fetch(`/api/trades/${editingTrade.id}?user_id=demo`, {
+      method: "PATCH",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!data.ok){ editError.textContent = data.detail || "Could not save changes."; return; }
+
+    closeEditModal();
+    await loadNotebook();
+  });
+
+  // Notebook tabs + load
   function setNbTab(tab){
     nbTab = tab;
     document.querySelectorAll(".tab[data-nbtab]").forEach(t=>{
@@ -944,7 +1088,6 @@
     t.addEventListener("click", ()=>setNbTab(t.dataset.nbtab));
   });
 
-  // Notebook load + render
   async function loadNotebook(){
     nbCounts.textContent = "Loading…";
     const res = await fetch(`/api/trades?view=${encodeURIComponent(nbTab)}&user_id=demo`);
@@ -962,7 +1105,6 @@
     for (const t of notebookTrades){
       const tr = document.createElement("tr");
       const setup = `${t.bucket || ""} • ${t.subtype || ""}`.trim();
-
       const flags = safeJson(t.review_flags) || safeJson(t.auto_flags) || [];
       const flagsHtml = flags.slice(0, 3).map(f=>{
         const cls = clsForFlag(f.level);
@@ -1032,254 +1174,9 @@
     }
   }
 
-  function safeJson(x){
-    if (!x) return null;
-    if (Array.isArray(x)) return x;
-    try { return JSON.parse(x); } catch(e){ return null; }
-  }
-
-  // Add Modal
-  let pendingScanRow = null;
-
-  function openAddModal(scanRow){
-    pendingScanRow = scanRow;
-    addError.textContent = "";
-    addTitle.textContent = `Add Trade • ${scanRow.ticker}`;
-    addTicker.value = scanRow.ticker;
-
-    const trig = scanRow.trigger ?? scanRow.close ?? 0;
-    addEntry.value = trig ? Number(trig).toFixed(4) : "";
-    addEntryHint.textContent = `Trigger: ${(scanRow.trigger ?? 0).toFixed(4)} • Stop: ${(scanRow.stop ?? 0).toFixed(4)}`;
-
-    addShares.value = "";
-    addNotes.value = "";
-    addPlan.value = scanRow.plan || "";
-
-    addModalBack.style.display = "flex";
-  }
-  function closeAddModal(){
-    addModalBack.style.display = "none";
-    pendingScanRow = null;
-  }
-  addCloseBtn.addEventListener("click", closeAddModal);
-  addCancelBtn.addEventListener("click", closeAddModal);
-  addModalBack.addEventListener("click", (e)=>{ if (e.target === addModalBack) closeAddModal(); });
-
-  addSaveBtn.addEventListener("click", async ()=>{
-    addError.textContent = "";
-    if (!pendingScanRow) return;
-
-    const entry = Number(addEntry.value);
-    const shares = Number(addShares.value);
-    if (!entry || entry <= 0){
-      addError.textContent = "Entry price must be > 0.";
-      return;
-    }
-    if (!shares || shares <= 0){
-      addError.textContent = "Shares must be > 0.";
-      return;
-    }
-
-    const payload = {
-      user_id: "demo",
-      scan_id: window._lastScanId || null,
-      scan_date_ct: window._lastScanDate || null,
-
-      ticker: pendingScanRow.ticker,
-      bucket: pendingScanRow.bucket,
-      subtype: pendingScanRow.subtype,
-      confidence: pendingScanRow.confidence,
-      plan: pendingScanRow.plan,
-
-      trigger: pendingScanRow.trigger,
-      stop: pendingScanRow.stop,
-      scan_close: pendingScanRow.close,
-      move_pct: pendingScanRow.move_pct,
-      dollar_vol: pendingScanRow.dollar_vol,
-      range_pct: pendingScanRow.range_pct,
-      hold_pct: pendingScanRow.hold_pct,
-      rel_vol: pendingScanRow.rel_vol,
-
-      entry_price: entry,
-      shares: shares,
-      notes: addNotes.value || "",
-      review_tomorrow: false
-    };
-
-    const res = await fetch("/api/trades", {
-      method: "POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify(payload)
-    });
-    const data = await res.json();
-    if (!data.ok){
-      addError.textContent = data.detail || "Could not save trade.";
-      return;
-    }
-
-    closeAddModal();
-    await loadNotebook();
-  });
-
-  // Edit Modal
-  let editingTrade = null;
-  let selectedFlags = [];
-
-  function openEditModal(trade){
-    editingTrade = trade;
-    editError.textContent = "";
-    editTitle.textContent = `Edit Trade • ${trade.ticker}`;
-
-    editEntry.value = trade.entry_price ?? "";
-    editExit.value = trade.exit_price ?? "";
-    editShares.value = trade.shares ?? "";
-    editReviewTomorrow.checked = !!trade.review_tomorrow;
-    editGrade.value = trade.grade_1_10 ?? "";
-    editNotes.value = trade.notes ?? "";
-    editLesson.value = trade.lesson ?? "";
-
-    const rf = safeJson(trade.review_flags);
-    const af = safeJson(trade.auto_flags);
-    selectedFlags = (rf && rf.length ? rf : (af || []));
-
-    renderEditFlags();
-    updatePnlPreview();
-
-    editModalBack.style.display = "flex";
-  }
-
-  function closeEditModal(){
-    editModalBack.style.display = "none";
-    editingTrade = null;
-    selectedFlags = [];
-  }
-
-  editCloseBtn.addEventListener("click", closeEditModal);
-  editCancelBtn.addEventListener("click", closeEditModal);
-  editModalBack.addEventListener("click", (e)=>{ if (e.target === editModalBack) closeEditModal(); });
-
-  function updatePnlPreview(){
-    const entry = Number(editEntry.value);
-    const exitp = Number(editExit.value);
-    const shares = Number(editShares.value);
-
-    if (!entry || entry <= 0 || !shares || shares <= 0 || !exitp){
-      editPnlPreview.value = "—";
-      editPnlPctPreview.textContent = "";
-      return;
-    }
-    const pnlD = (exitp - entry) * shares;
-    const pnlP = (exitp - entry) / entry;
-
-    editPnlPreview.value = money(pnlD);
-    editPnlPctPreview.textContent = pct2(pnlP);
-  }
-
-  editEntry.addEventListener("input", updatePnlPreview);
-  editExit.addEventListener("input", updatePnlPreview);
-  editShares.addEventListener("input", updatePnlPreview);
-
-  function flagKeySet(list){
-    return new Set(list.map(x=>x.key));
-  }
-
-  function renderEditFlags(){
-    editFlags.innerHTML = "";
-    const auto = safeJson(editingTrade.auto_flags) || [];
-    const merged = new Map();
-    for (const f of auto) merged.set(f.key, f);
-    for (const f of selectedFlags) merged.set(f.key, f);
-
-    const selectedKeys = flagKeySet(selectedFlags);
-
-    for (const f of merged.values()){
-      const pill = document.createElement("span");
-      pill.className = `pill clickable ${clsForFlag(f.level)}`;
-      pill.textContent = `${f.icon} ${f.label}`;
-      pill.style.opacity = selectedKeys.has(f.key) ? "1.0" : "0.45";
-      pill.title = selectedKeys.has(f.key) ? "Included in Review Flags (click to remove)" : "Not included (click to include)";
-      pill.addEventListener("click", ()=>{
-        if (selectedKeys.has(f.key)){
-          selectedFlags = selectedFlags.filter(x=>x.key !== f.key);
-        } else {
-          selectedFlags = [...selectedFlags, f];
-        }
-        renderEditFlags();
-      });
-      editFlags.appendChild(pill);
-    }
-
-    if (!merged.size){
-      const s = document.createElement("div");
-      s.className = "muted";
-      s.textContent = "No flags yet. Add an exit price and save to generate auto-flags.";
-      editFlags.appendChild(s);
-    }
-  }
-
-  editSaveBtn.addEventListener("click", async ()=>{
-    editError.textContent = "";
-    if (!editingTrade) return;
-
-    const entry = Number(editEntry.value);
-    const shares = Number(editShares.value);
-    const exitpRaw = editExit.value.trim();
-    const exitp = exitpRaw === "" ? null : Number(exitpRaw);
-
-    if (!entry || entry <= 0){
-      editError.textContent = "Entry price must be > 0.";
-      return;
-    }
-    if (!shares || shares <= 0){
-      editError.textContent = "Shares must be > 0.";
-      return;
-    }
-    if (exitpRaw !== "" && (!exitp || exitp <= 0)){
-      editError.textContent = "Exit price must be > 0 (or blank if still open).";
-      return;
-    }
-
-    const gradeRaw = editGrade.value.trim();
-    let grade = null;
-    if (gradeRaw !== ""){
-      grade = Number(gradeRaw);
-      if (!Number.isInteger(grade) || grade < 1 || grade > 10){
-        editError.textContent = "Grade must be an integer 1–10.";
-        return;
-      }
-    }
-
-    const payload = {
-      entry_price: entry,
-      shares: shares,
-      exit_price: exitp,
-      review_tomorrow: editReviewTomorrow.checked,
-      grade_1_10: grade,
-      notes: editNotes.value || "",
-      lesson: editLesson.value || "",
-      review_flags: selectedFlags
-    };
-
-    const res = await fetch(`/api/trades/${editingTrade.id}?user_id=demo`, {
-      method: "PATCH",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify(payload)
-    });
-
-    const data = await res.json();
-    if (!data.ok){
-      editError.textContent = data.detail || "Could not save changes.";
-      return;
-    }
-
-    closeEditModal();
-    await loadNotebook();
-  });
-
-  // Page init
+  // ---------- Init ----------
   window.addEventListener("load", ()=>{
-    setMode("day");       // default
-    refreshPricing();     // compute cost + scans left
+    setMode("day");      // default
     renderScan();
     loadNotebook();
   });
