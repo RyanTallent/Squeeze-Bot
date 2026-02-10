@@ -16,82 +16,96 @@
       --red:#ff5c5c;
       --yellow:#ffd166;
       --btn:#1ea34a;
-      --btn2:#143a22;
       --chip:#101c33;
     }
     *{box-sizing:border-box}
     body{
       margin:0;
-      font-family: Arial, sans-serif;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
       background:
-        radial-gradient(900px 420px at 50% -50px, rgba(72,209,125,.22), transparent 60%),
-        radial-gradient(900px 500px at 50% 120%, rgba(72,209,125,.10), transparent 65%),
+        radial-gradient(1000px 520px at 55% -80px, rgba(72,209,125,.18), transparent 60%),
+        radial-gradient(900px 600px at 50% 120%, rgba(72,209,125,.10), transparent 65%),
+        radial-gradient(900px 520px at 30% 20%, rgba(120,160,255,.10), transparent 60%),
         var(--bg);
       color:var(--text);
     }
-    .wrap{max-width:1200px;margin:0 auto;padding:18px}
+    .wrap{max-width:1180px;margin:0 auto;padding:28px 18px}
+    .h1{font-size:44px; font-weight:900; letter-spacing:.2px; margin:0}
+    .h2{color:rgba(231,238,252,.92); font-size:18px; margin:6px 0 0 0; font-weight:700}
+    .sub{color:rgba(147,164,189,.95); font-size:14px; margin:8px 0 0 0; max-width:860px; line-height:1.45}
+
     .card{
-      background:linear-gradient(180deg, rgba(14,25,48,.9), rgba(11,18,32,.92));
-      border:1px solid var(--border);
+      background:linear-gradient(180deg, rgba(14,25,48,.86), rgba(11,18,32,.92));
+      border:1px solid rgba(35,50,77,.9);
       border-radius:18px;
-      padding:14px;
-      box-shadow:0 10px 25px rgba(0,0,0,.25);
-      margin-bottom:14px;
+      padding:16px;
+      box-shadow:0 18px 40px rgba(0,0,0,.30);
+      backdrop-filter: blur(6px);
+      margin-top:18px;
     }
-    .topbar{
-      display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;
+
+    /* top bar like screenshot */
+    .bar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      flex-wrap:wrap;
+      margin-top:16px;
     }
-    h1{margin:0;font-size:20px;letter-spacing:.2px}
-    .meta{color:var(--muted);font-size:13px;display:flex;gap:10px;flex-wrap:wrap}
+    .pillbar{
+      display:flex; gap:10px; flex-wrap:wrap; align-items:center;
+      padding:10px 12px;
+      border-radius:14px;
+      border:1px solid rgba(35,50,77,.9);
+      background:rgba(7,10,16,.35);
+    }
     .pill{
-      padding:6px 10px; border:1px solid var(--border); border-radius:999px;
-      background:rgba(7,10,16,.45); color:var(--muted); font-size:12px;
+      display:flex; gap:8px; align-items:center;
+      color:var(--muted);
+      font-size:13px;
+      padding:6px 10px;
+      border-radius:999px;
+      border:1px solid rgba(35,50,77,.65);
+      background:rgba(0,0,0,.18);
+      white-space:nowrap;
     }
-
-    .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-    @media (max-width: 980px){ .grid{grid-template-columns:1fr} }
-
-    .controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .pill b{color:var(--text); font-weight:900}
+    .btns{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
     .btn{
-      border:none; border-radius:14px; padding:10px 14px;
-      background:var(--btn); color:#04110a; font-weight:800; cursor:pointer;
+      border:none; border-radius:12px; padding:10px 14px;
+      background:var(--btn); color:#04110a; font-weight:900; cursor:pointer;
+      box-shadow:0 10px 18px rgba(0,0,0,.25);
     }
     .btn:disabled{opacity:.55; cursor:not-allowed}
     .btn.secondary{
-      background:rgba(255,255,255,.06); color:var(--text);
-      border:1px solid var(--border);
-      font-weight:700;
+      background:rgba(255,255,255,.06);
+      color:var(--text);
+      border:1px solid rgba(35,50,77,.9);
+      font-weight:800;
+      box-shadow:none;
     }
 
-    /* MODE TOGGLE */
-    .toggle{
-      display:flex; gap:6px; padding:6px;
-      border:1px solid var(--border); border-radius:16px;
-      background:rgba(7,10,16,.35);
+    .grid{display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:16px}
+    @media (max-width: 980px){ .grid{grid-template-columns:1fr} }
+
+    .title{
+      font-weight:900;
+      font-size:18px;
+      margin:0 0 6px 0;
     }
-    .tbtn{
-      border:1px solid transparent;
-      background:transparent;
+    .smallline{
       color:var(--muted);
-      padding:8px 12px;
-      border-radius:12px;
-      cursor:pointer;
-      font-weight:800;
-      font-size:13px;
-      min-width:72px;
-    }
-    .tbtn.active{
-      background:rgba(72,209,125,.16);
-      color:var(--text);
-      border:1px solid rgba(72,209,125,.35);
+      font-size:12px;
+      margin:0 0 12px 0;
     }
 
     .logbox{
-      height:260px; overflow:auto;
-      background:rgba(0,0,0,.25);
-      border:1px solid var(--border);
+      height:250px; overflow:auto;
+      background:rgba(0,0,0,.22);
+      border:1px solid rgba(35,50,77,.8);
       border-radius:14px;
-      padding:10px;
+      padding:12px;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       font-size:12px;
       line-height:1.35;
@@ -99,34 +113,34 @@
       white-space:pre-wrap;
     }
 
-    .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+    .tabs{display:flex; gap:10px; margin:10px 0 10px 0}
     .tab{
-      padding:8px 10px;border-radius:999px;
-      border:1px solid var(--border);
+      padding:7px 12px;
+      border-radius:999px;
+      border:1px solid rgba(35,50,77,.9);
       background:rgba(7,10,16,.35);
       color:var(--muted);
       cursor:pointer;
-      font-weight:800;
+      font-weight:900;
       font-size:12px;
     }
     .tab.active{
+      background:rgba(72,209,125,.14);
       color:var(--text);
-      background:rgba(72,209,125,.12);
       border-color:rgba(72,209,125,.35);
     }
 
-    table{width:100%;border-collapse:collapse}
-    th,td{border-bottom:1px solid rgba(35,50,77,.75);padding:10px 8px;font-size:13px;vertical-align:top}
-    th{color:var(--muted);text-align:left;font-weight:800}
+    table{width:100%; border-collapse:collapse}
+    th,td{border-bottom:1px solid rgba(35,50,77,.75); padding:10px 8px; font-size:13px; vertical-align:top}
+    th{color:rgba(147,164,189,.95); text-align:left; font-weight:900}
     tr:hover td{background:rgba(255,255,255,.03)}
-    .right{ text-align:right }
-    .small{font-size:12px;color:var(--muted)}
-    .good{color:var(--green);font-weight:800}
-    .bad{color:var(--red);font-weight:800}
-    .warn{color:var(--yellow);font-weight:800}
+    .right{text-align:right}
+    .good{color:var(--green); font-weight:900}
+    .bad{color:var(--red); font-weight:900}
 
     .addbtn{
-      padding:7px 10px; border-radius:12px;
+      padding:7px 10px;
+      border-radius:12px;
       border:1px solid rgba(72,209,125,.35);
       background:rgba(72,209,125,.12);
       color:var(--text);
@@ -135,98 +149,75 @@
     }
 
     .rowexp{
-      margin:10px 0 0 0;
-      padding:10px;
+      margin-top:12px;
+      padding:12px;
       border:1px dashed rgba(147,164,189,.35);
-      border-radius:12px;
-      background:rgba(7,10,16,.25);
+      border-radius:14px;
+      background:rgba(7,10,16,.22);
       color:#dbe8ff;
       font-size:12px;
       display:none;
       white-space:pre-wrap;
     }
 
-    .notehead{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center}
+    .notehead{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:12px;
+      flex-wrap:wrap;
+      margin-bottom:8px;
+    }
     .select{
-      padding:9px 10px;border-radius:12px;
-      border:1px solid var(--border);
+      padding:9px 10px;
+      border-radius:12px;
+      border:1px solid rgba(35,50,77,.9);
       background:rgba(7,10,16,.35);
       color:var(--text);
-      font-weight:800;
+      font-weight:900;
     }
-    .mutedline{color:var(--muted);font-size:12px;margin-top:6px}
   </style>
 </head>
+
 <body>
   <div class="wrap">
+    <div>
+      <div class="h1">Precipice Analytica</div>
+      <div class="h2">Systematic Equity Signals &amp; Short-Interest Research</div>
+      <div class="sub">Detecting inflection points from liquidity, price structure and borrow/short metrics.</div>
 
-    <div class="card">
-      <div class="topbar">
-        <div>
-          <h1>Precipice Analytica</h1>
-          <div class="muted">Quantitative Analysis of High-Pressure Market Setups</div>
-<div class="muted">Combining long-horizon historical market analysis with real-time structural and short-interest data.</div>
-<div class="muted"><b>Systematic Research. Structural Insight. Adaptive Learning.</b></div>
-<div class="muted" style="margin-top:10px; max-width: 880px;">
-  Precipice Analytica conducts systematic market research to identify securities approaching critical inflection points driven by structural pressure, emphasizing disciplined methodology and analytical accuracy.
-</div>
-
-          <div class="meta">
-            <div class="pill" id="pillWindow">Window: —</div>
-            <div class="pill" id="pillOrtex">ORTEX: —</div>
-            <div class="pill" id="pillLast">Last scan: —</div>
-            <div class="pill" id="pillMode">Mode: auto</div>
-            <div class="pill"><a id="pillReport" href="#" style="color:var(--text);text-decoration:none;opacity:.9" target="_blank">Report: —</a></div>
-          </div>
+      <div class="bar">
+        <div class="pillbar">
+          <div class="pill" id="pillMode">Mode: <b>auto</b></div>
+          <div class="pill" id="pillWindow">Window: <b>—</b></div>
+          <div class="pill" id="pillOrtex">ORTEX: <b>—</b></div>
+          <div class="pill" id="pillLast">Last Scan: <b>—</b></div>
         </div>
 
-        <div class="controls">
-          <div class="toggle" aria-label="Mode selector">
-            <button class="tbtn" id="modeAuto" data-mode="auto">Auto</button>
-            <button class="tbtn" id="modeDay" data-mode="day">Day</button>
-            <button class="tbtn" id="modeNight" data-mode="night">Night</button>
-          </div>
-<div class="toggle" aria-label="ORTEX selector">
-  <button class="tbtn" id="ortexAuto" data-ortex="auto">ORTEX Auto</button>
-  <button class="tbtn" id="ortexOn" data-ortex="on">ORTEX On</button>
-  <button class="tbtn" id="ortexOff" data-ortex="off">ORTEX Off</button>
-</div>
-
+        <div class="btns">
           <button class="btn" id="btnScan">Scan Stocks</button>
           <button class="btn secondary" id="btnClear">Clear Log</button>
         </div>
-      </div>
-
-      <div class="mutedline">
-        Hours (CT): Pre 3:00–8:29 • Reg 8:30–3:00 • AH 3:00–7:00
       </div>
     </div>
 
     <div class="grid">
       <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-          <div>
-            <div style="font-weight:900">Live Log</div>
-            <div class="small" id="logStatus">Idle.</div>
-          </div>
-        </div>
+        <div class="title">Live Log</div>
+        <div class="smallline" id="logStatus">Idle.</div>
         <div class="logbox" id="logBox"></div>
       </div>
 
       <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:10px;flex-wrap:wrap">
-          <div>
-            <div style="font-weight:900">Stock Scanning Results</div>
-            <div class="small" id="countsLine">SQUEEZE: 0 • MOMENTUM: 0 • Showing: SQUEEZE</div>
-          </div>
-        </div>
+        <div class="title">Stock Scanning Results</div>
+        <div class="smallline" id="resultsMeta">US Equities • Updated — • — scanned</div>
 
         <div class="tabs">
           <button class="tab active" id="tabSqueeze">SQUEEZE</button>
           <button class="tab" id="tabMomentum">MOMENTUM</button>
         </div>
 
-        <div style="overflow:auto;margin-top:8px">
+        <div style="overflow:auto">
           <table>
             <thead>
               <tr>
@@ -235,7 +226,7 @@
                 <th>Subtype</th>
                 <th class="right">Price</th>
                 <th class="right">Move</th>
-                <th class="right">$Vol</th>
+                <th class="right">SFloat</th>
                 <th class="right">Add</th>
               </tr>
             </thead>
@@ -244,23 +235,25 @@
         </div>
 
         <div class="rowexp" id="planBox"></div>
-        <div class="small" style="margin-top:8px">Click a row to expand the plan.</div>
+        <div class="smallline" style="margin-top:10px">Method: SI • Borrow • Liquidity • Price structure</div>
+        <div class="smallline">Click a row to expand the plan.</div>
       </div>
     </div>
 
     <div class="card">
       <div class="notehead">
         <div>
-          <div style="font-weight:900">Notebook</div>
-          <div class="small" id="noteCounts">Total: 0 • Open: 0 • Closed: 0 • View: all</div>
+          <div class="title" style="margin-bottom:4px">Notebook</div>
+          <div class="smallline" id="noteMeta">US Equities • Updated — • — scanned</div>
         </div>
+
         <select class="select" id="noteView">
           <option value="all">all</option>
           <option value="yesterday">yesterday</option>
         </select>
       </div>
 
-      <div style="overflow:auto;margin-top:10px">
+      <div style="overflow:auto">
         <table>
           <thead>
             <tr>
@@ -280,9 +273,8 @@
         </table>
       </div>
 
-      <div class="small" style="margin-top:8px">Click a trade row to expand “Scanner Snapshot”.</div>
+      <div class="smallline" style="margin-top:10px">Click a trade row to expand for deeper snapshot.</div>
     </div>
-
   </div>
 
 <script>
@@ -296,45 +288,53 @@
   let scanId = null;
   let es = null;
 
-  const results = {
-    SQUEEZE: [],
-    MOMENTUM: []
-  };
+  let scannedCount = null; // parsed from logs
+  let lastUpdatedStr = "—";
 
+  const results = { SQUEEZE: [], MOMENTUM: [] };
   const el = (id) => document.getElementById(id);
 
   function setMode(mode){
     selectedMode = mode;
     localStorage.setItem("squeeze_mode", mode);
-
-    // button UI
-    document.querySelectorAll(".tbtn").forEach(b => b.classList.remove("active"));
-    const btn = document.querySelector(`.tbtn[data-mode="${mode}"]`);
-    if(btn) btn.classList.add("active");
-
-    el("pillMode").textContent = `Mode: ${mode}`;
+    el("pillMode").innerHTML = `Mode: <b>${mode}</b>`;
   }
-function setOrtex(v){
-  selectedOrtex = v;
-  localStorage.setItem("squeeze_ortex", v);
-
-  // button UI (only for ortex buttons)
-  document.querySelectorAll(".tbtn[data-ortex]").forEach(b => b.classList.remove("active"));
-  const btn = document.querySelector(`.tbtn[data-ortex="${v}"]`);
-  if(btn) btn.classList.add("active");
-
-  // update pill immediately (backend will later override with actual status)
-  const label = (v === "auto") ? "AUTO" : (v === "on" ? "ON" : "OFF");
-  el("pillOrtex").textContent = `ORTEX: ${label}`;
-}
+  function setOrtex(v){
+    selectedOrtex = v;
+    localStorage.setItem("squeeze_ortex", v);
+    const label = (v === "auto") ? "AUTO" : (v === "on" ? "ON" : "OFF");
+    el("pillOrtex").innerHTML = `ORTEX: <b>${label}</b>`;
+  }
 
   // -------------------------
-  // UI helpers
+  // Log + meta parsing (so we don't need backend edits)
   // -------------------------
   function log(line){
     const box = el("logBox");
     box.textContent += (line + "\n");
     box.scrollTop = box.scrollHeight;
+    parseMetaFromLog(line);
+  }
+
+  function parseMetaFromLog(line){
+    // Snapshot tickers received: 4212
+    const m1 = line.match(/Snapshot tickers received:\s*(\d+)/i);
+    if(m1){
+      scannedCount = Number(m1[1]);
+      updateMetaLines();
+    }
+
+    // Market window: PREMARKET (03:00–07:12 CT)
+    const m2 = line.match(/Market window:\s*([A-Z \(\)]+)\s*\(/i);
+    if(m2){
+      el("pillWindow").innerHTML = `Window: <b>${m2[1].trim()}</b>`;
+    }
+  }
+
+  function updateMetaLines(){
+    const scanned = (scannedCount == null) ? "—" : scannedCount.toLocaleString();
+    el("resultsMeta").textContent = `US Equities • Updated ${lastUpdatedStr} • ${scanned} scanned`;
+    el("noteMeta").textContent = `US Equities • Updated ${lastUpdatedStr} • ${scanned} scanned`;
   }
 
   function fmtNum(x, nd=2){
@@ -343,7 +343,6 @@ function setOrtex(v){
     if(Number.isNaN(n)) return "NA";
     return n.toFixed(nd);
   }
-
   function fmtPct(x){
     if(x === null || x === undefined) return "NA";
     const n = Number(x);
@@ -352,24 +351,18 @@ function setOrtex(v){
     const sign = p > 0 ? "+" : "";
     return sign + p.toFixed(1) + "%";
   }
-
-  function fmtMoneyInt(x){
+  function fmtInt(x){
     if(x === null || x === undefined) return "NA";
     const n = Number(x);
     if(Number.isNaN(n)) return "NA";
     return Math.round(n).toLocaleString();
   }
 
-  function renderCounts(){
-    el("countsLine").textContent =
-      `SQUEEZE: ${results.SQUEEZE.length} • MOMENTUM: ${results.MOMENTUM.length} • Showing: ${showing}`;
-  }
-
   function renderResults(){
-    renderCounts();
     const body = el("resultsBody");
     body.innerHTML = "";
     const list = results[showing] || [];
+
     for(const r of list){
       const tr = document.createElement("tr");
       tr.style.cursor = "pointer";
@@ -379,11 +372,11 @@ function setOrtex(v){
         <td>${r.subtype || ""}</td>
         <td class="right">${fmtNum(r.close,2)}</td>
         <td class="right">${fmtPct(r.move_pct)}</td>
-        <td class="right">${fmtMoneyInt(r.dollar_vol)}</td>
-        <td class="right"><button class="addbtn" data-t="${r.ticker}">➕ Add</button></td>
+        <td class="right">${fmtInt(r.float_shares)}</td>
+        <td class="right"><button class="addbtn" data-t="${r.ticker}">Add</button></td>
       `;
+
       tr.addEventListener("click", (e) => {
-        // don't toggle plan if clicking Add
         if(e.target && e.target.matches("button.addbtn")) return;
         const planBox = el("planBox");
         planBox.style.display = "block";
@@ -392,12 +385,13 @@ function setOrtex(v){
           (r.plan || "(no plan)") + "\n\n" +
           `Trigger: ${fmtNum(r.trigger,4)} | Stop: ${fmtNum(r.stop,4)}\n` +
           `Range: ${fmtPct(r.range_pct)} | Hold: ${fmtPct(r.hold_pct)} | RelVol: ${fmtNum(r.rel_vol,2)}\n` +
-          `SI%: ${fmtNum(r.si_pct_ff,1)} | CTB: ${fmtNum(r.ctb,1)} | Avail: ${fmtMoneyInt(r.avail)}`
+          `SI%: ${fmtNum(r.si_pct_ff,1)} | CTB: ${fmtNum(r.ctb,1)} | Avail: ${fmtInt(r.avail)}\n` +
+          `$Vol: ${fmtInt(r.dollar_vol)}`
       });
+
       body.appendChild(tr);
     }
 
-    // hook Add buttons
     body.querySelectorAll("button.addbtn").forEach(btn => {
       btn.addEventListener("click", async (e) => {
         e.stopPropagation();
@@ -416,16 +410,13 @@ function setOrtex(v){
     });
   }
 
-  // -------------------------
   // Tabs
-  // -------------------------
   el("tabSqueeze").addEventListener("click", () => {
     showing = "SQUEEZE";
     el("tabSqueeze").classList.add("active");
     el("tabMomentum").classList.remove("active");
     renderResults();
   });
-
   el("tabMomentum").addEventListener("click", () => {
     showing = "MOMENTUM";
     el("tabMomentum").classList.add("active");
@@ -433,40 +424,30 @@ function setOrtex(v){
     renderResults();
   });
 
-  // -------------------------
-  // Mode toggle buttons
-  // -------------------------
-  // Mode buttons
-document.querySelectorAll(".tbtn[data-mode]").forEach(b => {
-  b.addEventListener("click", () => setMode(b.getAttribute("data-mode")));
-});
-
-// ORTEX buttons
-document.querySelectorAll(".tbtn[data-ortex]").forEach(b => {
-  b.addEventListener("click", () => setOrtex(b.getAttribute("data-ortex")));
-});
-
-
-  // -------------------------
-  // Scan flow
-  // -------------------------
+  // Scan
   async function runScan(){
     el("btnScan").disabled = true;
     el("logStatus").textContent = "Running…";
     el("planBox").style.display = "none";
     el("planBox").textContent = "";
+
     results.SQUEEZE = [];
     results.MOMENTUM = [];
-    renderResults();
+    scannedCount = null;
 
-    // close old stream
     if(es){ try{ es.close(); }catch(e){} es = null; }
+
+    lastUpdatedStr = new Date().toLocaleTimeString([], {hour:"numeric", minute:"2-digit"});
+    el("pillLast").innerHTML = `Last Scan: <b>${lastUpdatedStr}</b>`;
+    updateMetaLines();
+    renderResults();
 
     const mode = selectedMode || "auto";
     const ortex = selectedOrtex || "auto";
-const resp = await fetch(`/run_scan?mode=${encodeURIComponent(mode)}&ortex=${encodeURIComponent(ortex)}`, { method:"POST" });
 
+    const resp = await fetch(`/run_scan?mode=${encodeURIComponent(mode)}&ortex=${encodeURIComponent(ortex)}`, { method:"POST" });
     const data = await resp.json();
+
     if(!data.ok){
       el("logStatus").textContent = "Error starting scan.";
       el("btnScan").disabled = false;
@@ -474,10 +455,9 @@ const resp = await fetch(`/run_scan?mode=${encodeURIComponent(mode)}&ortex=${enc
     }
 
     scanId = data.scan_id;
-    el("pillLast").textContent = `Last scan: ${new Date().toLocaleTimeString()}`;
-    el("pillMode").textContent = `Mode: ${data.mode || mode}`;
+    el("pillMode").innerHTML = `Mode: <b>${(data.mode || mode)}</b>`;
+    // window/ortex will update from logs (or keep previous)
 
-    // open SSE
     es = new EventSource(`/stream/${scanId}`);
 
     es.addEventListener("log", (ev) => {
@@ -493,12 +473,9 @@ const resp = await fetch(`/run_scan?mode=${encodeURIComponent(mode)}&ortex=${enc
       let r;
       try{ r = JSON.parse(ev.data); }catch(e){ return; }
       const bucket = (r.bucket || "").toUpperCase() === "SQUEEZE" ? "SQUEEZE" : "MOMENTUM";
-
-      // keep only top 5 coming from backend; still safety-cap here
       const arr = results[bucket];
       arr.push(r);
       results[bucket] = arr.slice(0,5);
-
       renderResults();
     });
 
@@ -508,24 +485,13 @@ const resp = await fetch(`/run_scan?mode=${encodeURIComponent(mode)}&ortex=${enc
       el("logStatus").textContent = j.ok ? "Done." : "Done (error).";
       el("btnScan").disabled = false;
 
-      if(j.report_url){
-        el("pillReport").textContent = "Report: Open";
-        el("pillReport").href = j.report_url;
-      }else{
-        el("pillReport").textContent = "Report: —";
-        el("pillReport").href = "#";
-      }
-
-      // Leave stream open for a second; then close
       setTimeout(() => { if(es){ try{ es.close(); }catch(e){} es=null; } }, 1200);
     });
   }
 
   el("btnScan").addEventListener("click", runScan);
 
-  // -------------------------
   // Clear log
-  // -------------------------
   el("btnClear").addEventListener("click", async () => {
     await fetch("/clear_log", { method:"POST" });
     el("logBox").textContent = "";
@@ -533,7 +499,7 @@ const resp = await fetch(`/run_scan?mode=${encodeURIComponent(mode)}&ortex=${enc
   });
 
   // -------------------------
-  // Notebook
+  // Notebook (same endpoints you already have)
   // -------------------------
   async function loadNotebook(){
     const view = el("noteView").value;
@@ -542,12 +508,6 @@ const resp = await fetch(`/run_scan?mode=${encodeURIComponent(mode)}&ortex=${enc
     if(!data.ok) return;
 
     const rows = data.trades || [];
-    const total = rows.length;
-    const open = rows.filter(r => r.exit_price == null).length;
-    const closed = total - open;
-
-    el("noteCounts").textContent = `Total: ${total} • Open: ${open} • Closed: ${closed} • View: ${view}`;
-
     const body = el("noteBody");
     body.innerHTML = "";
 
@@ -555,14 +515,12 @@ const resp = await fetch(`/run_scan?mode=${encodeURIComponent(mode)}&ortex=${enc
       const pnlD = t.pnl_dollars;
       const pnlP = t.pnl_pct;
 
-      const pnlDStr = (pnlD == null) ? "—" : (pnlD >= 0 ? "+" : "") + pnlD.toFixed(2);
-      const pnlPStr = (pnlP == null) ? "—" : (pnlP >= 0 ? "+" : "") + (pnlP*100).toFixed(1) + "%";
+      const pnlDStr = (pnlD == null) ? "—" : (pnlD >= 0 ? `<span class="good">+${pnlD.toFixed(2)}</span>` : `<span class="bad">${pnlD.toFixed(2)}</span>`);
+      const pnlPStr = (pnlP == null) ? "—" : (pnlP >= 0 ? `<span class="good">+${(pnlP*100).toFixed(1)}%</span>` : `<span class="bad">${(pnlP*100).toFixed(1)}%</span>`);
 
-      const flags = (() => {
-        try{ return JSON.parse(t.review_flags || "[]"); }catch(e){ return []; }
-      })();
-
+      const flags = (() => { try{ return JSON.parse(t.review_flags || "[]"); }catch(e){ return []; } })();
       const flagsStr = (flags || []).map(f => `${f.icon||""} ${f.label||""}`.trim()).join(" • ");
+
       const tr = document.createElement("tr");
       tr.style.cursor = "pointer";
       tr.innerHTML = `
@@ -576,7 +534,7 @@ const resp = await fetch(`/run_scan?mode=${encodeURIComponent(mode)}&ortex=${enc
         <td class="right">${pnlPStr}</td>
         <td>${flagsStr || ""}</td>
         <td class="right">
-          ${t.exit_price == null ? `<button class="addbtn" data-close="${t.id}">Close</button>` : ""}
+          ${t.exit_price == null ? `<button class="addbtn" data-close="${t.id}">Close</button>` : "—"}
         </td>
       `;
 
@@ -600,7 +558,6 @@ const resp = await fetch(`/run_scan?mode=${encodeURIComponent(mode)}&ortex=${enc
       body.appendChild(tr);
     }
 
-    // Close buttons
     body.querySelectorAll("button[data-close]").forEach(btn => {
       btn.addEventListener("click", async (e) => {
         e.stopPropagation();
@@ -622,13 +579,11 @@ const resp = await fetch(`/run_scan?mode=${encodeURIComponent(mode)}&ortex=${enc
       user_id: "demo",
       scan_id: scanId,
       scan_date_ct: null,
-
       ticker: row.ticker,
       bucket: row.bucket,
       subtype: row.subtype,
       confidence: row.confidence,
       plan: row.plan,
-
       trigger: row.trigger,
       stop: row.stop,
       scan_close: row.close,
@@ -637,7 +592,7 @@ const resp = await fetch(`/run_scan?mode=${encodeURIComponent(mode)}&ortex=${enc
       range_pct: row.range_pct,
       hold_pct: row.hold_pct,
       rel_vol: row.rel_vol,
-
+      float_shares: row.float_shares,
       entry_price: entryPrice,
       shares: shares
     };
@@ -651,19 +606,10 @@ const resp = await fetch(`/run_scan?mode=${encodeURIComponent(mode)}&ortex=${enc
 
   el("noteView").addEventListener("change", loadNotebook);
 
-  // -------------------------
   // Boot
-  // -------------------------
   setMode(selectedMode);
   setOrtex(selectedOrtex);
-
-  el("pillWindow").textContent = "Window: —";
-  el("pillOrtex").textContent = "ORTEX: —";
-  el("pillLast").textContent = "Last scan: —";
-  el("pillReport").textContent = "Report: —";
-  el("pillReport").href = "#";
-
-  // load notebook once on page load
+  updateMetaLines();
   loadNotebook().catch(()=>{});
 </script>
 </body>
