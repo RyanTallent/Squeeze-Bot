@@ -674,7 +674,7 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "auto") -
         log_fn(f"Mode: {mode.upper()} ({'Polygon + ORTEX' if (mode=='day') else 'Polygon only'})")
         log_fn(f"Date: {date_str}")
         log_fn(f"Market window: {window} ({w_start.strftime('%H:%M')}–{w_end.strftime('%H:%M')} CT)")
-        log_fn(f"ORTEX request: {ortex.upper()} | ORTEX mode: {'ON' if ortex_on else 'OFF'} (ON only 7:30AM–4:00PM CT)")
+        log_fn(f"ORTEX request: {ortex.upper()} | ORTEX mode: {'ON' if ortex_on else 'OFF'} (ON only 3:00AM–4:00PM CT)")
 
     snap = get_snapshot_all_tickers(log_fn=log_fn)
     if log_fn:
@@ -775,6 +775,7 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "auto") -
             r["avail"] = ortex_availability_latest(t, log_fn=log_fn)
 
             feat = dict(r)
+            feat["window"] = window
             base_score, prob, pressure = compute_scores(feat)
             has_borrow = (r.get("ctb") is not None and r.get("avail") is not None)
             r["base_score"] = round(base_score, 2)
