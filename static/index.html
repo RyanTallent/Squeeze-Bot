@@ -1,23 +1,36 @@
-ok juse making sure heres my static html rtight now taker a look and make sure the code you just gave me onyl chan ges what we want to change <!doctype html>
+<!doctype html>
 <html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Precipice Analytica</title>
+
+  <!-- Playfair Display (brand) -->
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&display=swap" rel="stylesheet">
+
   <style>
     :root{
+      /* keep your dark UI base */
       --bg:#070a10;
       --panel:#0b1220;
       --panel2:#0e1930;
       --border:#23324d;
       --text:#e7eefc;
       --muted:#93a4bd;
+
+      /* accents */
       --green:#48d17d;
       --red:#ff5c5c;
       --yellow:#ffd166;
       --btn:#1ea34a;
       --chip:#101c33;
+
+      /* NEW: gold highlight */
+      --gold:#C6A14A;
+      --goldBg:rgba(198,161,74,.14);
+      --goldBorder:rgba(198,161,74,.35);
     }
+
     *{box-sizing:border-box}
     body{
       margin:0;
@@ -30,7 +43,16 @@ ok juse making sure heres my static html rtight now taker a look and make sure t
       color:var(--text);
     }
     .wrap{max-width:1180px;margin:0 auto;padding:28px 18px}
-    .h1{font-size:44px; font-weight:900; letter-spacing:.2px; margin:0}
+
+    /* NEW: brand font */
+    .h1{
+      font-family:'Playfair Display', serif;
+      font-size:44px;
+      font-weight:700;
+      letter-spacing:.2px;
+      margin:0
+    }
+    .h1 .ital{font-style:italic}
     .h2{color:rgba(231,238,252,.92); font-size:18px; margin:6px 0 0 0; font-weight:700}
     .sub{color:rgba(147,164,189,.95); font-size:14px; margin:8px 0 0 0; max-width:860px; line-height:1.45}
 
@@ -44,7 +66,6 @@ ok juse making sure heres my static html rtight now taker a look and make sure t
       margin-top:18px;
     }
 
-    /* top bar like screenshot */
     .bar{
       display:flex;
       align-items:center;
@@ -176,13 +197,31 @@ ok juse making sure heres my static html rtight now taker a look and make sure t
       color:var(--text);
       font-weight:900;
     }
+
+    /* NEW: gold highlight for “good stocks” */
+    tr.goldrow td{
+      background:var(--goldBg);
+      border-bottom-color:var(--goldBorder);
+    }
+    tr.goldrow td b{ color:var(--gold); }
+    .goldchip{
+      display:inline-block;
+      padding:3px 8px;
+      border-radius:999px;
+      border:1px solid var(--goldBorder);
+      background:var(--goldBg);
+      color:var(--gold);
+      font-weight:900;
+      font-size:11px;
+      margin-left:6px;
+    }
   </style>
 </head>
 
 <body>
   <div class="wrap">
     <div>
-      <div class="h1">Precipice Analytica</div>
+      <div class="h1">Precipice <span class="ital">Analytica</span></div>
       <div class="h2">Systematic Equity Signals &amp; Short-Interest Research</div>
       <div class="sub">Detecting inflection points from liquidity, price structure and borrow/short metrics.</div>
 
@@ -288,7 +327,7 @@ ok juse making sure heres my static html rtight now taker a look and make sure t
   let scanId = null;
   let es = null;
 
-  let scannedCount = null; // parsed from logs
+  let scannedCount = null;
   let lastUpdatedStr = "—";
 
   const results = { SQUEEZE: [], MOMENTUM: [] };
@@ -297,17 +336,17 @@ ok juse making sure heres my static html rtight now taker a look and make sure t
   function setMode(mode){
     selectedMode = mode;
     localStorage.setItem("squeeze_mode", mode);
-    el("pillMode").innerHTML = Mode: <b>${mode}</b>;
+    el("pillMode").innerHTML = `Mode: <b>${mode}</b>`;
   }
   function setOrtex(v){
     selectedOrtex = v;
     localStorage.setItem("squeeze_ortex", v);
     const label = (v === "auto") ? "AUTO" : (v === "on" ? "ON" : "OFF");
-    el("pillOrtex").innerHTML = ORTEX: <b>${label}</b>;
+    el("pillOrtex").innerHTML = `ORTEX: <b>${label}</b>`;
   }
 
   // -------------------------
-  // Log + meta parsing (so we don't need backend edits)
+  // Log + meta parsing
   // -------------------------
   function log(line){
     const box = el("logBox");
@@ -317,24 +356,28 @@ ok juse making sure heres my static html rtight now taker a look and make sure t
   }
 
   function parseMetaFromLog(line){
-    // Snapshot tickers received: 4212
     const m1 = line.match(/Snapshot tickers received:\s*(\d+)/i);
     if(m1){
       scannedCount = Number(m1[1]);
       updateMetaLines();
     }
 
-    // Market window: PREMARKET (03:00–07:12 CT)
     const m2 = line.match(/Market window:\s*([A-Z \(\)]+)\s*\(/i);
     if(m2){
-      el("pillWindow").innerHTML = Window: <b>${m2[1].trim()}</b>;
+      el("pillWindow").innerHTML = `Window: <b>${m2[1].trim()}</b>`;
+    }
+
+    // show ORTEX actual status if log line exists
+    const m3 = line.match(/ORTEX request:\s*([A-Z]+)\s*\|\s*ORTEX mode:\s*(ON|OFF)/i);
+    if(m3){
+      el("pillOrtex").innerHTML = `ORTEX: <b>${m3[2].toUpperCase()}</b>`;
     }
   }
 
   function updateMetaLines(){
     const scanned = (scannedCount == null) ? "—" : scannedCount.toLocaleString();
-    el("resultsMeta").textContent = US Equities • Updated ${lastUpdatedStr} • ${scanned} scanned;
-    el("noteMeta").textContent = US Equities • Updated ${lastUpdatedStr} • ${scanned} scanned;
+    el("resultsMeta").textContent = `US Equities • Updated ${lastUpdatedStr} • ${scanned} scanned`;
+    el("noteMeta").textContent = `US Equities • Updated ${lastUpdatedStr} • ${scanned} scanned`;
   }
 
   function fmtNum(x, nd=2){
@@ -358,6 +401,13 @@ ok juse making sure heres my static html rtight now taker a look and make sure t
     return Math.round(n).toLocaleString();
   }
 
+  // GOLD RULE: what counts as a “good stock”
+  // Your "Conf" is 1–10. I mark 9–10 as gold.
+  function isGoldRow(r){
+    const c = Number(r.confidence || 0);
+    return c >= 9;
+  }
+
   function renderResults(){
     const body = el("resultsBody");
     body.innerHTML = "";
@@ -366,27 +416,31 @@ ok juse making sure heres my static html rtight now taker a look and make sure t
     for(const r of list){
       const tr = document.createElement("tr");
       tr.style.cursor = "pointer";
-      tr.innerHTML = 
-        <td><b>${r.ticker || ""}</b></td>
+      if(isGoldRow(r)) tr.classList.add("goldrow");
+
+      const goldBadge = isGoldRow(r) ? `<span class="goldchip">A+</span>` : "";
+
+      tr.innerHTML = `
+        <td><b>${r.ticker || ""}</b> ${goldBadge}</td>
         <td>${r.confidence ?? ""}</td>
         <td>${r.subtype || ""}</td>
         <td class="right">${fmtNum(r.close,2)}</td>
         <td class="right">${fmtPct(r.move_pct)}</td>
         <td class="right">${fmtInt(r.float_shares)}</td>
         <td class="right"><button class="addbtn" data-t="${r.ticker}">Add</button></td>
-      ;
+      `;
 
       tr.addEventListener("click", (e) => {
         if(e.target && e.target.matches("button.addbtn")) return;
         const planBox = el("planBox");
         planBox.style.display = "block";
         planBox.textContent =
-          ${r.ticker} — ${r.subtype}\n\n +
+          `${r.ticker} — ${r.subtype}\n\n` +
           (r.plan || "(no plan)") + "\n\n" +
-          Trigger: ${fmtNum(r.trigger,4)} | Stop: ${fmtNum(r.stop,4)}\n +
-          Range: ${fmtPct(r.range_pct)} | Hold: ${fmtPct(r.hold_pct)} | RelVol: ${fmtNum(r.rel_vol,2)}\n +
-          SI%: ${fmtNum(r.si_pct_ff,1)} | CTB: ${fmtNum(r.ctb,1)} | Avail: ${fmtInt(r.avail)}\n +
-          $Vol: ${fmtInt(r.dollar_vol)}
+          `Trigger: ${fmtNum(r.trigger,4)} | Stop: ${fmtNum(r.stop,4)}\n` +
+          `Range: ${fmtPct(r.range_pct)} | Hold: ${fmtPct(r.hold_pct)} | RelVol: ${fmtNum(r.rel_vol,2)}\n` +
+          `SI%: ${fmtNum(r.si_pct_ff,1)} | CTB: ${fmtNum(r.ctb,1)} | Avail: ${fmtInt(r.avail)}\n` +
+          `$Vol: ${fmtInt(r.dollar_vol)}`
       });
 
       body.appendChild(tr);
@@ -399,9 +453,9 @@ ok juse making sure heres my static html rtight now taker a look and make sure t
         const row = (results.SQUEEZE.concat(results.MOMENTUM)).find(x => x.ticker === tkr);
         if(!row) return;
 
-        const entry = prompt(Entry price for ${tkr}?, row.close ? String(row.close) : "");
+        const entry = prompt(`Entry price for ${tkr}?`, row.close ? String(row.close) : "");
         if(entry === null) return;
-        const shares = prompt(Shares for ${tkr}?, "100");
+        const shares = prompt(`Shares for ${tkr}?`, "100");
         if(shares === null) return;
 
         await createTradeFromRow(row, entry, shares);
@@ -438,14 +492,14 @@ ok juse making sure heres my static html rtight now taker a look and make sure t
     if(es){ try{ es.close(); }catch(e){} es = null; }
 
     lastUpdatedStr = new Date().toLocaleTimeString([], {hour:"numeric", minute:"2-digit"});
-    el("pillLast").innerHTML = Last Scan: <b>${lastUpdatedStr}</b>;
+    el("pillLast").innerHTML = `Last Scan: <b>${lastUpdatedStr}</b>`;
     updateMetaLines();
     renderResults();
 
     const mode = selectedMode || "auto";
     const ortex = selectedOrtex || "auto";
 
-    const resp = await fetch(/run_scan?mode=${encodeURIComponent(mode)}&ortex=${encodeURIComponent(ortex)}, { method:"POST" });
+    const resp = await fetch(`/run_scan?mode=${encodeURIComponent(mode)}&ortex=${encodeURIComponent(ortex)}`, { method:"POST" });
     const data = await resp.json();
 
     if(!data.ok){
@@ -455,10 +509,9 @@ ok juse making sure heres my static html rtight now taker a look and make sure t
     }
 
     scanId = data.scan_id;
-    el("pillMode").innerHTML = Mode: <b>${(data.mode || mode)}</b>;
-    // window/ortex will update from logs (or keep previous)
+    el("pillMode").innerHTML = `Mode: <b>${(data.mode || mode)}</b>`;
 
-    es = new EventSource(/stream/${scanId});
+    es = new EventSource(`/stream/${scanId}`);
 
     es.addEventListener("log", (ev) => {
       try{
@@ -499,11 +552,11 @@ ok juse making sure heres my static html rtight now taker a look and make sure t
   });
 
   // -------------------------
-  // Notebook (same endpoints you already have)
+  // Notebook
   // -------------------------
   async function loadNotebook(){
     const view = el("noteView").value;
-    const resp = await fetch(/api/trades?view=${encodeURIComponent(view)}&user_id=demo);
+    const resp = await fetch(`/api/trades?view=${encodeURIComponent(view)}&user_id=demo`);
     const data = await resp.json();
     if(!data.ok) return;
 
@@ -515,15 +568,15 @@ ok juse making sure heres my static html rtight now taker a look and make sure t
       const pnlD = t.pnl_dollars;
       const pnlP = t.pnl_pct;
 
-      const pnlDStr = (pnlD == null) ? "—" : (pnlD >= 0 ? <span class="good">+${pnlD.toFixed(2)}</span> : <span class="bad">${pnlD.toFixed(2)}</span>);
-      const pnlPStr = (pnlP == null) ? "—" : (pnlP >= 0 ? <span class="good">+${(pnlP*100).toFixed(1)}%</span> : <span class="bad">${(pnlP*100).toFixed(1)}%</span>);
+      const pnlDStr = (pnlD == null) ? "—" : (pnlD >= 0 ? `<span class="good">+${Number(pnlD).toFixed(2)}</span>` : `<span class="bad">${Number(pnlD).toFixed(2)}</span>`);
+      const pnlPStr = (pnlP == null) ? "—" : (pnlP >= 0 ? `<span class="good">+${(Number(pnlP)*100).toFixed(1)}%</span>` : `<span class="bad">${(Number(pnlP)*100).toFixed(1)}%</span>`);
 
       const flags = (() => { try{ return JSON.parse(t.review_flags || "[]"); }catch(e){ return []; } })();
-      const flagsStr = (flags || []).map(f => ${f.icon||""} ${f.label||""}.trim()).join(" • ");
+      const flagsStr = (flags || []).map(f => `${f.icon||""} ${f.label||""}`.trim()).join(" • ");
 
       const tr = document.createElement("tr");
       tr.style.cursor = "pointer";
-      tr.innerHTML = 
+      tr.innerHTML = `
         <td><b>${t.ticker}</b></td>
         <td>${t.subtype || ""}</td>
         <td>${t.confidence ?? ""}</td>
@@ -534,24 +587,24 @@ ok juse making sure heres my static html rtight now taker a look and make sure t
         <td class="right">${pnlPStr}</td>
         <td>${flagsStr || ""}</td>
         <td class="right">
-          ${t.exit_price == null ? <button class="addbtn" data-close="${t.id}">Close</button> : "—"}
+          ${t.exit_price == null ? `<button class="addbtn" data-close="${t.id}">Close</button>` : "—"}
         </td>
-      ;
+      `;
 
       tr.addEventListener("click", (e) => {
         if(e.target && e.target.matches("button")) return;
         const planBox = el("planBox");
         planBox.style.display = "block";
         planBox.textContent =
-          TRADE ${t.ticker}\n\n +
-          Setup: ${t.subtype || ""} | Conf: ${t.confidence ?? ""}\n +
-          Entry: ${t.entry_price} @ ${t.entry_time_ct}\n +
-          Exit: ${t.exit_price ?? "—"} @ ${t.exit_time_ct ?? "—"}\n\n +
-          Scanner Snapshot:\n +
-          Trigger: ${t.trigger ?? "—"} | Stop: ${t.stop ?? "—"}\n +
-          Move: ${t.move_pct ?? "—"} | $Vol: ${t.dollar_vol ?? "—"}\n +
-          Range: ${t.range_pct ?? "—"} | Hold: ${t.hold_pct ?? "—"} | RelVol: ${t.rel_vol ?? "—"}\n +
-          SI%: ${t.si_pct_ff ?? "—"} | CTB: ${t.ctb ?? "—"} | Avail: ${t.avail ?? "—"}\n\n +
+          `TRADE ${t.ticker}\n\n` +
+          `Setup: ${t.subtype || ""} | Conf: ${t.confidence ?? ""}\n` +
+          `Entry: ${t.entry_price} @ ${t.entry_time_ct}\n` +
+          `Exit: ${t.exit_price ?? "—"} @ ${t.exit_time_ct ?? "—"}\n\n` +
+          `Scanner Snapshot:\n` +
+          `Trigger: ${t.trigger ?? "—"} | Stop: ${t.stop ?? "—"}\n` +
+          `Move: ${t.move_pct ?? "—"} | $Vol: ${t.dollar_vol ?? "—"}\n` +
+          `Range: ${t.range_pct ?? "—"} | Hold: ${t.hold_pct ?? "—"} | RelVol: ${t.rel_vol ?? "—"}\n` +
+          `SI%: ${t.si_pct_ff ?? "—"} | CTB: ${t.ctb ?? "—"} | Avail: ${t.avail ?? "—"}\n\n` +
           (t.plan || "");
       });
 
@@ -564,7 +617,7 @@ ok juse making sure heres my static html rtight now taker a look and make sure t
         const id = btn.getAttribute("data-close");
         const px = prompt("Exit price?", "");
         if(px === null) return;
-        await fetch(/api/trades/${id}?user_id=demo, {
+        await fetch(`/api/trades/${id}?user_id=demo`, {
           method:"PATCH",
           headers:{ "Content-Type":"application/json" },
           body: JSON.stringify({ exit_price: px })
