@@ -4,278 +4,228 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Precipice Analytica</title>
+
+  <!-- Playfair Display -->
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&display=swap" rel="stylesheet">
+
   <style>
     :root{
-      --bg:#070a10;
-      --panel:#0b1220;
-      --panel2:#0e1930;
-      --border:#23324d;
-      --text:#e7eefc;
-      --muted:#93a4bd;
-      --green:#48d17d;
-      --red:#ff5c5c;
-      --yellow:#ffd166;
-      --btn:#1ea34a;
-      --chip:#101c33;
+      --bg:#F8F9FA;
+      --panel:#FFFFFF;
+      --border:#E3E6EA;
+      --text:#1E1E1E;
+      --muted:#6C757D;
+      --navy:#0D1B2A;
+      --gold:#C6A14A;
+      --green:#1E7F4F;
+      --red:#B23A3A;
+      --chip:#F1F3F5;
     }
+
     *{box-sizing:border-box}
+
     body{
       margin:0;
-      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-      background:
-        radial-gradient(1000px 520px at 55% -80px, rgba(72,209,125,.18), transparent 60%),
-        radial-gradient(900px 600px at 50% 120%, rgba(72,209,125,.10), transparent 65%),
-        radial-gradient(900px 520px at 30% 20%, rgba(120,160,255,.10), transparent 60%),
-        var(--bg);
+      font-family:'Playfair Display', serif;
+      background:var(--bg);
       color:var(--text);
     }
-    .wrap{max-width:1180px;margin:0 auto;padding:28px 18px}
-    .h1{font-size:44px; font-weight:900; letter-spacing:.2px; margin:0}
-    .h2{color:rgba(231,238,252,.92); font-size:18px; margin:6px 0 0 0; font-weight:700}
-    .sub{color:rgba(147,164,189,.95); font-size:14px; margin:8px 0 0 0; max-width:860px; line-height:1.45}
+
+    .wrap{
+      max-width:1180px;
+      margin:0 auto;
+      padding:32px 20px;
+    }
+
+    .h1{
+      font-size:42px;
+      font-weight:700;
+      margin:0;
+    }
+
+    .h2{
+      font-size:17px;
+      margin-top:6px;
+      color:var(--muted);
+    }
+
+    .sub{
+      margin-top:8px;
+      font-size:14px;
+      color:var(--muted);
+      max-width:800px;
+      line-height:1.5;
+    }
 
     .card{
-      background:linear-gradient(180deg, rgba(14,25,48,.86), rgba(11,18,32,.92));
-      border:1px solid rgba(35,50,77,.9);
-      border-radius:18px;
-      padding:16px;
-      box-shadow:0 18px 40px rgba(0,0,0,.30);
-      backdrop-filter: blur(6px);
-      margin-top:18px;
+      background:var(--panel);
+      border:1px solid var(--border);
+      border-radius:12px;
+      padding:18px;
+      margin-top:22px;
+      box-shadow:0 4px 14px rgba(0,0,0,.04);
     }
 
-    /* top bar like screenshot */
     .bar{
       display:flex;
-      align-items:center;
       justify-content:space-between;
-      gap:12px;
+      align-items:center;
       flex-wrap:wrap;
-      margin-top:16px;
+      margin-top:20px;
     }
+
     .pillbar{
-      display:flex; gap:10px; flex-wrap:wrap; align-items:center;
-      padding:10px 12px;
-      border-radius:14px;
-      border:1px solid rgba(35,50,77,.9);
-      background:rgba(7,10,16,.35);
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
     }
+
     .pill{
-      display:flex; gap:8px; align-items:center;
-      color:var(--muted);
-      font-size:13px;
-      padding:6px 10px;
+      background:var(--chip);
+      border:1px solid var(--border);
+      padding:6px 12px;
       border-radius:999px;
-      border:1px solid rgba(35,50,77,.65);
-      background:rgba(0,0,0,.18);
-      white-space:nowrap;
-    }
-    .pill b{color:var(--text); font-weight:900}
-    .btns{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
-    .btn{
-      border:none; border-radius:12px; padding:10px 14px;
-      background:var(--btn); color:#04110a; font-weight:900; cursor:pointer;
-      box-shadow:0 10px 18px rgba(0,0,0,.25);
-    }
-    .btn:disabled{opacity:.55; cursor:not-allowed}
-    .btn.secondary{
-      background:rgba(255,255,255,.06);
-      color:var(--text);
-      border:1px solid rgba(35,50,77,.9);
-      font-weight:800;
-      box-shadow:none;
-    }
-
-    .grid{display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:16px}
-    @media (max-width: 980px){ .grid{grid-template-columns:1fr} }
-
-    .title{
-      font-weight:900;
-      font-size:18px;
-      margin:0 0 6px 0;
-    }
-    .smallline{
+      font-size:13px;
       color:var(--muted);
+    }
+
+    .pill b{
+      color:var(--navy);
+      font-weight:600;
+    }
+
+    .btn{
+      background:var(--navy);
+      color:white;
+      border:none;
+      border-radius:6px;
+      padding:10px 16px;
+      cursor:pointer;
+      font-size:14px;
+      font-weight:600;
+    }
+
+    .btn.secondary{
+      background:white;
+      border:1px solid var(--border);
+      color:var(--text);
+    }
+
+    .grid{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:20px;
+      margin-top:24px;
+    }
+
+    @media (max-width: 980px){
+      .grid{grid-template-columns:1fr}
+    }
+
+    table{
+      width:100%;
+      border-collapse:collapse;
+      font-size:13px;
+    }
+
+    th,td{
+      border-bottom:1px solid var(--border);
+      padding:10px 8px;
+    }
+
+    th{
+      text-align:left;
+      font-weight:600;
+      color:var(--muted);
+    }
+
+    tr:hover td{
+      background:#FAFBFC;
+    }
+
+    .right{text-align:right}
+
+    .good{color:var(--green); font-weight:600}
+    .bad{color:var(--red); font-weight:600}
+
+    .addbtn{
+      background:var(--chip);
+      border:1px solid var(--border);
+      padding:6px 10px;
+      border-radius:6px;
+      cursor:pointer;
       font-size:12px;
-      margin:0 0 12px 0;
     }
 
     .logbox{
-      height:250px; overflow:auto;
-      background:rgba(0,0,0,.22);
-      border:1px solid rgba(35,50,77,.8);
-      border-radius:14px;
+      height:250px;
+      overflow:auto;
+      background:#FAFBFC;
+      border:1px solid var(--border);
+      border-radius:8px;
       padding:12px;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       font-size:12px;
-      line-height:1.35;
-      color:#cfe2ff;
       white-space:pre-wrap;
     }
 
-    .tabs{display:flex; gap:10px; margin:10px 0 10px 0}
-    .tab{
-      padding:7px 12px;
-      border-radius:999px;
-      border:1px solid rgba(35,50,77,.9);
-      background:rgba(7,10,16,.35);
-      color:var(--muted);
-      cursor:pointer;
-      font-weight:900;
-      font-size:12px;
-    }
-    .tab.active{
-      background:rgba(72,209,125,.14);
-      color:var(--text);
-      border-color:rgba(72,209,125,.35);
-    }
-
-    table{width:100%; border-collapse:collapse}
-    th,td{border-bottom:1px solid rgba(35,50,77,.75); padding:10px 8px; font-size:13px; vertical-align:top}
-    th{color:rgba(147,164,189,.95); text-align:left; font-weight:900}
-    tr:hover td{background:rgba(255,255,255,.03)}
-    .right{text-align:right}
-    .good{color:var(--green); font-weight:900}
-    .bad{color:var(--red); font-weight:900}
-
-    .addbtn{
-      padding:7px 10px;
-      border-radius:12px;
-      border:1px solid rgba(72,209,125,.35);
-      background:rgba(72,209,125,.12);
-      color:var(--text);
-      cursor:pointer;
-      font-weight:900;
-    }
-
-    .rowexp{
-      margin-top:12px;
-      padding:12px;
-      border:1px dashed rgba(147,164,189,.35);
-      border-radius:14px;
-      background:rgba(7,10,16,.22);
-      color:#dbe8ff;
-      font-size:12px;
-      display:none;
-      white-space:pre-wrap;
-    }
-
-    .notehead{
+    .tabs{
       display:flex;
-      justify-content:space-between;
-      align-items:center;
-      gap:12px;
-      flex-wrap:wrap;
-      margin-bottom:8px;
+      gap:8px;
+      margin:10px 0;
     }
+
+    .tab{
+      padding:6px 12px;
+      border-radius:6px;
+      border:1px solid var(--border);
+      background:var(--chip);
+      cursor:pointer;
+      font-size:12px;
+    }
+
+    .tab.active{
+      background:var(--navy);
+      color:white;
+      border-color:var(--navy);
+    }
+
     .select{
-      padding:9px 10px;
-      border-radius:12px;
-      border:1px solid rgba(35,50,77,.9);
-      background:rgba(7,10,16,.35);
-      color:var(--text);
-      font-weight:900;
+      padding:6px 10px;
+      border:1px solid var(--border);
+      border-radius:6px;
+      font-family:'Playfair Display', serif;
     }
+
   </style>
 </head>
 
 <body>
-  <div class="wrap">
-    <div>
-      <div class="h1">Precipice Analytica</div>
-      <div class="h2">Systematic Equity Signals &amp; Short-Interest Research</div>
-      <div class="sub">Detecting inflection points from liquidity, price structure and borrow/short metrics.</div>
+<div class="wrap">
 
-      <div class="bar">
-        <div class="pillbar">
-          <div class="pill" id="pillMode">Mode: <b>auto</b></div>
-          <div class="pill" id="pillWindow">Window: <b>—</b></div>
-          <div class="pill" id="pillOrtex">ORTEX: <b>—</b></div>
-          <div class="pill" id="pillLast">Last Scan: <b>—</b></div>
-        </div>
-
-        <div class="btns">
-          <button class="btn" id="btnScan">Scan Stocks</button>
-          <button class="btn secondary" id="btnClear">Clear Log</button>
-        </div>
-      </div>
+  <div>
+    <div class="h1">Precipice <span style="font-style:italic;">Analytica</span></div>
+    <div class="h2">Systematic Equity Signals & Short-Interest Research</div>
+    <div class="sub">
+      Quantitative detection of inflection points through liquidity structure,
+      price behavior and borrow metrics.
     </div>
 
-    <div class="grid">
-      <div class="card">
-        <div class="title">Live Log</div>
-        <div class="smallline" id="logStatus">Idle.</div>
-        <div class="logbox" id="logBox"></div>
+    <div class="bar">
+      <div class="pillbar">
+        <div class="pill" id="pillMode">Mode: <b>auto</b></div>
+        <div class="pill" id="pillWindow">Window: <b>—</b></div>
+        <div class="pill" id="pillOrtex">ORTEX: <b>—</b></div>
+        <div class="pill" id="pillLast">Last Scan: <b>—</b></div>
       </div>
 
-      <div class="card">
-        <div class="title">Stock Scanning Results</div>
-        <div class="smallline" id="resultsMeta">US Equities • Updated — • — scanned</div>
-
-        <div class="tabs">
-          <button class="tab active" id="tabSqueeze">SQUEEZE</button>
-          <button class="tab" id="tabMomentum">MOMENTUM</button>
-        </div>
-
-        <div style="overflow:auto">
-          <table>
-            <thead>
-              <tr>
-                <th>Ticker</th>
-                <th>Conf</th>
-                <th>Subtype</th>
-                <th class="right">Price</th>
-                <th class="right">Move</th>
-                <th class="right">SFloat</th>
-                <th class="right">Add</th>
-              </tr>
-            </thead>
-            <tbody id="resultsBody"></tbody>
-          </table>
-        </div>
-
-        <div class="rowexp" id="planBox"></div>
-        <div class="smallline" style="margin-top:10px">Method: SI • Borrow • Liquidity • Price structure</div>
-        <div class="smallline">Click a row to expand the plan.</div>
+      <div>
+        <button class="btn" id="btnScan">Scan Stocks</button>
+        <button class="btn secondary" id="btnClear">Clear Log</button>
       </div>
-    </div>
-
-    <div class="card">
-      <div class="notehead">
-        <div>
-          <div class="title" style="margin-bottom:4px">Notebook</div>
-          <div class="smallline" id="noteMeta">US Equities • Updated — • — scanned</div>
-        </div>
-
-        <select class="select" id="noteView">
-          <option value="all">all</option>
-          <option value="yesterday">yesterday</option>
-        </select>
-      </div>
-
-      <div style="overflow:auto">
-        <table>
-          <thead>
-            <tr>
-              <th>Ticker</th>
-              <th>Setup</th>
-              <th>Conf</th>
-              <th class="right">Entry</th>
-              <th class="right">Exit</th>
-              <th class="right">Shares</th>
-              <th class="right">P/L $</th>
-              <th class="right">P/L %</th>
-              <th>Flags</th>
-              <th class="right">Actions</th>
-            </tr>
-          </thead>
-          <tbody id="noteBody"></tbody>
-        </table>
-      </div>
-
-      <div class="smallline" style="margin-top:10px">Click a trade row to expand for deeper snapshot.</div>
     </div>
   </div>
+
 
 <script>
   // -------------------------
