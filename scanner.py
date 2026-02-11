@@ -43,9 +43,9 @@ REG_END_CT   = (15, 0)
 AH_START_CT = (15, 0)
 AH_END_CT   = (19, 0)
 
-# ORTEX hours (your preference)
-ORTEX_ON_START_CT = (7, 30)
-ORTEX_ON_END_CT   = (16, 0)
+# ORTEX active full trading session including premarket
+ORTEX_ON_START_CT = (3, 0)   # 3:00 AM CT (premarket open)
+ORTEX_ON_END_CT   = (16, 0)  # 4:00 PM CT
 
 # Keys
 POLYGON_KEY = os.getenv("POLYGON_API_KEY")
@@ -460,9 +460,29 @@ def compute_scores(feat: dict) -> tuple[float, float, float]:
     hold = feat.get("hold_pct") or 0.0
     structure = (hold * 70.0) + (clamp((0.12 - abs(rng - 0.06)) / 0.12) * 30.0)
 
-    base_score = 0.34 * pressure + 0.33 * opportunity + 0.33 * structure
+       # ---------------- PREMARKET EDGE ADJUSTMENT ----------------
+    # Premarket = more about pressure, less about volume confirmation
+
+    window = feat.get("window")  # we’ll pass this in shortly
+
+    if window == "PREMARKET":
+        pressure_weight = 0.38     # +10% pressure bias
+        opportunity_weight = 0.30  # slightly lower
+        structure_weight = 0.32
+    else:
+        pressure_weight = 0.34
+        opportunity_weight = 0.33
+        structure_weight = 0.33
+
+    base_score = (
+        pressure_weight * pressure +
+        opportunity_weight * opportunity +
+        structure_weight * structure
+    )
+
     prob = score_to_prob(base_score)
     return base_score, prob, pressure
+
 
 def confidence_1_to_10(prob: float, ortex_on: bool, has_borrow: bool) -> int:
     p = prob
@@ -680,6 +700,8 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "auto") -
             feat = analyze_ticker_window(ticker, date_str, w_start, w_end, snap_meta, log_fn=log_fn)
             if not feat:
                 continue
+
+            feat["window"] = window
 
             feat["si_pct_ff"] = None
             feat["si_pct_chg"] = None
