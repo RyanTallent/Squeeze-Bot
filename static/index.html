@@ -5,64 +5,47 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Precipice Analytica</title>
 
-  <!-- Playfair Display (brand) -->
+  <!-- Playfair Display -->
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&display=swap" rel="stylesheet">
 
   <style>
     :root{
-      /* keep your dark UI base */
-      --bg:#070a10;
-      --panel:#0b1220;
-      --panel2:#0e1930;
-      --border:#23324d;
-      --text:#e7eefc;
-      --muted:#93a4bd;
-
-      /* accents */
-      --green:#48d17d;
-      --red:#ff5c5c;
-      --yellow:#ffd166;
-      --btn:#1ea34a;
-      --chip:#101c33;
-
-      /* NEW: gold highlight */
+      /* Academic light palette */
+      --bg:#F7F8FA;
+      --panel:#FFFFFF;
+      --panel2:#FBFCFD;
+      --border:#E3E6EA;
+      --text:#161A1D;
+      --muted:#6B7280;
+      --navy:#0D1B2A;
       --gold:#C6A14A;
-      --goldBg:rgba(198,161,74,.14);
-      --goldBorder:rgba(198,161,74,.35);
+      --green:#1E7F4F;
+      --red:#B23A3A;
+      --btn:#0D1B2A;
+      --chip:#F1F3F5;
     }
 
     *{box-sizing:border-box}
+
     body{
       margin:0;
-      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-      background:
-        radial-gradient(1000px 520px at 55% -80px, rgba(72,209,125,.18), transparent 60%),
-        radial-gradient(900px 600px at 50% 120%, rgba(72,209,125,.10), transparent 65%),
-        radial-gradient(900px 520px at 30% 20%, rgba(120,160,255,.10), transparent 60%),
-        var(--bg);
+      font-family:'Playfair Display', serif;
+      background: var(--bg);
       color:var(--text);
     }
-    .wrap{max-width:1180px;margin:0 auto;padding:28px 18px}
 
-    /* NEW: brand font */
-    .h1{
-      font-family:'Playfair Display', serif;
-      font-size:44px;
-      font-weight:700;
-      letter-spacing:.2px;
-      margin:0
-    }
-    .h1 .ital{font-style:italic}
-    .h2{color:rgba(231,238,252,.92); font-size:18px; margin:6px 0 0 0; font-weight:700}
-    .sub{color:rgba(147,164,189,.95); font-size:14px; margin:8px 0 0 0; max-width:860px; line-height:1.45}
+    .wrap{max-width:1180px;margin:0 auto;padding:30px 18px}
+    .h1{font-size:44px; font-weight:700; letter-spacing:.2px; margin:0; color:var(--navy)}
+    .h1 em{font-style:italic; font-weight:700}
+    .h2{color:rgba(13,27,42,.82); font-size:18px; margin:6px 0 0 0; font-weight:600}
+    .sub{color:var(--muted); font-size:14px; margin:10px 0 0 0; max-width:860px; line-height:1.55}
 
     .card{
-      background:linear-gradient(180deg, rgba(14,25,48,.86), rgba(11,18,32,.92));
-      border:1px solid rgba(35,50,77,.9);
-      border-radius:18px;
+      background:var(--panel);
+      border:1px solid var(--border);
+      border-radius:14px;
       padding:16px;
-      box-shadow:0 18px 40px rgba(0,0,0,.30);
-      backdrop-filter: blur(6px);
+      box-shadow:0 10px 22px rgba(0,0,0,.05);
       margin-top:18px;
     }
 
@@ -74,63 +57,59 @@
       flex-wrap:wrap;
       margin-top:16px;
     }
+
     .pillbar{
       display:flex; gap:10px; flex-wrap:wrap; align-items:center;
       padding:10px 12px;
-      border-radius:14px;
-      border:1px solid rgba(35,50,77,.9);
-      background:rgba(7,10,16,.35);
+      border-radius:12px;
+      border:1px solid var(--border);
+      background:var(--panel2);
     }
+
     .pill{
       display:flex; gap:8px; align-items:center;
       color:var(--muted);
       font-size:13px;
       padding:6px 10px;
       border-radius:999px;
-      border:1px solid rgba(35,50,77,.65);
-      background:rgba(0,0,0,.18);
+      border:1px solid var(--border);
+      background:var(--chip);
       white-space:nowrap;
     }
-    .pill b{color:var(--text); font-weight:900}
+    .pill b{color:var(--navy); font-weight:700}
+
     .btns{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
     .btn{
-      border:none; border-radius:12px; padding:10px 14px;
-      background:var(--btn); color:#04110a; font-weight:900; cursor:pointer;
-      box-shadow:0 10px 18px rgba(0,0,0,.25);
+      border:none; border-radius:10px; padding:10px 14px;
+      background:var(--btn); color:white; font-weight:700; cursor:pointer;
+      box-shadow:0 10px 16px rgba(13,27,42,.16);
+      font-family:'Playfair Display', serif;
     }
     .btn:disabled{opacity:.55; cursor:not-allowed}
     .btn.secondary{
-      background:rgba(255,255,255,.06);
-      color:var(--text);
-      border:1px solid rgba(35,50,77,.9);
-      font-weight:800;
+      background:white;
+      color:var(--navy);
+      border:1px solid var(--border);
+      font-weight:700;
       box-shadow:none;
     }
 
     .grid{display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:16px}
     @media (max-width: 980px){ .grid{grid-template-columns:1fr} }
 
-    .title{
-      font-weight:900;
-      font-size:18px;
-      margin:0 0 6px 0;
-    }
-    .smallline{
-      color:var(--muted);
-      font-size:12px;
-      margin:0 0 12px 0;
-    }
+    .title{font-weight:700; font-size:18px; margin:0 0 6px 0; color:var(--navy)}
+    .smallline{color:var(--muted); font-size:12px; margin:0 0 12px 0}
 
     .logbox{
       height:250px; overflow:auto;
-      background:rgba(0,0,0,.22);
-      border:1px solid rgba(35,50,77,.8);
-      border-radius:14px;
+      background:var(--panel2);
+      border:1px solid var(--border);
+      border-radius:12px;
       padding:12px;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       font-size:12px;
       line-height:1.35;
-      color:#cfe2ff;
+      color:#111827;
       white-space:pre-wrap;
     }
 
@@ -138,44 +117,47 @@
     .tab{
       padding:7px 12px;
       border-radius:999px;
-      border:1px solid rgba(35,50,77,.9);
-      background:rgba(7,10,16,.35);
-      color:var(--muted);
+      border:1px solid var(--border);
+      background:var(--chip);
+      color:var(--navy);
       cursor:pointer;
-      font-weight:900;
+      font-weight:700;
       font-size:12px;
+      font-family:'Playfair Display', serif;
     }
     .tab.active{
-      background:rgba(72,209,125,.14);
-      color:var(--text);
-      border-color:rgba(72,209,125,.35);
+      background:rgba(198,161,74,.18);
+      border-color:rgba(198,161,74,.55);
+      color:var(--navy);
     }
 
     table{width:100%; border-collapse:collapse}
-    th,td{border-bottom:1px solid rgba(35,50,77,.75); padding:10px 8px; font-size:13px; vertical-align:top}
-    th{color:rgba(147,164,189,.95); text-align:left; font-weight:900}
-    tr:hover td{background:rgba(255,255,255,.03)}
+    th,td{border-bottom:1px solid var(--border); padding:10px 8px; font-size:13px; vertical-align:top}
+    th{color:var(--muted); text-align:left; font-weight:700}
+    tr:hover td{background:#FAFBFC}
     .right{text-align:right}
-    .good{color:var(--green); font-weight:900}
-    .bad{color:var(--red); font-weight:900}
+    .good{color:var(--green); font-weight:700}
+    .bad{color:var(--red); font-weight:700}
+    .gold{color:var(--gold); font-weight:800}
 
     .addbtn{
       padding:7px 10px;
-      border-radius:12px;
-      border:1px solid rgba(72,209,125,.35);
-      background:rgba(72,209,125,.12);
-      color:var(--text);
+      border-radius:10px;
+      border:1px solid var(--border);
+      background:var(--chip);
+      color:var(--navy);
       cursor:pointer;
-      font-weight:900;
+      font-weight:700;
+      font-family:'Playfair Display', serif;
     }
 
     .rowexp{
       margin-top:12px;
       padding:12px;
-      border:1px dashed rgba(147,164,189,.35);
-      border-radius:14px;
-      background:rgba(7,10,16,.22);
-      color:#dbe8ff;
+      border:1px dashed rgba(13,27,42,.25);
+      border-radius:12px;
+      background:var(--panel2);
+      color:#111827;
       font-size:12px;
       display:none;
       white-space:pre-wrap;
@@ -191,29 +173,12 @@
     }
     .select{
       padding:9px 10px;
-      border-radius:12px;
-      border:1px solid rgba(35,50,77,.9);
-      background:rgba(7,10,16,.35);
-      color:var(--text);
-      font-weight:900;
-    }
-
-    /* NEW: gold highlight for “good stocks” */
-    tr.goldrow td{
-      background:var(--goldBg);
-      border-bottom-color:var(--goldBorder);
-    }
-    tr.goldrow td b{ color:var(--gold); }
-    .goldchip{
-      display:inline-block;
-      padding:3px 8px;
-      border-radius:999px;
-      border:1px solid var(--goldBorder);
-      background:var(--goldBg);
-      color:var(--gold);
-      font-weight:900;
-      font-size:11px;
-      margin-left:6px;
+      border-radius:10px;
+      border:1px solid var(--border);
+      background:white;
+      color:var(--navy);
+      font-weight:700;
+      font-family:'Playfair Display', serif;
     }
   </style>
 </head>
@@ -221,7 +186,7 @@
 <body>
   <div class="wrap">
     <div>
-      <div class="h1">Precipice <span class="ital">Analytica</span></div>
+      <div class="h1">Precipice <em>Analytica</em></div>
       <div class="h2">Systematic Equity Signals &amp; Short-Interest Research</div>
       <div class="sub">Detecting inflection points from liquidity, price structure and borrow/short metrics.</div>
 
@@ -366,12 +331,6 @@
     if(m2){
       el("pillWindow").innerHTML = `Window: <b>${m2[1].trim()}</b>`;
     }
-
-    // show ORTEX actual status if log line exists
-    const m3 = line.match(/ORTEX request:\s*([A-Z]+)\s*\|\s*ORTEX mode:\s*(ON|OFF)/i);
-    if(m3){
-      el("pillOrtex").innerHTML = `ORTEX: <b>${m3[2].toUpperCase()}</b>`;
-    }
   }
 
   function updateMetaLines(){
@@ -401,11 +360,10 @@
     return Math.round(n).toLocaleString();
   }
 
-  // GOLD RULE: what counts as a “good stock”
-  // Your "Conf" is 1–10. I mark 9–10 as gold.
-  function isGoldRow(r){
-    const c = Number(r.confidence || 0);
-    return c >= 9;
+  function isGoldPick(r){
+    // Gold highlight = top-confidence picks (anti-greed “best-of”)
+    const conf = Number(r.confidence || 0);
+    return conf >= 9 || ((r.bucket || "").toUpperCase() === "SQUEEZE" && conf >= 8);
   }
 
   function renderResults(){
@@ -416,13 +374,12 @@
     for(const r of list){
       const tr = document.createElement("tr");
       tr.style.cursor = "pointer";
-      if(isGoldRow(r)) tr.classList.add("goldrow");
 
-      const goldBadge = isGoldRow(r) ? `<span class="goldchip">A+</span>` : "";
+      const goldClass = isGoldPick(r) ? "gold" : "";
 
       tr.innerHTML = `
-        <td><b>${r.ticker || ""}</b> ${goldBadge}</td>
-        <td>${r.confidence ?? ""}</td>
+        <td><b class="${goldClass}">${r.ticker || ""}</b></td>
+        <td class="${goldClass}">${r.confidence ?? ""}</td>
         <td>${r.subtype || ""}</td>
         <td class="right">${fmtNum(r.close,2)}</td>
         <td class="right">${fmtPct(r.move_pct)}</td>
@@ -440,7 +397,7 @@
           `Trigger: ${fmtNum(r.trigger,4)} | Stop: ${fmtNum(r.stop,4)}\n` +
           `Range: ${fmtPct(r.range_pct)} | Hold: ${fmtPct(r.hold_pct)} | RelVol: ${fmtNum(r.rel_vol,2)}\n` +
           `SI%: ${fmtNum(r.si_pct_ff,1)} | CTB: ${fmtNum(r.ctb,1)} | Avail: ${fmtInt(r.avail)}\n` +
-          `$Vol: ${fmtInt(r.dollar_vol)}`
+          `$Vol: ${fmtInt(r.dollar_vol)}`;
       });
 
       body.appendChild(tr);
@@ -552,7 +509,7 @@
   });
 
   // -------------------------
-  // Notebook
+  // Notebook (expects your existing API)
   // -------------------------
   async function loadNotebook(){
     const view = el("noteView").value;
@@ -568,8 +525,8 @@
       const pnlD = t.pnl_dollars;
       const pnlP = t.pnl_pct;
 
-      const pnlDStr = (pnlD == null) ? "—" : (pnlD >= 0 ? `<span class="good">+${Number(pnlD).toFixed(2)}</span>` : `<span class="bad">${Number(pnlD).toFixed(2)}</span>`);
-      const pnlPStr = (pnlP == null) ? "—" : (pnlP >= 0 ? `<span class="good">+${(Number(pnlP)*100).toFixed(1)}%</span>` : `<span class="bad">${(Number(pnlP)*100).toFixed(1)}%</span>`);
+      const pnlDStr = (pnlD == null) ? "—" : (pnlD >= 0 ? `<span class="good">+${pnlD.toFixed(2)}</span>` : `<span class="bad">${pnlD.toFixed(2)}</span>`);
+      const pnlPStr = (pnlP == null) ? "—" : (pnlP >= 0 ? `<span class="good">+${(pnlP*100).toFixed(1)}%</span>` : `<span class="bad">${(pnlP*100).toFixed(1)}%</span>`);
 
       const flags = (() => { try{ return JSON.parse(t.review_flags || "[]"); }catch(e){ return []; } })();
       const flagsStr = (flags || []).map(f => `${f.icon||""} ${f.label||""}`.trim()).join(" • ");
