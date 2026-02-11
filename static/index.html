@@ -1,231 +1,281 @@
-<!doctype html>
+ok juse making sure heres my static html rtight now taker a look and make sure the code you just gave me onyl chan ges what we want to change <!doctype html>
 <html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Precipice Analytica</title>
-
-  <!-- Playfair Display -->
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&display=swap" rel="stylesheet">
-
   <style>
     :root{
-      --bg:#F8F9FA;
-      --panel:#FFFFFF;
-      --border:#E3E6EA;
-      --text:#1E1E1E;
-      --muted:#6C757D;
-      --navy:#0D1B2A;
-      --gold:#C6A14A;
-      --green:#1E7F4F;
-      --red:#B23A3A;
-      --chip:#F1F3F5;
+      --bg:#070a10;
+      --panel:#0b1220;
+      --panel2:#0e1930;
+      --border:#23324d;
+      --text:#e7eefc;
+      --muted:#93a4bd;
+      --green:#48d17d;
+      --red:#ff5c5c;
+      --yellow:#ffd166;
+      --btn:#1ea34a;
+      --chip:#101c33;
     }
-
     *{box-sizing:border-box}
-
     body{
       margin:0;
-      font-family:'Playfair Display', serif;
-      background:var(--bg);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background:
+        radial-gradient(1000px 520px at 55% -80px, rgba(72,209,125,.18), transparent 60%),
+        radial-gradient(900px 600px at 50% 120%, rgba(72,209,125,.10), transparent 65%),
+        radial-gradient(900px 520px at 30% 20%, rgba(120,160,255,.10), transparent 60%),
+        var(--bg);
       color:var(--text);
     }
-
-    .wrap{
-      max-width:1180px;
-      margin:0 auto;
-      padding:32px 20px;
-    }
-
-    .h1{
-      font-size:42px;
-      font-weight:700;
-      margin:0;
-    }
-
-    .h2{
-      font-size:17px;
-      margin-top:6px;
-      color:var(--muted);
-    }
-
-    .sub{
-      margin-top:8px;
-      font-size:14px;
-      color:var(--muted);
-      max-width:800px;
-      line-height:1.5;
-    }
+    .wrap{max-width:1180px;margin:0 auto;padding:28px 18px}
+    .h1{font-size:44px; font-weight:900; letter-spacing:.2px; margin:0}
+    .h2{color:rgba(231,238,252,.92); font-size:18px; margin:6px 0 0 0; font-weight:700}
+    .sub{color:rgba(147,164,189,.95); font-size:14px; margin:8px 0 0 0; max-width:860px; line-height:1.45}
 
     .card{
-      background:var(--panel);
-      border:1px solid var(--border);
-      border-radius:12px;
-      padding:18px;
-      margin-top:22px;
-      box-shadow:0 4px 14px rgba(0,0,0,.04);
+      background:linear-gradient(180deg, rgba(14,25,48,.86), rgba(11,18,32,.92));
+      border:1px solid rgba(35,50,77,.9);
+      border-radius:18px;
+      padding:16px;
+      box-shadow:0 18px 40px rgba(0,0,0,.30);
+      backdrop-filter: blur(6px);
+      margin-top:18px;
     }
 
+    /* top bar like screenshot */
     .bar{
       display:flex;
-      justify-content:space-between;
       align-items:center;
+      justify-content:space-between;
+      gap:12px;
       flex-wrap:wrap;
-      margin-top:20px;
+      margin-top:16px;
     }
-
     .pillbar{
-      display:flex;
-      gap:10px;
-      flex-wrap:wrap;
+      display:flex; gap:10px; flex-wrap:wrap; align-items:center;
+      padding:10px 12px;
+      border-radius:14px;
+      border:1px solid rgba(35,50,77,.9);
+      background:rgba(7,10,16,.35);
     }
-
     .pill{
-      background:var(--chip);
-      border:1px solid var(--border);
-      padding:6px 12px;
-      border-radius:999px;
-      font-size:13px;
+      display:flex; gap:8px; align-items:center;
       color:var(--muted);
-    }
-
-    .pill b{
-      color:var(--navy);
-      font-weight:600;
-    }
-
-    .btn{
-      background:var(--navy);
-      color:white;
-      border:none;
-      border-radius:6px;
-      padding:10px 16px;
-      cursor:pointer;
-      font-size:14px;
-      font-weight:600;
-    }
-
-    .btn.secondary{
-      background:white;
-      border:1px solid var(--border);
-      color:var(--text);
-    }
-
-    .grid{
-      display:grid;
-      grid-template-columns:1fr 1fr;
-      gap:20px;
-      margin-top:24px;
-    }
-
-    @media (max-width: 980px){
-      .grid{grid-template-columns:1fr}
-    }
-
-    table{
-      width:100%;
-      border-collapse:collapse;
       font-size:13px;
-    }
-
-    th,td{
-      border-bottom:1px solid var(--border);
-      padding:10px 8px;
-    }
-
-    th{
-      text-align:left;
-      font-weight:600;
-      color:var(--muted);
-    }
-
-    tr:hover td{
-      background:#FAFBFC;
-    }
-
-    .right{text-align:right}
-
-    .good{color:var(--green); font-weight:600}
-    .bad{color:var(--red); font-weight:600}
-
-    .addbtn{
-      background:var(--chip);
-      border:1px solid var(--border);
       padding:6px 10px;
-      border-radius:6px;
-      cursor:pointer;
+      border-radius:999px;
+      border:1px solid rgba(35,50,77,.65);
+      background:rgba(0,0,0,.18);
+      white-space:nowrap;
+    }
+    .pill b{color:var(--text); font-weight:900}
+    .btns{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+    .btn{
+      border:none; border-radius:12px; padding:10px 14px;
+      background:var(--btn); color:#04110a; font-weight:900; cursor:pointer;
+      box-shadow:0 10px 18px rgba(0,0,0,.25);
+    }
+    .btn:disabled{opacity:.55; cursor:not-allowed}
+    .btn.secondary{
+      background:rgba(255,255,255,.06);
+      color:var(--text);
+      border:1px solid rgba(35,50,77,.9);
+      font-weight:800;
+      box-shadow:none;
+    }
+
+    .grid{display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:16px}
+    @media (max-width: 980px){ .grid{grid-template-columns:1fr} }
+
+    .title{
+      font-weight:900;
+      font-size:18px;
+      margin:0 0 6px 0;
+    }
+    .smallline{
+      color:var(--muted);
       font-size:12px;
+      margin:0 0 12px 0;
     }
 
     .logbox{
-      height:250px;
-      overflow:auto;
-      background:#FAFBFC;
-      border:1px solid var(--border);
-      border-radius:8px;
+      height:250px; overflow:auto;
+      background:rgba(0,0,0,.22);
+      border:1px solid rgba(35,50,77,.8);
+      border-radius:14px;
       padding:12px;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       font-size:12px;
+      line-height:1.35;
+      color:#cfe2ff;
       white-space:pre-wrap;
     }
 
-    .tabs{
-      display:flex;
-      gap:8px;
-      margin:10px 0;
-    }
-
+    .tabs{display:flex; gap:10px; margin:10px 0 10px 0}
     .tab{
-      padding:6px 12px;
-      border-radius:6px;
-      border:1px solid var(--border);
-      background:var(--chip);
+      padding:7px 12px;
+      border-radius:999px;
+      border:1px solid rgba(35,50,77,.9);
+      background:rgba(7,10,16,.35);
+      color:var(--muted);
       cursor:pointer;
+      font-weight:900;
       font-size:12px;
     }
-
     .tab.active{
-      background:var(--navy);
-      color:white;
-      border-color:var(--navy);
+      background:rgba(72,209,125,.14);
+      color:var(--text);
+      border-color:rgba(72,209,125,.35);
     }
 
+    table{width:100%; border-collapse:collapse}
+    th,td{border-bottom:1px solid rgba(35,50,77,.75); padding:10px 8px; font-size:13px; vertical-align:top}
+    th{color:rgba(147,164,189,.95); text-align:left; font-weight:900}
+    tr:hover td{background:rgba(255,255,255,.03)}
+    .right{text-align:right}
+    .good{color:var(--green); font-weight:900}
+    .bad{color:var(--red); font-weight:900}
+
+    .addbtn{
+      padding:7px 10px;
+      border-radius:12px;
+      border:1px solid rgba(72,209,125,.35);
+      background:rgba(72,209,125,.12);
+      color:var(--text);
+      cursor:pointer;
+      font-weight:900;
+    }
+
+    .rowexp{
+      margin-top:12px;
+      padding:12px;
+      border:1px dashed rgba(147,164,189,.35);
+      border-radius:14px;
+      background:rgba(7,10,16,.22);
+      color:#dbe8ff;
+      font-size:12px;
+      display:none;
+      white-space:pre-wrap;
+    }
+
+    .notehead{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:12px;
+      flex-wrap:wrap;
+      margin-bottom:8px;
+    }
     .select{
-      padding:6px 10px;
-      border:1px solid var(--border);
-      border-radius:6px;
-      font-family:'Playfair Display', serif;
+      padding:9px 10px;
+      border-radius:12px;
+      border:1px solid rgba(35,50,77,.9);
+      background:rgba(7,10,16,.35);
+      color:var(--text);
+      font-weight:900;
     }
-
   </style>
 </head>
 
 <body>
-<div class="wrap">
+  <div class="wrap">
+    <div>
+      <div class="h1">Precipice Analytica</div>
+      <div class="h2">Systematic Equity Signals &amp; Short-Interest Research</div>
+      <div class="sub">Detecting inflection points from liquidity, price structure and borrow/short metrics.</div>
 
-  <div>
-    <div class="h1">Precipice <span style="font-style:italic;">Analytica</span></div>
-    <div class="h2">Systematic Equity Signals & Short-Interest Research</div>
-    <div class="sub">
-      Quantitative detection of inflection points through liquidity structure,
-      price behavior and borrow metrics.
+      <div class="bar">
+        <div class="pillbar">
+          <div class="pill" id="pillMode">Mode: <b>auto</b></div>
+          <div class="pill" id="pillWindow">Window: <b>—</b></div>
+          <div class="pill" id="pillOrtex">ORTEX: <b>—</b></div>
+          <div class="pill" id="pillLast">Last Scan: <b>—</b></div>
+        </div>
+
+        <div class="btns">
+          <button class="btn" id="btnScan">Scan Stocks</button>
+          <button class="btn secondary" id="btnClear">Clear Log</button>
+        </div>
+      </div>
     </div>
 
-    <div class="bar">
-      <div class="pillbar">
-        <div class="pill" id="pillMode">Mode: <b>auto</b></div>
-        <div class="pill" id="pillWindow">Window: <b>—</b></div>
-        <div class="pill" id="pillOrtex">ORTEX: <b>—</b></div>
-        <div class="pill" id="pillLast">Last Scan: <b>—</b></div>
+    <div class="grid">
+      <div class="card">
+        <div class="title">Live Log</div>
+        <div class="smallline" id="logStatus">Idle.</div>
+        <div class="logbox" id="logBox"></div>
       </div>
 
-      <div>
-        <button class="btn" id="btnScan">Scan Stocks</button>
-        <button class="btn secondary" id="btnClear">Clear Log</button>
+      <div class="card">
+        <div class="title">Stock Scanning Results</div>
+        <div class="smallline" id="resultsMeta">US Equities • Updated — • — scanned</div>
+
+        <div class="tabs">
+          <button class="tab active" id="tabSqueeze">SQUEEZE</button>
+          <button class="tab" id="tabMomentum">MOMENTUM</button>
+        </div>
+
+        <div style="overflow:auto">
+          <table>
+            <thead>
+              <tr>
+                <th>Ticker</th>
+                <th>Conf</th>
+                <th>Subtype</th>
+                <th class="right">Price</th>
+                <th class="right">Move</th>
+                <th class="right">SFloat</th>
+                <th class="right">Add</th>
+              </tr>
+            </thead>
+            <tbody id="resultsBody"></tbody>
+          </table>
+        </div>
+
+        <div class="rowexp" id="planBox"></div>
+        <div class="smallline" style="margin-top:10px">Method: SI • Borrow • Liquidity • Price structure</div>
+        <div class="smallline">Click a row to expand the plan.</div>
       </div>
+    </div>
+
+    <div class="card">
+      <div class="notehead">
+        <div>
+          <div class="title" style="margin-bottom:4px">Notebook</div>
+          <div class="smallline" id="noteMeta">US Equities • Updated — • — scanned</div>
+        </div>
+
+        <select class="select" id="noteView">
+          <option value="all">all</option>
+          <option value="yesterday">yesterday</option>
+        </select>
+      </div>
+
+      <div style="overflow:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>Ticker</th>
+              <th>Setup</th>
+              <th>Conf</th>
+              <th class="right">Entry</th>
+              <th class="right">Exit</th>
+              <th class="right">Shares</th>
+              <th class="right">P/L $</th>
+              <th class="right">P/L %</th>
+              <th>Flags</th>
+              <th class="right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="noteBody"></tbody>
+        </table>
+      </div>
+
+      <div class="smallline" style="margin-top:10px">Click a trade row to expand for deeper snapshot.</div>
     </div>
   </div>
-
 
 <script>
   // -------------------------
@@ -247,13 +297,13 @@
   function setMode(mode){
     selectedMode = mode;
     localStorage.setItem("squeeze_mode", mode);
-    el("pillMode").innerHTML = `Mode: <b>${mode}</b>`;
+    el("pillMode").innerHTML = Mode: <b>${mode}</b>;
   }
   function setOrtex(v){
     selectedOrtex = v;
     localStorage.setItem("squeeze_ortex", v);
     const label = (v === "auto") ? "AUTO" : (v === "on" ? "ON" : "OFF");
-    el("pillOrtex").innerHTML = `ORTEX: <b>${label}</b>`;
+    el("pillOrtex").innerHTML = ORTEX: <b>${label}</b>;
   }
 
   // -------------------------
@@ -277,14 +327,14 @@
     // Market window: PREMARKET (03:00–07:12 CT)
     const m2 = line.match(/Market window:\s*([A-Z \(\)]+)\s*\(/i);
     if(m2){
-      el("pillWindow").innerHTML = `Window: <b>${m2[1].trim()}</b>`;
+      el("pillWindow").innerHTML = Window: <b>${m2[1].trim()}</b>;
     }
   }
 
   function updateMetaLines(){
     const scanned = (scannedCount == null) ? "—" : scannedCount.toLocaleString();
-    el("resultsMeta").textContent = `US Equities • Updated ${lastUpdatedStr} • ${scanned} scanned`;
-    el("noteMeta").textContent = `US Equities • Updated ${lastUpdatedStr} • ${scanned} scanned`;
+    el("resultsMeta").textContent = US Equities • Updated ${lastUpdatedStr} • ${scanned} scanned;
+    el("noteMeta").textContent = US Equities • Updated ${lastUpdatedStr} • ${scanned} scanned;
   }
 
   function fmtNum(x, nd=2){
@@ -316,7 +366,7 @@
     for(const r of list){
       const tr = document.createElement("tr");
       tr.style.cursor = "pointer";
-      tr.innerHTML = `
+      tr.innerHTML = 
         <td><b>${r.ticker || ""}</b></td>
         <td>${r.confidence ?? ""}</td>
         <td>${r.subtype || ""}</td>
@@ -324,19 +374,19 @@
         <td class="right">${fmtPct(r.move_pct)}</td>
         <td class="right">${fmtInt(r.float_shares)}</td>
         <td class="right"><button class="addbtn" data-t="${r.ticker}">Add</button></td>
-      `;
+      ;
 
       tr.addEventListener("click", (e) => {
         if(e.target && e.target.matches("button.addbtn")) return;
         const planBox = el("planBox");
         planBox.style.display = "block";
         planBox.textContent =
-          `${r.ticker} — ${r.subtype}\n\n` +
+          ${r.ticker} — ${r.subtype}\n\n +
           (r.plan || "(no plan)") + "\n\n" +
-          `Trigger: ${fmtNum(r.trigger,4)} | Stop: ${fmtNum(r.stop,4)}\n` +
-          `Range: ${fmtPct(r.range_pct)} | Hold: ${fmtPct(r.hold_pct)} | RelVol: ${fmtNum(r.rel_vol,2)}\n` +
-          `SI%: ${fmtNum(r.si_pct_ff,1)} | CTB: ${fmtNum(r.ctb,1)} | Avail: ${fmtInt(r.avail)}\n` +
-          `$Vol: ${fmtInt(r.dollar_vol)}`
+          Trigger: ${fmtNum(r.trigger,4)} | Stop: ${fmtNum(r.stop,4)}\n +
+          Range: ${fmtPct(r.range_pct)} | Hold: ${fmtPct(r.hold_pct)} | RelVol: ${fmtNum(r.rel_vol,2)}\n +
+          SI%: ${fmtNum(r.si_pct_ff,1)} | CTB: ${fmtNum(r.ctb,1)} | Avail: ${fmtInt(r.avail)}\n +
+          $Vol: ${fmtInt(r.dollar_vol)}
       });
 
       body.appendChild(tr);
@@ -349,9 +399,9 @@
         const row = (results.SQUEEZE.concat(results.MOMENTUM)).find(x => x.ticker === tkr);
         if(!row) return;
 
-        const entry = prompt(`Entry price for ${tkr}?`, row.close ? String(row.close) : "");
+        const entry = prompt(Entry price for ${tkr}?, row.close ? String(row.close) : "");
         if(entry === null) return;
-        const shares = prompt(`Shares for ${tkr}?`, "100");
+        const shares = prompt(Shares for ${tkr}?, "100");
         if(shares === null) return;
 
         await createTradeFromRow(row, entry, shares);
@@ -388,14 +438,14 @@
     if(es){ try{ es.close(); }catch(e){} es = null; }
 
     lastUpdatedStr = new Date().toLocaleTimeString([], {hour:"numeric", minute:"2-digit"});
-    el("pillLast").innerHTML = `Last Scan: <b>${lastUpdatedStr}</b>`;
+    el("pillLast").innerHTML = Last Scan: <b>${lastUpdatedStr}</b>;
     updateMetaLines();
     renderResults();
 
     const mode = selectedMode || "auto";
     const ortex = selectedOrtex || "auto";
 
-    const resp = await fetch(`/run_scan?mode=${encodeURIComponent(mode)}&ortex=${encodeURIComponent(ortex)}`, { method:"POST" });
+    const resp = await fetch(/run_scan?mode=${encodeURIComponent(mode)}&ortex=${encodeURIComponent(ortex)}, { method:"POST" });
     const data = await resp.json();
 
     if(!data.ok){
@@ -405,10 +455,10 @@
     }
 
     scanId = data.scan_id;
-    el("pillMode").innerHTML = `Mode: <b>${(data.mode || mode)}</b>`;
+    el("pillMode").innerHTML = Mode: <b>${(data.mode || mode)}</b>;
     // window/ortex will update from logs (or keep previous)
 
-    es = new EventSource(`/stream/${scanId}`);
+    es = new EventSource(/stream/${scanId});
 
     es.addEventListener("log", (ev) => {
       try{
@@ -453,7 +503,7 @@
   // -------------------------
   async function loadNotebook(){
     const view = el("noteView").value;
-    const resp = await fetch(`/api/trades?view=${encodeURIComponent(view)}&user_id=demo`);
+    const resp = await fetch(/api/trades?view=${encodeURIComponent(view)}&user_id=demo);
     const data = await resp.json();
     if(!data.ok) return;
 
@@ -465,15 +515,15 @@
       const pnlD = t.pnl_dollars;
       const pnlP = t.pnl_pct;
 
-      const pnlDStr = (pnlD == null) ? "—" : (pnlD >= 0 ? `<span class="good">+${pnlD.toFixed(2)}</span>` : `<span class="bad">${pnlD.toFixed(2)}</span>`);
-      const pnlPStr = (pnlP == null) ? "—" : (pnlP >= 0 ? `<span class="good">+${(pnlP*100).toFixed(1)}%</span>` : `<span class="bad">${(pnlP*100).toFixed(1)}%</span>`);
+      const pnlDStr = (pnlD == null) ? "—" : (pnlD >= 0 ? <span class="good">+${pnlD.toFixed(2)}</span> : <span class="bad">${pnlD.toFixed(2)}</span>);
+      const pnlPStr = (pnlP == null) ? "—" : (pnlP >= 0 ? <span class="good">+${(pnlP*100).toFixed(1)}%</span> : <span class="bad">${(pnlP*100).toFixed(1)}%</span>);
 
       const flags = (() => { try{ return JSON.parse(t.review_flags || "[]"); }catch(e){ return []; } })();
-      const flagsStr = (flags || []).map(f => `${f.icon||""} ${f.label||""}`.trim()).join(" • ");
+      const flagsStr = (flags || []).map(f => ${f.icon||""} ${f.label||""}.trim()).join(" • ");
 
       const tr = document.createElement("tr");
       tr.style.cursor = "pointer";
-      tr.innerHTML = `
+      tr.innerHTML = 
         <td><b>${t.ticker}</b></td>
         <td>${t.subtype || ""}</td>
         <td>${t.confidence ?? ""}</td>
@@ -484,24 +534,24 @@
         <td class="right">${pnlPStr}</td>
         <td>${flagsStr || ""}</td>
         <td class="right">
-          ${t.exit_price == null ? `<button class="addbtn" data-close="${t.id}">Close</button>` : "—"}
+          ${t.exit_price == null ? <button class="addbtn" data-close="${t.id}">Close</button> : "—"}
         </td>
-      `;
+      ;
 
       tr.addEventListener("click", (e) => {
         if(e.target && e.target.matches("button")) return;
         const planBox = el("planBox");
         planBox.style.display = "block";
         planBox.textContent =
-          `TRADE ${t.ticker}\n\n` +
-          `Setup: ${t.subtype || ""} | Conf: ${t.confidence ?? ""}\n` +
-          `Entry: ${t.entry_price} @ ${t.entry_time_ct}\n` +
-          `Exit: ${t.exit_price ?? "—"} @ ${t.exit_time_ct ?? "—"}\n\n` +
-          `Scanner Snapshot:\n` +
-          `Trigger: ${t.trigger ?? "—"} | Stop: ${t.stop ?? "—"}\n` +
-          `Move: ${t.move_pct ?? "—"} | $Vol: ${t.dollar_vol ?? "—"}\n` +
-          `Range: ${t.range_pct ?? "—"} | Hold: ${t.hold_pct ?? "—"} | RelVol: ${t.rel_vol ?? "—"}\n` +
-          `SI%: ${t.si_pct_ff ?? "—"} | CTB: ${t.ctb ?? "—"} | Avail: ${t.avail ?? "—"}\n\n` +
+          TRADE ${t.ticker}\n\n +
+          Setup: ${t.subtype || ""} | Conf: ${t.confidence ?? ""}\n +
+          Entry: ${t.entry_price} @ ${t.entry_time_ct}\n +
+          Exit: ${t.exit_price ?? "—"} @ ${t.exit_time_ct ?? "—"}\n\n +
+          Scanner Snapshot:\n +
+          Trigger: ${t.trigger ?? "—"} | Stop: ${t.stop ?? "—"}\n +
+          Move: ${t.move_pct ?? "—"} | $Vol: ${t.dollar_vol ?? "—"}\n +
+          Range: ${t.range_pct ?? "—"} | Hold: ${t.hold_pct ?? "—"} | RelVol: ${t.rel_vol ?? "—"}\n +
+          SI%: ${t.si_pct_ff ?? "—"} | CTB: ${t.ctb ?? "—"} | Avail: ${t.avail ?? "—"}\n\n +
           (t.plan || "");
       });
 
@@ -514,7 +564,7 @@
         const id = btn.getAttribute("data-close");
         const px = prompt("Exit price?", "");
         if(px === null) return;
-        await fetch(`/api/trades/${id}?user_id=demo`, {
+        await fetch(/api/trades/${id}?user_id=demo, {
           method:"PATCH",
           headers:{ "Content-Type":"application/json" },
           body: JSON.stringify({ exit_price: px })
