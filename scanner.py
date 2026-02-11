@@ -521,7 +521,21 @@ def setup_subtype(feat: dict, label: str) -> str:
 def trade_plan(feat: dict) -> str:
     trig = feat.get("trigger") or 0.0
     stop = feat.get("stop") or 0.0
-    return f"Entry near trigger {trig:.4f}. Stop {stop:.4f}. Avoid chasing >2% above trigger."
+
+    risk = max(trig - stop, 0.0001)
+
+    target1 = trig + (risk * 2.0)   # disciplined target
+    ceiling = trig + (risk * 3.0)   # anti-greed ceiling
+
+    return (
+        f"ENTRY {trig:.4f} | "
+        f"STOP {stop:.4f} | "
+        f"TARGET {target1:.4f} (2R) | "
+        f"CEILING {ceiling:.4f} (AUTO-SELL ZONE). "
+        f"System rule: Sell majority at TARGET. "
+        f"If CEILING hits, exit fully — no exceptions."
+    )
+
 
 
 # ============================================================
