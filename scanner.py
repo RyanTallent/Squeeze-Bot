@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 # ENGINE V2.4 — ORTEX TOGGLE + STREAM ONLY FINAL TOP 5
 # - top 5 squeeze + top 5 momentum
 # - squeeze tab always filled (true squeezes OR squeeze watch)
-# - ortex toggle: auto|on|off (requested) + actual on/off
+# - ORTEX forced ON starting 7:00AM CT (if key exists)
 # ============================================================
 
 # UI sizing
@@ -43,8 +43,8 @@ REG_END_CT   = (15, 0)
 AH_START_CT = (15, 0)
 AH_END_CT   = (19, 0)
 
-# ORTEX active full trading session including premarket
-ORTEX_ON_START_CT = (3, 0)   # 3:00 AM CT (premarket open)
+# ✅ ORTEX ACTIVE WINDOW (FORCED ON) — 7:00 AM to 4:00 PM CT
+ORTEX_ON_START_CT = (7, 0)   # 7:00 AM CT
 ORTEX_ON_END_CT   = (16, 0)  # 4:00 PM CT
 
 # Keys
@@ -163,6 +163,23 @@ def ortex_allowed_now(dt: datetime) -> bool:
     start = ct_dt(d, ORTEX_ON_START_CT)
     end = ct_dt(d, ORTEX_ON_END_CT)
     return start <= dt <= end
+
+# ✅ NEW: used by main.py to show correct ORTEX state and to force ON at 7am
+def resolve_ortex_on(mode: str, ortex_request: str, dt: datetime) -> tuple[bool, str]:
+    """
+    Forced behavior:
+      - If ORTEX_API_KEY missing => OFF
+      - If time is between 7:00am–4:00pm CT on weekdays => ON (even if request says off)
+      - Otherwise => OFF
+    """
+    if not ORTEX_KEY:
+        return (False, "OFF")
+
+    # force ON during allowed window
+    if ortex_allowed_now(dt):
+        return (True, "ON")
+
+    return (False, "OFF")
 
 
 # ============================================================
@@ -436,10 +453,6 @@ def analyze_ticker_window(
 # Scoring + confidence
 # ============================================================
 def compute_scores(feat: dict) -> tuple[float, float, float]:
-    """
-    Returns (base_score, prob, pressure_score)
-    pressure_score is used to build "SQUEEZE WATCH" when no true squeezes exist.
-    """
     si = feat.get("si_pct_ff") or 0.0
     si_chg = feat.get("si_pct_chg") or 0.0
     ctb = feat.get("ctb") or 0.0
@@ -460,14 +473,10 @@ def compute_scores(feat: dict) -> tuple[float, float, float]:
     hold = feat.get("hold_pct") or 0.0
     structure = (hold * 70.0) + (clamp((0.12 - abs(rng - 0.06)) / 0.12) * 30.0)
 
-       # ---------------- PREMARKET EDGE ADJUSTMENT ----------------
-    # Premarket = more about pressure, less about volume confirmation
-
-    window = feat.get("window")  # we’ll pass this in shortly
-
+    window = feat.get("window")
     if window == "PREMARKET":
-        pressure_weight = 0.38     # +10% pressure bias
-        opportunity_weight = 0.30  # slightly lower
+        pressure_weight = 0.38
+        opportunity_weight = 0.30
         structure_weight = 0.32
     else:
         pressure_weight = 0.34
@@ -482,7 +491,6 @@ def compute_scores(feat: dict) -> tuple[float, float, float]:
 
     prob = score_to_prob(base_score)
     return base_score, prob, pressure
-
 
 def confidence_1_to_10(prob: float, ortex_on: bool, has_borrow: bool) -> int:
     p = prob
@@ -523,29 +531,22 @@ def is_true_squeeze(feat: dict, ortex_on: bool) -> bool:
     return True
 
 def setup_subtype(feat: dict, label: str) -> str:
-    # label in {"TRUE_SQUEEZE","SQUEEZE_WATCH","MOMENTUM"}
     if label == "TRUE_SQUEEZE":
         return "true squeeze breakout" if (feat.get("hold_pct") or 0) >= 0.30 else "true squeeze pullback"
-
     if label == "SQUEEZE_WATCH":
         return "squeeze watch"
-
     if (feat.get("dollar_vol") or 0) < 300_000:
         return "thin momentum"
-
     if (feat.get("hold_pct") or 0) >= 0.35 and 0.02 <= (feat.get("range_pct") or 0) <= 0.12:
         return "momentum breakout"
-
     return "momentum pullback"
 
 def trade_plan(feat: dict) -> str:
     trig = feat.get("trigger") or 0.0
     stop = feat.get("stop") or 0.0
-
     risk = max(trig - stop, 0.0001)
-
-    target1 = trig + (risk * 2.0)   # disciplined target
-    ceiling = trig + (risk * 3.0)   # anti-greed ceiling
+    target1 = trig + (risk * 2.0)
+    ceiling = trig + (risk * 3.0)
 
     return (
         f"ENTRY {trig:.4f} | "
@@ -555,7 +556,6 @@ def trade_plan(feat: dict) -> str:
         f"System rule: Sell majority at TARGET. "
         f"If CEILING hits, exit fully — no exceptions."
     )
-
 
 
 # ============================================================
@@ -649,23 +649,12 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "auto") -
     if mode not in ("day", "night"):
         mode = "day"
 
-    ortex = (ortex or "auto").lower().strip()
-    if ortex not in ("auto", "on", "off"):
-        ortex = "auto"
-
     dt = now_ct()
     window, w_start, w_end = current_market_window(dt)
     date_str = ct_date_str(w_start)
 
-    # Decide ORTEX actual on/off
-    if ortex == "off":
-        ortex_on = False
-    elif ortex == "on":
-        # force ON if key exists (still respects coverage limits naturally via data availability)
-        ortex_on = bool(ORTEX_KEY)
-    else:
-        # auto behavior
-        ortex_on = (mode == "day") and ortex_allowed_now(dt) and bool(ORTEX_KEY)
+    # ✅ ORTEX forced on/off based on time window + key
+    ortex_on, _label = resolve_ortex_on(mode, ortex, dt)
 
     deep_top = DEEP_ANALYZE_TOP_DAY if mode == "day" else DEEP_ANALYZE_TOP_NIGHT
     ortex_finalists = ORTEX_FINALISTS_DAY if ortex_on else ORTEX_FINALISTS_NIGHT
@@ -674,7 +663,7 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "auto") -
         log_fn(f"Mode: {mode.upper()} ({'Polygon + ORTEX' if (mode=='day') else 'Polygon only'})")
         log_fn(f"Date: {date_str}")
         log_fn(f"Market window: {window} ({w_start.strftime('%H:%M')}–{w_end.strftime('%H:%M')} CT)")
-        log_fn(f"ORTEX request: {ortex.upper()} | ORTEX mode: {'ON' if ortex_on else 'OFF'} (ON only 3:00AM–4:00PM CT)")
+        log_fn(f"ORTEX request: {str(ortex).upper()} | ORTEX mode: {'ON' if ortex_on else 'OFF'} (ON only 7:00AM–4:00PM CT)")
 
     snap = get_snapshot_all_tickers(log_fn=log_fn)
     if log_fn:
@@ -805,7 +794,6 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "auto") -
             reverse=True
         )[:TOP_N_PER_BUCKET]
     else:
-        # SQUEEZE WATCH (always fill tab)
         watch_sorted = sorted(
             analyzed,
             key=lambda r: (r.get("pressure_score", 0), r.get("base_score", 0), (r.get("dollar_vol") or 0)),
@@ -835,7 +823,7 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "auto") -
         reverse=True
     )[:TOP_N_PER_BUCKET]
 
-    # ✅ Stream ONLY final top rows to website
+    # Stream ONLY final top rows to website
     if row_fn:
         for r in squeezes + momentum:
             row_fn(r)
