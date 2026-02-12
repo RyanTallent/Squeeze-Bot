@@ -288,6 +288,10 @@
   let selectedMode = localStorage.getItem("squeeze_mode") || "auto";
   let selectedOrtex = localStorage.getItem("squeeze_ortex") || "auto";
 
+  // ✅ SAFETY: never get stuck on a bad/old value
+  if(!["auto","on","off"].includes(selectedMode)) selectedMode = "auto";
+  if(!["auto","on","off"].includes(selectedOrtex)) selectedOrtex = "auto";
+
   let showing = "SQUEEZE";
   let scanId = null;
   let es = null;
@@ -309,6 +313,20 @@
     const label = (v === "auto") ? "AUTO" : (v === "on" ? "ON" : "OFF");
     el("pillOrtex").innerHTML = `ORTEX: <b>${label}</b>`;
   }
+
+  // ✅ CLICK ORTEX PILL TO CYCLE AUTO → ON → OFF
+  (function wireOrtexPill(){
+    const p = el("pillOrtex");
+    p.style.cursor = "pointer";
+    p.title = "Click to cycle ORTEX: AUTO → ON → OFF";
+    p.addEventListener("click", () => {
+      const next =
+        (selectedOrtex === "auto") ? "on" :
+        (selectedOrtex === "on") ? "off" :
+        "auto";
+      setOrtex(next);
+    });
+  })();
 
   // -------------------------
   // Log + meta parsing
@@ -361,7 +379,6 @@
   }
 
   function isGoldPick(r){
-    // Gold highlight = top-confidence picks (anti-greed “best-of”)
     const conf = Number(r.confidence || 0);
     return conf >= 9 || ((r.bucket || "").toUpperCase() === "SQUEEZE" && conf >= 8);
   }
