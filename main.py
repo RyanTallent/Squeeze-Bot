@@ -332,27 +332,32 @@ def run_scan(request: Request, mode: str = "auto", ortex: str = "auto"):
             eff_mode = mode
 
         # use scanner resolve_ortex_on if present
-        try:
-            ortex_on, ortex_label = scanner.resolve_ortex_on(eff_mode, ortex, dt)
-        except Exception:
-            ortex_on = (ortex == "on")
-            ortex_label = "ON" if ortex_on else "OFF"
+         # use scanner resolve_ortex_on if present
+    try:
+        ortex_on, ortex_label = scanner.resolve_ortex_on(eff_mode, ortex, dt)
+    except Exception:
+        ortex_on = False
+        ortex_label = "OFF"
 
-        STATE["started_at_ct"] = now_ct_str()
-        STATE["meta"] = {
-            "mode": eff_mode,
-            "ortex_requested": ortex,
-            "ortex_effective": ortex_label,
-            "window": window_name,
-            "date": date_str,
-            "scanned_count": None,
-        }
+    # ✅ force the worker param to match the resolved state
+    ortex_for_worker = "on" if ortex_on else "off"
+
+    STATE["started_at_ct"] = now_ct_str()
+    STATE["meta"] = {
+        "mode": eff_mode,
+        "ortex_requested": ortex,
+        "ortex_effective": ortex_label,
+        "window": window_name,
+        "date": date_str,
+        "scanned_count": None,
+    }
 
     th = threading.Thread(
         target=_scan_worker,
-        args=(scan_id, STATE["meta"]["mode"], ortex),
+        args=(scan_id, STATE["meta"]["mode"], ortex_for_worker),  # ✅ use resolved on/off
         daemon=True
     )
+
     th.start()
 
     snap = _state_snapshot()
