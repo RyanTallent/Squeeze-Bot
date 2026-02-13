@@ -1,4 +1,5 @@
-# main.py
+# main.py  ✅ FIXED (copy/paste whole file)
+
 import os
 import json
 import time
@@ -26,6 +27,7 @@ try:
 except Exception:
     CT_TZ = None
 
+
 def now_ct_str() -> str:
     dt = datetime.now(tz=CT_TZ) if CT_TZ else datetime.now()
     try:
@@ -33,9 +35,11 @@ def now_ct_str() -> str:
     except Exception:
         return dt.strftime("%I:%M %p CT").lstrip("0")
 
+
 def ct_date(dt: datetime | None = None) -> str:
     dt = dt or (datetime.now(tz=CT_TZ) if CT_TZ else datetime.now())
     return dt.strftime("%Y-%m-%d")
+
 
 def yesterday_ct_date() -> str:
     dt = (datetime.now(tz=CT_TZ) if CT_TZ else datetime.now()) - timedelta(days=1)
@@ -45,15 +49,18 @@ def yesterday_ct_date() -> str:
 # -------------------- DB --------------------
 DATABASE_URL = os.getenv("DATABASE_URL")
 
+
 def db_conn():
     if not DATABASE_URL:
         raise RuntimeError("DATABASE_URL is not set in Render environment variables.")
     return psycopg.connect(DATABASE_URL, row_factory=dict_row)
 
+
 def db_init():
     with db_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("""
+            cur.execute(
+                """
             CREATE TABLE IF NOT EXISTS trades (
               id TEXT PRIMARY KEY,
               user_id TEXT NOT NULL,
@@ -88,8 +95,10 @@ def db_init():
 
               review_flags TEXT
             );
-            """)
+            """
+            )
             conn.commit()
+
 
 def trades_select(view: str, user_id: str | None) -> list[dict]:
     view = (view or "all").lower().strip()
@@ -97,7 +106,7 @@ def trades_select(view: str, user_id: str | None) -> list[dict]:
         view = "all"
 
     where = ""
-    params = []
+    params: list = []
 
     if user_id:
         where = "WHERE user_id = %s"
@@ -136,6 +145,7 @@ def trades_select(view: str, user_id: str | None) -> list[dict]:
             cur.execute(sql, params)
             rows = cur.fetchall()
 
+    # normalize review_flags to JSON-string
     for r in rows:
         try:
             if r.get("review_flags") is None:
@@ -159,6 +169,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Serve UI + outputs
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 OUT_DIR = Path("outputs")
@@ -196,21 +207,27 @@ STATE = {
     "done_seq": 0,
 }
 
+
 def _state_snapshot():
     with STATE_LOCK:
-        return json.loads(json.dumps({
-            "running": STATE["running"],
-            "scan_id": STATE["scan_id"],
-            "started_at_ct": STATE["started_at_ct"],
-            "meta": STATE["meta"],
-            "done": STATE["done"],
-            "ok": STATE["ok"],
-            "html_path": STATE["html_path"],
-            "log_seq": STATE["log_seq"],
-            "row_seq": STATE["row_seq"],
-            "meta_seq": STATE["meta_seq"],
-            "done_seq": STATE["done_seq"],
-        }))
+        return json.loads(
+            json.dumps(
+                {
+                    "running": STATE["running"],
+                    "scan_id": STATE["scan_id"],
+                    "started_at_ct": STATE["started_at_ct"],
+                    "meta": STATE["meta"],
+                    "done": STATE["done"],
+                    "ok": STATE["ok"],
+                    "html_path": STATE["html_path"],
+                    "log_seq": STATE["log_seq"],
+                    "row_seq": STATE["row_seq"],
+                    "meta_seq": STATE["meta_seq"],
+                    "done_seq": STATE["done_seq"],
+                }
+            )
+        )
+
 
 def push_log(line: str):
     scanned = None
@@ -243,10 +260,12 @@ def push_log(line: str):
         if changed:
             STATE["meta_seq"] += 1
 
+
 def push_row(row: dict):
     with STATE_LOCK:
         STATE["rows"].append(row)
         STATE["row_seq"] += 1
+
 
 def mark_done(ok: bool, html_path: str | None):
     with STATE_LOCK:
@@ -262,10 +281,12 @@ def mark_done(ok: bool, html_path: str | None):
 def root():
     return RedirectResponse(url="/static/index.html")
 
+
 @app.get("/health")
 def health():
     snap = _state_snapshot()
     return {"ok": True, "running": snap["running"], "scan_id": snap["scan_id"], "meta": snap["meta"]}
+
 
 @app.post("/clear_log")
 def clear_log():
@@ -276,8 +297,16 @@ def clear_log():
         STATE["row_seq"] += 1
     return {"ok": True}
 
+
 @app.post("/run_scan")
 def run_scan(mode: str = "auto", ortex: str = "auto"):
+    """
+    Starts a scan and streams logs/rows via /stream/{scan_id}.
+    IMPORTANT FIXES:
+      - ORTEX resolution happens BEFORE starting worker, using scanner.resolve_ortex_on()
+      - State reset happens inside lock
+      - Worker receives final ortex_for_worker = "on" or "off"
+    """
     mode = (mode or "auto").strip().lower()
     ortex = (ortex or "auto").strip().lower()
 
@@ -288,7 +317,7 @@ def run_scan(mode: str = "auto", ortex: str = "auto"):
 
     # Decide window/date/mode + ORTEX effective
     dt = scanner.now_ct()
-    window_name, w_start, w_end = scanner.current_market_window(dt)
+    window_name, w_start, _w_end = scanner.current_market_window(dt)
     date_str = scanner.ct_date_str(w_start)
 
     if mode == "auto":
@@ -299,7 +328,7 @@ def run_scan(mode: str = "auto", ortex: str = "auto"):
     try:
         ortex_on, ortex_label = scanner.resolve_ortex_on(eff_mode, ortex, dt)
     except Exception:
-        ortex_on, ortex_label = (False, "OFF")
+        ortex_on, ortex_label = (False, "OFF (resolve err)")
 
     ortex_for_worker = "on" if ortex_on else "off"
 
@@ -308,6 +337,8 @@ def run_scan(mode: str = "auto", ortex: str = "auto"):
             return JSONResponse({"ok": False, "error": "Scan already running."}, status_code=409)
 
         scan_id = str(uuid.uuid4())
+
+        # reset state
         STATE["running"] = True
         STATE["scan_id"] = scan_id
         STATE["done"] = False
@@ -334,7 +365,7 @@ def run_scan(mode: str = "auto", ortex: str = "auto"):
         th = threading.Thread(
             target=_scan_worker,
             args=(scan_id, eff_mode, ortex_for_worker),
-            daemon=True
+            daemon=True,
         )
         th.start()
 
@@ -351,6 +382,7 @@ def run_scan(mode: str = "auto", ortex: str = "auto"):
         "started_at_ct": snap["started_at_ct"],
         "scanned_count": snap["meta"]["scanned_count"],
     }
+
 
 def _scan_worker(scan_id: str, mode: str, ortex: str):
     try:
@@ -374,6 +406,7 @@ def _scan_worker(scan_id: str, mode: str, ortex: str):
     except Exception as e:
         push_log(f"[FATAL] {type(e).__name__}: {str(e)[:200]}")
         mark_done(False, None)
+
 
 @app.get("/stream/{scan_id}")
 def stream(scan_id: str):
@@ -419,28 +452,36 @@ def stream(scan_id: str):
 
     return _sse_response(event_gen)
 
+
 def _sse(event_name: str, data_obj: dict):
     return f"event: {event_name}\ndata: {json.dumps(data_obj, ensure_ascii=False)}\n\n"
 
+
 def _sse_response(gen_fn):
     from starlette.responses import StreamingResponse
+
     return StreamingResponse(gen_fn(), media_type="text/event-stream")
 
 
 # -------------------- TRADES API (NOTEBOOK) --------------------
 @app.get("/api/trades")
 def api_get_trades(view: str = "all", user_id: str | None = None):
+    """
+    If user_id is provided, filter by user_id.
+    If omitted, returns all (useful if you later drop user_id in UI).
+    """
     try:
         rows = trades_select(view=view, user_id=user_id)
         return {"ok": True, "trades": rows}
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=500)
 
+
 @app.post("/api/trades")
 async def api_create_trade(request: Request):
     payload = await request.json()
 
-    # UI uses demo; if missing, keep demo to match your frontend
+    # UI uses demo; if missing, keep demo to match frontend calls
     user_id = payload.get("user_id") or "demo"
     trade_id = str(uuid.uuid4())
 
@@ -455,13 +496,11 @@ async def api_create_trade(request: Request):
         "user_id": user_id,
         "scan_id": payload.get("scan_id"),
         "scan_date_ct": scan_date_ct,
-
         "ticker": payload.get("ticker"),
         "bucket": payload.get("bucket"),
         "subtype": payload.get("subtype"),
         "confidence": payload.get("confidence"),
         "plan": payload.get("plan"),
-
         "trigger": payload.get("trigger"),
         "stop": payload.get("stop"),
         "scan_close": payload.get("scan_close"),
@@ -473,20 +512,19 @@ async def api_create_trade(request: Request):
         "si_pct_ff": payload.get("si_pct_ff"),
         "ctb": payload.get("ctb"),
         "avail": payload.get("avail"),
-
         "entry_price": float(entry_price) if entry_price is not None else None,
         "entry_time_ct": entry_time_ct,
         "exit_price": None,
         "exit_time_ct": None,
         "shares": float(shares) if shares is not None else None,
-
         "review_flags": json.dumps(payload.get("review_flags") or []),
     }
 
     try:
         with db_conn() as conn:
             with conn.cursor() as cur:
-                cur.execute("""
+                cur.execute(
+                    """
                 INSERT INTO trades (
                   id, user_id, scan_id, scan_date_ct,
                   ticker, bucket, subtype, confidence, plan,
@@ -498,11 +536,14 @@ async def api_create_trade(request: Request):
                   %(trigger)s, %(stop)s, %(scan_close)s, %(move_pct)s, %(dollar_vol)s, %(range_pct)s, %(hold_pct)s, %(rel_vol)s, %(si_pct_ff)s, %(ctb)s, %(avail)s,
                   %(entry_price)s, %(entry_time_ct)s, %(exit_price)s, %(exit_time_ct)s, %(shares)s, %(review_flags)s
                 );
-                """, row)
+                """,
+                    row,
+                )
                 conn.commit()
         return {"ok": True, "id": trade_id, "user_id": user_id}
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=500)
+
 
 @app.patch("/api/trades/{trade_id}")
 async def api_close_trade(trade_id: str, request: Request, user_id: str | None = None):
@@ -517,17 +558,23 @@ async def api_close_trade(trade_id: str, request: Request, user_id: str | None =
         with db_conn() as conn:
             with conn.cursor() as cur:
                 if user_id:
-                    cur.execute("""
+                    cur.execute(
+                        """
                     UPDATE trades
                     SET exit_price = %s, exit_time_ct = %s
                     WHERE id = %s AND user_id = %s
-                    """, (float(exit_price), exit_time_ct, trade_id, user_id))
+                    """,
+                        (float(exit_price), exit_time_ct, trade_id, user_id),
+                    )
                 else:
-                    cur.execute("""
+                    cur.execute(
+                        """
                     UPDATE trades
                     SET exit_price = %s, exit_time_ct = %s
                     WHERE id = %s
-                    """, (float(exit_price), exit_time_ct, trade_id))
+                    """,
+                        (float(exit_price), exit_time_ct, trade_id),
+                    )
                 conn.commit()
         return {"ok": True}
     except Exception as e:
