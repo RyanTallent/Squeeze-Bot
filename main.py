@@ -1,4 +1,4 @@
-# main.py  ✅ FIXED (copy/paste whole file)
+# main.py  ✅ ORTEX ON/OFF ONLY (copy/paste whole file)
 
 import os
 import json
@@ -192,7 +192,7 @@ STATE = {
     "rows": deque(maxlen=400),
     "meta": {
         "mode": "auto",
-        "ortex_requested": "auto",
+        "ortex_requested": "off",   # ✅ default OFF now
         "ortex_effective": "OFF",
         "window": "—",
         "date": None,
@@ -298,22 +298,48 @@ def clear_log():
     return {"ok": True}
 
 
+# ✅ NEW: simple ON/OFF endpoint your frontend can call
+@app.post("/set_ortex")
+def set_ortex(request: Request, value: str = "off"):
+    """
+    Persist ORTEX preference server-side (optional but helpful).
+    Frontend can call: POST /set_ortex?value=on  or  off
+    """
+    v = (value or "off").strip().lower()
+    if v not in ("on", "off"):
+        v = "off"
+
+    with STATE_LOCK:
+        STATE["meta"]["ortex_requested"] = v
+        # ortex_effective will update on next scan once scanner.resolve_ortex_on runs
+        STATE["meta_seq"] += 1
+
+    return {"ok": True, "ortex": v}
+
+
 @app.post("/run_scan")
-def run_scan(mode: str = "auto", ortex: str = "auto"):
+def run_scan(mode: str = "auto", ortex: str = "off"):
     """
     Starts a scan and streams logs/rows via /stream/{scan_id}.
-    IMPORTANT FIXES:
-      - ORTEX resolution happens BEFORE starting worker, using scanner.resolve_ortex_on()
-      - State reset happens inside lock
-      - Worker receives final ortex_for_worker = "on" or "off"
+
+    ORTEX is now ONLY:
+      - on
+      - off
     """
     mode = (mode or "auto").strip().lower()
-    ortex = (ortex or "auto").strip().lower()
+    ortex = (ortex or "off").strip().lower()
 
     if mode not in ("auto", "day", "night"):
         mode = "auto"
-    if ortex not in ("auto", "on", "off"):
-        ortex = "auto"
+
+    # ✅ ORTEX ON/OFF ONLY
+    if ortex not in ("on", "off"):
+        ortex = "off"
+
+    # If frontend doesn't send ortex, use last server value
+    if not ortex:
+        with STATE_LOCK:
+            ortex = STATE["meta"].get("ortex_requested") or "off"
 
     # Decide window/date/mode + ORTEX effective
     dt = scanner.now_ct()
@@ -325,6 +351,7 @@ def run_scan(mode: str = "auto", ortex: str = "auto"):
     else:
         eff_mode = mode
 
+    # scanner.resolve_ortex_on should now simply respect on/off (update scanner.py accordingly)
     try:
         ortex_on, ortex_label = scanner.resolve_ortex_on(eff_mode, ortex, dt)
     except Exception:
@@ -355,8 +382,8 @@ def run_scan(mode: str = "auto", ortex: str = "auto"):
         STATE["started_at_ct"] = now_ct_str()
         STATE["meta"] = {
             "mode": eff_mode,
-            "ortex_requested": ortex,
-            "ortex_effective": ortex_label,
+            "ortex_requested": ortex,        # ✅ on/off
+            "ortex_effective": ortex_label,  # ✅ ON/OFF label from scanner
             "window": window_name,
             "date": date_str,
             "scanned_count": None,
@@ -466,10 +493,6 @@ def _sse_response(gen_fn):
 # -------------------- TRADES API (NOTEBOOK) --------------------
 @app.get("/api/trades")
 def api_get_trades(view: str = "all", user_id: str | None = None):
-    """
-    If user_id is provided, filter by user_id.
-    If omitted, returns all (useful if you later drop user_id in UI).
-    """
     try:
         rows = trades_select(view=view, user_id=user_id)
         return {"ok": True, "trades": rows}
@@ -481,7 +504,6 @@ def api_get_trades(view: str = "all", user_id: str | None = None):
 async def api_create_trade(request: Request):
     payload = await request.json()
 
-    # UI uses demo; if missing, keep demo to match frontend calls
     user_id = payload.get("user_id") or "demo"
     trade_id = str(uuid.uuid4())
 
