@@ -18,6 +18,7 @@ from psycopg.rows import dict_row
 
 import scanner  # your scanner.py
 
+
 # -------------------- timezone helpers (CT) --------------------
 try:
     from zoneinfo import ZoneInfo
@@ -27,7 +28,6 @@ except Exception:
 
 def now_ct_str() -> str:
     dt = datetime.now(tz=CT_TZ) if CT_TZ else datetime.now()
-    # Render linux supports %-I; Windows doesn't. We'll be safe.
     try:
         return dt.strftime("%-I:%M %p CT")
     except Exception:
@@ -48,11 +48,9 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 def db_conn():
     if not DATABASE_URL:
         raise RuntimeError("DATABASE_URL is not set in Render environment variables.")
-    # psycopg v3 wants postgresql://... (Render provides that)
     return psycopg.connect(DATABASE_URL, row_factory=dict_row)
 
 def db_init():
-    # Simple durable storage for your notebook
     with db_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
@@ -93,18 +91,6 @@ def db_init():
             """)
             conn.commit()
 
-def compute_flags(t: dict) -> list[dict]:
-    # Optional: you can expand later. For now keep empty unless you stored flags.
-    try:
-        raw = t.get("review_flags")
-        if not raw:
-            return []
-        if isinstance(raw, str):
-            return json.loads(raw)
-        return raw
-    except Exception:
-        return []
-
 def trades_select(view: str, user_id: str | None) -> list[dict]:
     view = (view or "all").lower().strip()
     if view not in ("all", "yesterday"):
@@ -113,7 +99,6 @@ def trades_select(view: str, user_id: str | None) -> list[dict]:
     where = ""
     params = []
 
-    # only filter if user_id was provided
     if user_id:
         where = "WHERE user_id = %s"
         params.append(user_id)
@@ -152,7 +137,6 @@ def trades_select(view: str, user_id: str | None) -> list[dict]:
             rows = cur.fetchall()
 
     for r in rows:
-        # keep it always JSON-string for UI
         try:
             if r.get("review_flags") is None:
                 r["review_flags"] = "[]"
@@ -162,7 +146,6 @@ def trades_select(view: str, user_id: str | None) -> list[dict]:
             r["review_flags"] = "[]"
 
     return rows
-
 
 
 # -------------------- FastAPI app --------------------
@@ -176,7 +159,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve UI + outputs
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 OUT_DIR = Path("outputs")
@@ -186,18 +168,17 @@ app.mount("/outputs", StaticFiles(directory=str(OUT_DIR)), name="outputs")
 
 @app.on_event("startup")
 def _startup():
-    # create DB table on boot (so notebook persists across deploys)
     db_init()
 
 
-# -------------------- simple in-memory scan state --------------------
+# -------------------- scan state (in-memory) --------------------
 STATE_LOCK = threading.Lock()
 STATE = {
     "running": False,
     "scan_id": None,
     "started_at_ct": None,
     "logs": deque(maxlen=2500),
-    "rows": deque(maxlen=200),
+    "rows": deque(maxlen=400),
     "meta": {
         "mode": "auto",
         "ortex_requested": "auto",
@@ -296,7 +277,7 @@ def clear_log():
     return {"ok": True}
 
 @app.post("/run_scan")
-def run_scan(request: Request, mode: str = "auto", ortex: str = "auto"):
+def run_scan(mode: str = "auto", ortex: str = "auto"):
     mode = (mode or "auto").strip().lower()
     ortex = (ortex or "auto").strip().lower()
 
@@ -304,6 +285,23 @@ def run_scan(request: Request, mode: str = "auto", ortex: str = "auto"):
         mode = "auto"
     if ortex not in ("auto", "on", "off"):
         ortex = "auto"
+
+    # Decide window/date/mode + ORTEX effective
+    dt = scanner.now_ct()
+    window_name, w_start, w_end = scanner.current_market_window(dt)
+    date_str = scanner.ct_date_str(w_start)
+
+    if mode == "auto":
+        eff_mode = "day" if window_name in ("PREMARKET", "REGULAR", "AFTERHOURS") else "night"
+    else:
+        eff_mode = mode
+
+    try:
+        ortex_on, ortex_label = scanner.resolve_ortex_on(eff_mode, ortex, dt)
+    except Exception:
+        ortex_on, ortex_label = (False, "OFF")
+
+    ortex_for_worker = "on" if ortex_on else "off"
 
     with STATE_LOCK:
         if STATE["running"]:
@@ -315,6 +313,7 @@ def run_scan(request: Request, mode: str = "auto", ortex: str = "auto"):
         STATE["done"] = False
         STATE["ok"] = True
         STATE["html_path"] = None
+
         STATE["logs"].clear()
         STATE["rows"].clear()
         STATE["log_seq"] += 1
@@ -322,45 +321,25 @@ def run_scan(request: Request, mode: str = "auto", ortex: str = "auto"):
         STATE["meta_seq"] += 1
         STATE["done_seq"] += 1
 
-        dt = scanner.now_ct()
-        window_name, w_start, w_end = scanner.current_market_window(dt)
-        date_str = scanner.ct_date_str(w_start)
+        STATE["started_at_ct"] = now_ct_str()
+        STATE["meta"] = {
+            "mode": eff_mode,
+            "ortex_requested": ortex,
+            "ortex_effective": ortex_label,
+            "window": window_name,
+            "date": date_str,
+            "scanned_count": None,
+        }
 
-        if mode == "auto":
-            eff_mode = "day" if window_name in ("PREMARKET", "REGULAR", "AFTERHOURS") else "night"
-        else:
-            eff_mode = mode
+        th = threading.Thread(
+            target=_scan_worker,
+            args=(scan_id, eff_mode, ortex_for_worker),
+            daemon=True
+        )
+        th.start()
 
-        # use scanner resolve_ortex_on if present
-         # use scanner resolve_ortex_on if present
-    try:
-        ortex_on, ortex_label = scanner.resolve_ortex_on(eff_mode, ortex, dt)
-    except Exception:
-        ortex_on = False
-        ortex_label = "OFF"
+        snap = _state_snapshot()
 
-    # ✅ force the worker param to match the resolved state
-    ortex_for_worker = "on" if ortex_on else "off"
-
-    STATE["started_at_ct"] = now_ct_str()
-    STATE["meta"] = {
-        "mode": eff_mode,
-        "ortex_requested": ortex,
-        "ortex_effective": ortex_label,
-        "window": window_name,
-        "date": date_str,
-        "scanned_count": None,
-    }
-
-    th = threading.Thread(
-        target=_scan_worker,
-        args=(scan_id, STATE["meta"]["mode"], ortex_for_worker),  # ✅ use resolved on/off
-        daemon=True
-    )
-
-    th.start()
-
-    snap = _state_snapshot()
     return {
         "ok": True,
         "scan_id": scan_id,
@@ -399,10 +378,10 @@ def _scan_worker(scan_id: str, mode: str, ortex: str):
 @app.get("/stream/{scan_id}")
 def stream(scan_id: str):
     def event_gen():
-        last_log = 0
-        last_row = 0
-        last_meta = 0
-        last_done = 0
+        last_log_seq = 0
+        last_row_seq = 0
+        last_meta_seq = 0
+        last_done_seq = 0
 
         snap = _state_snapshot()
         if snap["scan_id"] != scan_id:
@@ -412,29 +391,28 @@ def stream(scan_id: str):
         while True:
             snap = _state_snapshot()
 
-            if snap["log_seq"] != last_log:
+            if snap["log_seq"] != last_log_seq:
                 with STATE_LOCK:
                     logs = list(STATE["logs"])
                     seq = STATE["log_seq"]
                 for line in logs[-50:]:
                     yield _sse("log", {"line": line})
-                last_log = seq
+                last_log_seq = seq
 
-            if snap["meta_seq"] != last_meta:
+            if snap["meta_seq"] != last_meta_seq:
                 yield _sse("meta", snap["meta"])
-                last_meta = snap["meta_seq"]
+                last_meta_seq = snap["meta_seq"]
 
-            if snap["row_seq"] != last_row:
+            if snap["row_seq"] != last_row_seq:
                 with STATE_LOCK:
                     rows = list(STATE["rows"])
                     seq = STATE["row_seq"]
-                for r in rows[-10:]:
+                for r in rows[-20:]:
                     yield _sse("row", r)
-                last_row = seq
+                last_row_seq = seq
 
-            if snap["done_seq"] != last_done and snap["done"]:
-                payload = {"ok": snap["ok"], "html_path": snap["html_path"]}
-                yield _sse("done", payload)
+            if snap["done_seq"] != last_done_seq and snap["done"]:
+                yield _sse("done", {"ok": snap["ok"], "html_path": snap["html_path"]})
                 return
 
             time.sleep(0.35)
@@ -449,26 +427,21 @@ def _sse_response(gen_fn):
     return StreamingResponse(gen_fn(), media_type="text/event-stream")
 
 
-# -------------------- TRADES API (THIS FIXES NOTEBOOK) --------------------
 # -------------------- TRADES API (NOTEBOOK) --------------------
 @app.get("/api/trades")
 def api_get_trades(view: str = "all", user_id: str | None = None):
-    """
-    If user_id is not provided, return ALL trades (single-user app behavior).
-    """
     try:
         rows = trades_select(view=view, user_id=user_id)
         return {"ok": True, "trades": rows}
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=500)
 
-
 @app.post("/api/trades")
 async def api_create_trade(request: Request):
     payload = await request.json()
 
-    # If UI doesn't send user_id, store under "default"
-    user_id = payload.get("user_id") or "default"
+    # UI uses demo; if missing, keep demo to match your frontend
+    user_id = payload.get("user_id") or "demo"
     trade_id = str(uuid.uuid4())
 
     scan_date_ct = payload.get("scan_date_ct") or (STATE.get("meta", {}).get("date") if STATE else None) or ct_date()
@@ -531,12 +504,8 @@ async def api_create_trade(request: Request):
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=500)
 
-
 @app.patch("/api/trades/{trade_id}")
 async def api_close_trade(trade_id: str, request: Request, user_id: str | None = None):
-    """
-    If user_id is not provided, allow update by id alone (single-user app behavior).
-    """
     payload = await request.json()
     exit_price = payload.get("exit_price")
     if exit_price is None:
@@ -559,29 +528,6 @@ async def api_close_trade(trade_id: str, request: Request, user_id: str | None =
                     SET exit_price = %s, exit_time_ct = %s
                     WHERE id = %s
                     """, (float(exit_price), exit_time_ct, trade_id))
-                conn.commit()
-        return {"ok": True}
-    except Exception as e:
-        return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=500)
-
-
-@app.patch("/api/trades/{trade_id}")
-async def api_close_trade(trade_id: str, request: Request, user_id: str = "demo"):
-    payload = await request.json()
-    exit_price = payload.get("exit_price")
-    if exit_price is None:
-        return JSONResponse({"ok": False, "error": "exit_price is required"}, status_code=400)
-
-    exit_time_ct = payload.get("exit_time_ct") or now_ct_str()
-
-    try:
-        with db_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute("""
-                UPDATE trades
-                SET exit_price = %s, exit_time_ct = %s
-                WHERE id = %s AND user_id = %s
-                """, (float(exit_price), exit_time_ct, trade_id, user_id))
                 conn.commit()
         return {"ok": True}
     except Exception as e:
