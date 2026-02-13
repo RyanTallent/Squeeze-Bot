@@ -217,7 +217,7 @@
         </div>
 
         <div class="btns">
-          <!-- ✅ NEW ORTEX TOGGLE BUTTON -->
+          <!-- ✅ ORTEX TOGGLE BUTTON (ON/OFF only) -->
           <button class="btn toggle off" id="btnOrtex" title="Toggle ORTEX ON/OFF">ORTEX: OFF</button>
 
           <button class="btn" id="btnScan">Scan Stocks</button>
@@ -308,10 +308,10 @@
   // -------------------------
   const el = (id) => document.getElementById(id);
 
-  // Keep mode auto unless you later add a UI control for it
+  // Keep mode auto unless you later add UI
   let selectedMode = "auto";
 
-  // ✅ ORTEX is now ONLY on/off
+  // ✅ ORTEX is ON/OFF only (persisted)
   let selectedOrtex = (localStorage.getItem("squeeze_ortex") || "off").toLowerCase();
   if (!["on","off"].includes(selectedOrtex)) selectedOrtex = "off";
 
@@ -346,12 +346,8 @@
   function setOrtex(v){
     selectedOrtex = (v || "off").toLowerCase();
     if (!["on","off"].includes(selectedOrtex)) selectedOrtex = "off";
-
     localStorage.setItem("squeeze_ortex", selectedOrtex);
     paintOrtexUI(selectedOrtex);
-
-    // optional: store on server too (won’t break if endpoint missing)
-    fetch(`/set_ortex?value=${encodeURIComponent(selectedOrtex)}`, { method:"POST" }).catch(()=>{});
   }
 
   // Toggle button
@@ -381,7 +377,7 @@
       el("pillWindow").innerHTML = `Window: <b>${m2[1].trim()}</b>`;
     }
 
-    // If your scanner logs "ORTEX mode: ON/OFF" we’ll reflect it
+    // If scanner logs "ORTEX mode: ON/OFF"
     const m3 = line.match(/ORTEX.*mode:\s*(ON|OFF)/i);
     if(m3){
       el("pillOrtex").innerHTML = `ORTEX: <b>${m3[1].toUpperCase()}</b>`;
@@ -508,7 +504,7 @@
     renderResults();
 
     const mode = selectedMode || "auto";
-    const ortex = selectedOrtex || "off"; // ✅ on/off only now
+    const ortex = selectedOrtex || "off"; // ✅ ON/OFF only
 
     const resp = await fetch(`/run_scan?mode=${encodeURIComponent(mode)}&ortex=${encodeURIComponent(ortex)}`, { method:"POST" });
     const data = await resp.json();
@@ -524,7 +520,10 @@
     // Initial pills from response
     el("pillMode").innerHTML = `Mode: <b>${(data.mode || mode)}</b>`;
     el("pillWindow").innerHTML = `Window: <b>${(data.window || "—")}</b>`;
-    el("pillOrtex").innerHTML = `ORTEX: <b>${(data.ortex_effective || (ortex.toUpperCase()))}</b>`;
+    // show effective label (from server), but keep your button state as chosen
+    if(data.ortex_effective){
+      el("pillOrtex").innerHTML = `ORTEX: <b>${data.ortex_effective}</b>`;
+    }
 
     es = new EventSource(`/stream/${scanId}`);
 
@@ -537,7 +536,7 @@
       }
     });
 
-    // ✅ NEW: meta event keeps pills accurate
+    // ✅ meta event keeps pills accurate
     es.addEventListener("meta", (ev) => {
       let m = {};
       try{ m = JSON.parse(ev.data); }catch(e){ return; }
@@ -689,7 +688,7 @@
 
   // Boot
   setMode("auto");
-  setOrtex(selectedOrtex);
+  setOrtex(selectedOrtex);     // paints button + pill
   updateMetaLines();
   loadNotebook().catch(()=>{});
 </script>
