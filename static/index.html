@@ -94,6 +94,24 @@
       box-shadow:none;
     }
 
+    /* ✅ ORTEX toggle styling */
+    .btn.toggle{
+      background: white;
+      color: var(--navy);
+      border: 1px solid var(--border);
+      box-shadow:none;
+    }
+    .btn.toggle.on{
+      background: rgba(30,127,79,.10);
+      border-color: rgba(30,127,79,.35);
+      color: var(--green);
+    }
+    .btn.toggle.off{
+      background: rgba(178,58,58,.08);
+      border-color: rgba(178,58,58,.30);
+      color: var(--red);
+    }
+
     .grid{display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:16px}
     @media (max-width: 980px){ .grid{grid-template-columns:1fr} }
 
@@ -194,11 +212,14 @@
         <div class="pillbar">
           <div class="pill" id="pillMode">Mode: <b>auto</b></div>
           <div class="pill" id="pillWindow">Window: <b>—</b></div>
-          <div class="pill" id="pillOrtex">ORTEX: <b>—</b></div>
+          <div class="pill" id="pillOrtex">ORTEX: <b>OFF</b></div>
           <div class="pill" id="pillLast">Last Scan: <b>—</b></div>
         </div>
 
         <div class="btns">
+          <!-- ✅ NEW ORTEX TOGGLE BUTTON -->
+          <button class="btn toggle off" id="btnOrtex" title="Toggle ORTEX ON/OFF">ORTEX: OFF</button>
+
           <button class="btn" id="btnScan">Scan Stocks</button>
           <button class="btn secondary" id="btnClear">Clear Log</button>
         </div>
@@ -285,12 +306,14 @@
   // -------------------------
   // State
   // -------------------------
-  let selectedMode = localStorage.getItem("squeeze_mode") || "auto";
-  let selectedOrtex = localStorage.getItem("squeeze_ortex") || "auto";
+  const el = (id) => document.getElementById(id);
 
-  // ✅ SAFETY: never get stuck on a bad/old value
-  if(!["auto","on","off"].includes(selectedMode)) selectedMode = "auto";
-  if(!["auto","on","off"].includes(selectedOrtex)) selectedOrtex = "auto";
+  // Keep mode auto unless you later add a UI control for it
+  let selectedMode = "auto";
+
+  // ✅ ORTEX is now ONLY on/off
+  let selectedOrtex = (localStorage.getItem("squeeze_ortex") || "off").toLowerCase();
+  if (!["on","off"].includes(selectedOrtex)) selectedOrtex = "off";
 
   let showing = "SQUEEZE";
   let scanId = null;
@@ -300,33 +323,41 @@
   let lastUpdatedStr = "—";
 
   const results = { SQUEEZE: [], MOMENTUM: [] };
-  const el = (id) => document.getElementById(id);
 
+  // -------------------------
+  // UI setters
+  // -------------------------
   function setMode(mode){
-    selectedMode = mode;
-    localStorage.setItem("squeeze_mode", mode);
-    el("pillMode").innerHTML = `Mode: <b>${mode}</b>`;
+    selectedMode = (mode || "auto").toLowerCase();
+    el("pillMode").innerHTML = `Mode: <b>${selectedMode}</b>`;
   }
-  function setOrtex(v){
-    selectedOrtex = v;
-    localStorage.setItem("squeeze_ortex", v);
-    const label = (v === "auto") ? "AUTO" : (v === "on" ? "ON" : "OFF");
+
+  function paintOrtexUI(v){
+    const btn = el("btnOrtex");
+    const label = (v === "on") ? "ON" : "OFF";
+    btn.textContent = `ORTEX: ${label}`;
+
+    btn.classList.remove("on","off");
+    btn.classList.add(v === "on" ? "on" : "off");
+
     el("pillOrtex").innerHTML = `ORTEX: <b>${label}</b>`;
   }
 
-  // ✅ CLICK ORTEX PILL TO CYCLE AUTO → ON → OFF
-  (function wireOrtexPill(){
-    const p = el("pillOrtex");
-    p.style.cursor = "pointer";
-    p.title = "Click to cycle ORTEX: AUTO → ON → OFF";
-    p.addEventListener("click", () => {
-      const next =
-        (selectedOrtex === "auto") ? "on" :
-        (selectedOrtex === "on") ? "off" :
-        "auto";
-      setOrtex(next);
-    });
-  })();
+  function setOrtex(v){
+    selectedOrtex = (v || "off").toLowerCase();
+    if (!["on","off"].includes(selectedOrtex)) selectedOrtex = "off";
+
+    localStorage.setItem("squeeze_ortex", selectedOrtex);
+    paintOrtexUI(selectedOrtex);
+
+    // optional: store on server too (won’t break if endpoint missing)
+    fetch(`/set_ortex?value=${encodeURIComponent(selectedOrtex)}`, { method:"POST" }).catch(()=>{});
+  }
+
+  // Toggle button
+  el("btnOrtex").addEventListener("click", () => {
+    setOrtex(selectedOrtex === "on" ? "off" : "on");
+  });
 
   // -------------------------
   // Log + meta parsing
@@ -348,6 +379,12 @@
     const m2 = line.match(/Market window:\s*([A-Z \(\)]+)\s*\(/i);
     if(m2){
       el("pillWindow").innerHTML = `Window: <b>${m2[1].trim()}</b>`;
+    }
+
+    // If your scanner logs "ORTEX mode: ON/OFF" we’ll reflect it
+    const m3 = line.match(/ORTEX.*mode:\s*(ON|OFF)/i);
+    if(m3){
+      el("pillOrtex").innerHTML = `ORTEX: <b>${m3[1].toUpperCase()}</b>`;
     }
   }
 
@@ -471,7 +508,7 @@
     renderResults();
 
     const mode = selectedMode || "auto";
-    const ortex = selectedOrtex || "auto";
+    const ortex = selectedOrtex || "off"; // ✅ on/off only now
 
     const resp = await fetch(`/run_scan?mode=${encodeURIComponent(mode)}&ortex=${encodeURIComponent(ortex)}`, { method:"POST" });
     const data = await resp.json();
@@ -483,7 +520,11 @@
     }
 
     scanId = data.scan_id;
+
+    // Initial pills from response
     el("pillMode").innerHTML = `Mode: <b>${(data.mode || mode)}</b>`;
+    el("pillWindow").innerHTML = `Window: <b>${(data.window || "—")}</b>`;
+    el("pillOrtex").innerHTML = `ORTEX: <b>${(data.ortex_effective || (ortex.toUpperCase()))}</b>`;
 
     es = new EventSource(`/stream/${scanId}`);
 
@@ -493,6 +534,19 @@
         log(j.line || ev.data);
       }catch(e){
         log(ev.data);
+      }
+    });
+
+    // ✅ NEW: meta event keeps pills accurate
+    es.addEventListener("meta", (ev) => {
+      let m = {};
+      try{ m = JSON.parse(ev.data); }catch(e){ return; }
+      if(m.mode) el("pillMode").innerHTML = `Mode: <b>${m.mode}</b>`;
+      if(m.window) el("pillWindow").innerHTML = `Window: <b>${m.window}</b>`;
+      if(m.ortex_effective) el("pillOrtex").innerHTML = `ORTEX: <b>${m.ortex_effective}</b>`;
+      if(typeof m.scanned_count === "number"){
+        scannedCount = m.scanned_count;
+        updateMetaLines();
       }
     });
 
@@ -634,7 +688,7 @@
   el("noteView").addEventListener("change", loadNotebook);
 
   // Boot
-  setMode(selectedMode);
+  setMode("auto");
   setOrtex(selectedOrtex);
   updateMetaLines();
   loadNotebook().catch(()=>{});
