@@ -28,7 +28,7 @@
     .h1{font-size:44px;font-weight:700;margin:0;color:var(--navy)}
     .h1 em{font-style:italic;font-weight:700}
     .h2{color:rgba(13,27,42,.82);font-size:18px;margin:6px 0 0 0;font-weight:600}
-    .sub{color:var(--muted);font-size:14px;margin:10px 0 0 0;max-width:900px;line-height:1.55}
+    .sub{color:var(--muted);font-size:14px;margin:10px 0 0 0;max-width:980px;line-height:1.55}
 
     .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:16px;box-shadow:0 10px 22px rgba(0,0,0,.05);margin-top:18px;}
     .bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:16px;}
@@ -71,6 +71,19 @@
 
     .notehead{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px;}
     .select{padding:9px 10px;border-radius:10px;border:1px solid var(--border);background:white;color:var(--navy);font-weight:700;font-family:'Playfair Display', serif;}
+
+    .hintbox{
+      margin-top:10px;
+      padding:12px;
+      border-radius:12px;
+      border:1px solid rgba(13,27,42,.12);
+      background:linear-gradient(180deg, #FBFCFD, #FFFFFF);
+      color:#111827;
+      font-size:12px;
+      line-height:1.45;
+    }
+    .hintbox b{color:var(--navy)}
+    .kbd{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;background:#F1F3F5;border:1px solid #E3E6EA;border-radius:8px;padding:2px 6px}
   </style>
 </head>
 
@@ -79,13 +92,15 @@
     <div>
       <div class="h1">Precipice <em>Analytica</em></div>
       <div class="h2">Beginner-Friendly Stock Scanner (Squeeze + Momentum)</div>
+
       <div class="sub">
-        <b>Confidence (1–10)</b> is a ranking score (not a guarantee).
+        <b>Confidence (1–10)</b> is a ranking score (not a guarantee). Higher = better setup quality.
         <b>Move</b> is % change vs prior close.
-        <b>SFloat</b> is an estimate of shares outstanding (used as a size/liquidity clue).
+        <b>SFloat</b> is a shares-outstanding estimate (bigger usually moves slower).
         <br/><br/>
-        <b>ORTEX</b> adds short-interest / borrow data (helpful for squeeze confirmation).
-        It only becomes <b>effective</b> during <b>7:00am–4:00pm CT</b> on weekdays and only if you turn it ON.
+        <b>ORTEX</b> (when ON) adds short-interest & borrow metrics to help confirm squeezes:
+        <b>SI%</b> = short interest % of float, <b>CTB</b> = cost to borrow, <b>Avail</b> = shares available to short.
+        ORTEX can only be <b>effective</b> on weekdays between <b>7:00am–4:00pm CT</b> (and only if you turn it ON).
       </div>
 
       <div class="bar">
@@ -101,6 +116,13 @@
           <button class="btn" id="btnScan">Scan Stocks</button>
           <button class="btn secondary" id="btnClear">Clear Log</button>
         </div>
+      </div>
+
+      <div class="hintbox" id="topHints">
+        <b>How to use this (simple):</b><br/>
+        1) Turn ORTEX <b>ON</b> (optional) → 2) Click <b>Scan Stocks</b> → 3) Click a row to see the plan → 4) Click <b>Add</b> to save to Notebook.
+        <br/>
+        <span style="color:var(--muted)">Tip: A “SQUEEZE” row with strong Conf is usually higher risk/higher reward. Momentum is “gainers only.”</span>
       </div>
     </div>
 
@@ -138,7 +160,14 @@
         </div>
 
         <div class="rowexp" id="planBox"></div>
-        <div class="smallline" style="margin-top:10px">Tip: Click a row for a simple “entry / stop / target” plan.</div>
+
+        <div class="hintbox" style="margin-top:12px">
+          <b>Reading the plan:</b>
+          <span class="kbd">ENTRY</span> is a breakout trigger, <span class="kbd">STOP</span> is the “I’m wrong” line,
+          <span class="kbd">TARGET</span> is where you can scale out.
+          <br/>
+          <span style="color:var(--muted)">Reminder: this is a scanner, not financial advice — always size risk first.</span>
+        </div>
       </div>
     </div>
 
@@ -146,7 +175,7 @@
       <div class="notehead">
         <div>
           <div class="title" style="margin-bottom:4px">Notebook</div>
-          <div class="smallline" id="noteMeta">Trades you add will appear here (DB must be configured).</div>
+          <div class="smallline" id="noteMeta">Trades you add will appear here.</div>
         </div>
 
         <select class="select" id="noteView">
@@ -175,13 +204,19 @@
         </table>
       </div>
 
-      <div class="smallline" style="margin-top:10px">If your DB isn’t set, this will stay empty (scanner still works).</div>
+      <div class="hintbox" style="margin-top:12px">
+        <b>Notebook tips:</b>
+        Add a trade when you take it. Close it when you exit. This helps you track discipline & results.
+        <br/>
+        <span style="color:var(--muted)">If your database is down, the scanner still runs — the notebook may be empty.</span>
+      </div>
     </div>
   </div>
 
 <script>
   const el = (id) => document.getElementById(id);
 
+  // Saved toggle
   let selectedMode = "auto";
   let selectedOrtex = (localStorage.getItem("squeeze_ortex") || "off").toLowerCase();
   if (!["on","off"].includes(selectedOrtex)) selectedOrtex = "off";
@@ -207,6 +242,9 @@
     if (!["on","off"].includes(selectedOrtex)) selectedOrtex = "off";
     localStorage.setItem("squeeze_ortex", selectedOrtex);
     paintOrtexUI(selectedOrtex);
+
+    // Persist to server (nice-to-have, no harm if server ignores)
+    fetch(`/set_ortex?value=${encodeURIComponent(selectedOrtex)}`, { method:"POST" }).catch(()=>{});
   }
 
   el("btnOrtex").addEventListener("click", () => {
@@ -226,13 +264,17 @@
       scannedCount = Number(m1[1]);
       updateMetaLines();
     }
+
+    // window line
     const m2 = line.match(/Market window:\s*([A-Z \(\)]+)\s*\(/i);
     if(m2){
       el("pillWindow").innerHTML = `Window: <b>${m2[1].trim()}</b>`;
     }
-    const m3 = line.match(/ORTEX:\s*request=.*effective=(.*)$/i);
+
+    // ORTEX mode line (matches your scanner.py log line)
+    const m3 = line.match(/ORTEX mode:\s*(ON|OFF).*$/i);
     if(m3){
-      el("pillOrtex").innerHTML = `ORTEX: <b>${m3[1].trim()}</b>`;
+      el("pillOrtex").innerHTML = `ORTEX: <b>${m3[1].toUpperCase()}</b>`;
     }
   }
 
@@ -291,21 +333,34 @@
 
       tr.addEventListener("click", (e) => {
         if(e.target && e.target.matches("button.addbtn")) return;
+
         const planBox = el("planBox");
         planBox.style.display = "block";
 
+        const bucket = (r.bucket || "").toUpperCase();
+        const bucketLine = bucket === "SQUEEZE"
+          ? "SQUEEZE = short-squeeze potential (higher risk / higher reward)."
+          : "MOMENTUM = strong gainer with solid volume/structure.";
+
+        const ortexNote = (selectedOrtex === "on")
+          ? "ORTEX requested ON. If it’s within 7am–4pm CT and key exists, SI/CTB/Avail will populate."
+          : "ORTEX is OFF. SI/CTB/Avail may show NA.";
+
         planBox.textContent =
-          `What this means (simple):\n` +
-          `• Conf = ranking score (1–10)\n` +
-          `• Move = % change vs prior close\n` +
-          `• SFloat = estimated shares (bigger = usually harder to move)\n\n` +
+          `What you're seeing (simple):\n` +
+          `• ${bucketLine}\n` +
+          `• Conf = ranking score (1–10). Higher = cleaner setup.\n` +
+          `• Move = % change vs prior close.\n` +
+          `• SFloat = size clue (bigger often moves slower).\n` +
+          `• ${ortexNote}\n\n` +
           `${r.ticker} — ${r.subtype}\n\n` +
           (r.plan || "(no plan)") + "\n\n" +
           `Quick stats:\n` +
           `• Trigger: ${fmtNum(r.trigger,4)} | Stop: ${fmtNum(r.stop,4)}\n` +
           `• Range: ${fmtPct(r.range_pct)} | Hold: ${fmtPct(r.hold_pct)} | RelVol: ${fmtNum(r.rel_vol,2)}\n` +
           `• SI%: ${fmtNum(r.si_pct_ff,1)} | CTB: ${fmtNum(r.ctb,1)} | Avail: ${fmtInt(r.avail)}\n` +
-          `• $Vol: ${fmtInt(r.dollar_vol)}`;
+          `• $Vol: ${fmtInt(r.dollar_vol)}\n\n` +
+          `Beginner reminder: Risk small. A stop is not optional.`;
       });
 
       body.appendChild(tr);
@@ -362,12 +417,23 @@
     const mode = selectedMode || "auto";
     const ortex = selectedOrtex || "off";
 
-    const resp = await fetch(`/run_scan?mode=${encodeURIComponent(mode)}&ortex=${encodeURIComponent(ortex)}`, { method:"POST" });
-    const data = await resp.json();
+    // clear log UI (optional)
+    el("logBox").textContent = "";
+
+    let resp, data;
+    try{
+      resp = await fetch(`/run_scan?mode=${encodeURIComponent(mode)}&ortex=${encodeURIComponent(ortex)}`, { method:"POST" });
+      data = await resp.json();
+    }catch(err){
+      el("logStatus").textContent = "Could not start scan (network error).";
+      el("btnScan").disabled = false;
+      return;
+    }
 
     if(!data.ok){
       el("logStatus").textContent = "Error starting scan.";
       el("btnScan").disabled = false;
+      log(`[UI] run_scan error: ${data.error || "unknown"}`);
       return;
     }
 
@@ -417,12 +483,18 @@
       el("btnScan").disabled = false;
       setTimeout(() => { if(es){ try{ es.close(); }catch(e){} es=null; } }, 1200);
     });
+
+    es.onerror = () => {
+      // some proxies close SSE; show friendly message
+      // (done event still usually arrives, but if not, user sees something)
+      // do not spam
+    };
   }
 
   el("btnScan").addEventListener("click", runScan);
 
   el("btnClear").addEventListener("click", async () => {
-    await fetch("/clear_log", { method:"POST" });
+    await fetch("/clear_log", { method:"POST" }).catch(()=>{});
     el("logBox").textContent = "";
     el("logStatus").textContent = "Cleared.";
   });
@@ -430,8 +502,15 @@
   // Notebook
   async function loadNotebook(){
     const view = el("noteView").value;
-    const resp = await fetch(`/api/trades?view=${encodeURIComponent(view)}&user_id=demo`);
-    const data = await resp.json();
+
+    let resp, data;
+    try{
+      resp = await fetch(`/api/trades?view=${encodeURIComponent(view)}&user_id=demo`);
+      data = await resp.json();
+    }catch(e){
+      // show empty but keep UI alive
+      data = { trades: [] };
+    }
 
     const rows = (data && data.trades) ? data.trades : [];
     const body = el("noteBody");
@@ -441,14 +520,18 @@
       const pnlD = t.pnl_dollars;
       const pnlP = t.pnl_pct;
 
-      const pnlDStr = (pnlD == null) ? "—" : (pnlD >= 0 ? `<span class="good">+${pnlD.toFixed(2)}</span>` : `<span class="bad">${pnlD.toFixed(2)}</span>`);
-      const pnlPStr = (pnlP == null) ? "—" : (pnlP >= 0 ? `<span class="good">+${(pnlP*100).toFixed(1)}%</span>` : `<span class="bad">${(pnlP*100).toFixed(1)}%</span>`);
+      const pnlDStr = (pnlD == null)
+        ? "—"
+        : (pnlD >= 0 ? `<span class="good">+${Number(pnlD).toFixed(2)}</span>` : `<span class="bad">${Number(pnlD).toFixed(2)}</span>`);
+
+      const pnlPStr = (pnlP == null)
+        ? "—"
+        : (pnlP >= 0 ? `<span class="good">+${(Number(pnlP)*100).toFixed(1)}%</span>` : `<span class="bad">${(Number(pnlP)*100).toFixed(1)}%</span>`);
 
       const flags = (() => { try{ return JSON.parse(t.review_flags || "[]"); }catch(e){ return []; } })();
       const flagsStr = (flags || []).map(f => `${f.icon||""} ${f.label||""}`.trim()).join(" • ");
 
       const tr = document.createElement("tr");
-      tr.style.cursor = "pointer";
       tr.innerHTML = `
         <td><b>${t.ticker}</b></td>
         <td>${t.subtype || ""}</td>
@@ -463,7 +546,6 @@
           ${t.exit_price == null ? `<button class="addbtn" data-close="${t.id}">Close</button>` : "—"}
         </td>
       `;
-
       body.appendChild(tr);
     }
 
@@ -473,11 +555,13 @@
         const id = btn.getAttribute("data-close");
         const px = prompt("Exit price?", "");
         if(px === null) return;
+
         await fetch(`/api/trades/${id}?user_id=demo`, {
           method:"PATCH",
           headers:{ "Content-Type":"application/json" },
           body: JSON.stringify({ exit_price: px })
-        });
+        }).catch(()=>{});
+
         await loadNotebook();
       });
     });
@@ -510,7 +594,7 @@
       method:"POST",
       headers:{ "Content-Type":"application/json" },
       body: JSON.stringify(payload)
-    });
+    }).catch(()=>{});
   }
 
   el("noteView").addEventListener("change", loadNotebook);
