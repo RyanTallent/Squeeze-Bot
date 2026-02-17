@@ -441,6 +441,16 @@ def health():
         "database_url_set": bool(DATABASE_URL),
     }
 
+@app.get("/debug_scan")
+def debug_scan():
+    import scanner
+    dt = scanner.now_ct()
+    window_name, w_start, w_end = scanner.current_market_window(dt)
+    return {
+        "dt": str(dt),
+        "window": window_name,
+        "date": scanner.ct_date_str(w_start)
+    }
 
 @app.post("/clear_log")
 def clear_log():
