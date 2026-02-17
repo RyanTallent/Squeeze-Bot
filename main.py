@@ -441,16 +441,14 @@ def health():
         "database_url_set": bool(DATABASE_URL),
     }
 
-@app.get("/debug_scan")
-def debug_scan():
-    import scanner
-    dt = scanner.now_ct()
-    window_name, w_start, w_end = scanner.current_market_window(dt)
+@app.get("/debug_keys")
+def debug_keys():
+    import os
     return {
-        "dt": str(dt),
-        "window": window_name,
-        "date": scanner.ct_date_str(w_start)
+        "POLYGON_API_KEY_set": bool(os.getenv("POLYGON_API_KEY")),
+        "ORTEX_API_KEY_set": bool(os.getenv("ORTEX_API_KEY")),
     }
+
 
 @app.post("/clear_log")
 def clear_log():
