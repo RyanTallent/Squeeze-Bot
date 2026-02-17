@@ -1,4 +1,4 @@
-# main.py  ✅ ORTEX ON/OFF ONLY (copy/paste whole file)
+# main.py — stable UI + beginner-friendly ORTEX + DB-safe notebook
 
 import os
 import json
@@ -17,7 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import psycopg
 from psycopg.rows import dict_row
 
-import scanner  # your scanner.py
+import scanner
 
 
 # -------------------- timezone helpers (CT) --------------------
@@ -28,8 +28,12 @@ except Exception:
     CT_TZ = None
 
 
+def now_ct() -> datetime:
+    return datetime.now(tz=CT_TZ) if CT_TZ else datetime.now()
+
+
 def now_ct_str() -> str:
-    dt = datetime.now(tz=CT_TZ) if CT_TZ else datetime.now()
+    dt = now_ct()
     try:
         return dt.strftime("%-I:%M %p CT")
     except Exception:
@@ -37,70 +41,100 @@ def now_ct_str() -> str:
 
 
 def ct_date(dt: datetime | None = None) -> str:
-    dt = dt or (datetime.now(tz=CT_TZ) if CT_TZ else datetime.now())
+    dt = dt or now_ct()
     return dt.strftime("%Y-%m-%d")
 
 
 def yesterday_ct_date() -> str:
-    dt = (datetime.now(tz=CT_TZ) if CT_TZ else datetime.now()) - timedelta(days=1)
-    return dt.strftime("%Y-%m-%d")
+    return (now_ct() - timedelta(days=1)).strftime("%Y-%m-%d")
 
 
-# -------------------- DB --------------------
-DATABASE_URL = os.getenv("DATABASE_URL")
+# -------------------- DB (SAFE) --------------------
+def _db_url() -> str | None:
+    """
+    Render sometimes uses DATABASE_URL; other setups may use POSTGRES_URL vars.
+    """
+    return (
+        os.getenv("DATABASE_URL")
+        or os.getenv("POSTGRES_URL")
+        or os.getenv("POSTGRES_URL_NON_POOLING")
+    )
+
+
+def _ensure_sslmode(url: str) -> str:
+    """
+    Many hosted Postgres require SSL. If the URL doesn't specify sslmode, add it.
+    """
+    if "sslmode=" in url:
+        return url
+    joiner = "&" if "?" in url else "?"
+    return url + f"{joiner}sslmode=require"
 
 
 def db_conn():
-    if not DATABASE_URL:
-        raise RuntimeError("DATABASE_URL is not set in Render environment variables.")
-    return psycopg.connect(DATABASE_URL, row_factory=dict_row)
+    url = _db_url()
+    if not url:
+        raise RuntimeError("DATABASE_URL is not set (Notebook will run in 'no-db' mode).")
+    url = _ensure_sslmode(url)
+    return psycopg.connect(url, row_factory=dict_row)
 
 
-def db_init():
-    with db_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-            CREATE TABLE IF NOT EXISTS trades (
-              id TEXT PRIMARY KEY,
-              user_id TEXT NOT NULL,
-              created_at_utc TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+def db_init_safe() -> tuple[bool, str]:
+    """
+    Try to create trades table. Never crash the whole app if DB is missing/broken.
+    Returns (ok, message).
+    """
+    try:
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS trades (
+                      id TEXT PRIMARY KEY,
+                      user_id TEXT NOT NULL,
+                      created_at_utc TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
-              scan_id TEXT,
-              scan_date_ct TEXT,
+                      scan_id TEXT,
+                      scan_date_ct TEXT,
 
-              ticker TEXT NOT NULL,
-              bucket TEXT,
-              subtype TEXT,
-              confidence REAL,
-              plan TEXT,
+                      ticker TEXT NOT NULL,
+                      bucket TEXT,
+                      subtype TEXT,
+                      confidence REAL,
+                      plan TEXT,
 
-              trigger REAL,
-              stop REAL,
-              scan_close REAL,
-              move_pct REAL,
-              dollar_vol REAL,
-              range_pct REAL,
-              hold_pct REAL,
-              rel_vol REAL,
-              si_pct_ff REAL,
-              ctb REAL,
-              avail REAL,
+                      trigger REAL,
+                      stop REAL,
+                      scan_close REAL,
+                      move_pct REAL,
+                      dollar_vol REAL,
+                      range_pct REAL,
+                      hold_pct REAL,
+                      rel_vol REAL,
+                      si_pct_ff REAL,
+                      ctb REAL,
+                      avail REAL,
 
-              entry_price REAL,
-              entry_time_ct TEXT,
-              exit_price REAL,
-              exit_time_ct TEXT,
-              shares REAL,
+                      entry_price REAL,
+                      entry_time_ct TEXT,
+                      exit_price REAL,
+                      exit_time_ct TEXT,
+                      shares REAL,
 
-              review_flags TEXT
-            );
-            """
-            )
-            conn.commit()
+                      review_flags TEXT
+                    );
+                    """
+                )
+                conn.commit()
+        return True, "db ok"
+    except Exception as e:
+        return False, f"db init failed: {type(e).__name__}: {str(e)[:180]}"
 
 
-def trades_select(view: str, user_id: str | None) -> list[dict]:
+def trades_select_safe(view: str, user_id: str | None) -> list[dict]:
+    """
+    Never raises: if DB/table is missing, returns [].
+    """
     view = (view or "all").lower().strip()
     if view not in ("all", "yesterday"):
         view = "all"
@@ -140,22 +174,24 @@ def trades_select(view: str, user_id: str | None) -> list[dict]:
     LIMIT 500;
     """
 
-    with db_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(sql, params)
-            rows = cur.fetchall()
+    try:
+        with db_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, params)
+                rows = cur.fetchall()
 
-    # normalize review_flags to JSON-string
-    for r in rows:
-        try:
-            if r.get("review_flags") is None:
+        for r in rows:
+            try:
+                if r.get("review_flags") is None:
+                    r["review_flags"] = "[]"
+                elif not isinstance(r["review_flags"], str):
+                    r["review_flags"] = json.dumps(r["review_flags"])
+            except Exception:
                 r["review_flags"] = "[]"
-            elif not isinstance(r["review_flags"], str):
-                r["review_flags"] = json.dumps(r["review_flags"])
-        except Exception:
-            r["review_flags"] = "[]"
 
-    return rows
+        return rows
+    except Exception:
+        return []
 
 
 # -------------------- FastAPI app --------------------
@@ -179,7 +215,9 @@ app.mount("/outputs", StaticFiles(directory=str(OUT_DIR)), name="outputs")
 
 @app.on_event("startup")
 def _startup():
-    db_init()
+    ok, msg = db_init_safe()
+    # Don't crash startup if DB isn't ready
+    print(f"[startup] {msg}")
 
 
 # -------------------- scan state (in-memory) --------------------
@@ -188,12 +226,12 @@ STATE = {
     "running": False,
     "scan_id": None,
     "started_at_ct": None,
-    "logs": deque(maxlen=2500),
-    "rows": deque(maxlen=400),
+    "logs": deque(maxlen=3000),
+    "rows": deque(maxlen=500),
     "meta": {
         "mode": "auto",
-        "ortex_requested": "off",   # ✅ default OFF now
-        "ortex_effective": "OFF",
+        "ortex_requested": "off",   # user choice
+        "ortex_effective": "OFF",   # effective result
         "window": "—",
         "date": None,
         "scanned_count": None,
@@ -210,23 +248,19 @@ STATE = {
 
 def _state_snapshot():
     with STATE_LOCK:
-        return json.loads(
-            json.dumps(
-                {
-                    "running": STATE["running"],
-                    "scan_id": STATE["scan_id"],
-                    "started_at_ct": STATE["started_at_ct"],
-                    "meta": STATE["meta"],
-                    "done": STATE["done"],
-                    "ok": STATE["ok"],
-                    "html_path": STATE["html_path"],
-                    "log_seq": STATE["log_seq"],
-                    "row_seq": STATE["row_seq"],
-                    "meta_seq": STATE["meta_seq"],
-                    "done_seq": STATE["done_seq"],
-                }
-            )
-        )
+        return json.loads(json.dumps({
+            "running": STATE["running"],
+            "scan_id": STATE["scan_id"],
+            "started_at_ct": STATE["started_at_ct"],
+            "meta": STATE["meta"],
+            "done": STATE["done"],
+            "ok": STATE["ok"],
+            "html_path": STATE["html_path"],
+            "log_seq": STATE["log_seq"],
+            "row_seq": STATE["row_seq"],
+            "meta_seq": STATE["meta_seq"],
+            "done_seq": STATE["done_seq"],
+        }))
 
 
 def push_log(line: str):
@@ -282,6 +316,12 @@ def root():
     return RedirectResponse(url="/static/index.html")
 
 
+@app.get("/favicon.ico")
+def favicon():
+    # Optional: you can add /static/favicon.ico later
+    return JSONResponse({}, status_code=204)
+
+
 @app.get("/health")
 def health():
     snap = _state_snapshot()
@@ -298,50 +338,24 @@ def clear_log():
     return {"ok": True}
 
 
-# ✅ NEW: simple ON/OFF endpoint your frontend can call
-@app.post("/set_ortex")
-def set_ortex(request: Request, value: str = "off"):
-    """
-    Persist ORTEX preference server-side (optional but helpful).
-    Frontend can call: POST /set_ortex?value=on  or  off
-    """
-    v = (value or "off").strip().lower()
-    if v not in ("on", "off"):
-        v = "off"
-
-    with STATE_LOCK:
-        STATE["meta"]["ortex_requested"] = v
-        # ortex_effective will update on next scan once scanner.resolve_ortex_on runs
-        STATE["meta_seq"] += 1
-
-    return {"ok": True, "ortex": v}
-
-
 @app.post("/run_scan")
 def run_scan(mode: str = "auto", ortex: str = "off"):
     """
-    Starts a scan and streams logs/rows via /stream/{scan_id}.
-
-    ORTEX is now ONLY:
-      - on
-      - off
+    mode: auto/day/night
+    ortex: on/off (user choice)
+    Effective ORTEX will only be ON when:
+      - ORTEX key exists
+      - user chose ON
+      - time is 7:00am–4:00pm CT weekdays
     """
     mode = (mode or "auto").strip().lower()
     ortex = (ortex or "off").strip().lower()
 
     if mode not in ("auto", "day", "night"):
         mode = "auto"
-
-    # ✅ ORTEX ON/OFF ONLY
     if ortex not in ("on", "off"):
         ortex = "off"
 
-    # If frontend doesn't send ortex, use last server value
-    if not ortex:
-        with STATE_LOCK:
-            ortex = STATE["meta"].get("ortex_requested") or "off"
-
-    # Decide window/date/mode + ORTEX effective
     dt = scanner.now_ct()
     window_name, w_start, _w_end = scanner.current_market_window(dt)
     date_str = scanner.ct_date_str(w_start)
@@ -351,12 +365,8 @@ def run_scan(mode: str = "auto", ortex: str = "off"):
     else:
         eff_mode = mode
 
-    # scanner.resolve_ortex_on should now simply respect on/off (update scanner.py accordingly)
-    try:
-        ortex_on, ortex_label = scanner.resolve_ortex_on(eff_mode, ortex, dt)
-    except Exception:
-        ortex_on, ortex_label = (False, "OFF (resolve err)")
-
+    # Decide effective ORTEX (simple + user-controlled)
+    ortex_on, ortex_label = scanner.resolve_ortex_on(eff_mode, ortex, dt)
     ortex_for_worker = "on" if ortex_on else "off"
 
     with STATE_LOCK:
@@ -365,7 +375,6 @@ def run_scan(mode: str = "auto", ortex: str = "off"):
 
         scan_id = str(uuid.uuid4())
 
-        # reset state
         STATE["running"] = True
         STATE["scan_id"] = scan_id
         STATE["done"] = False
@@ -382,8 +391,8 @@ def run_scan(mode: str = "auto", ortex: str = "off"):
         STATE["started_at_ct"] = now_ct_str()
         STATE["meta"] = {
             "mode": eff_mode,
-            "ortex_requested": ortex,        # ✅ on/off
-            "ortex_effective": ortex_label,  # ✅ ON/OFF label from scanner
+            "ortex_requested": ortex,
+            "ortex_effective": ortex_label,
             "window": window_name,
             "date": date_str,
             "scanned_count": None,
@@ -413,7 +422,8 @@ def run_scan(mode: str = "auto", ortex: str = "off"):
 
 def _scan_worker(scan_id: str, mode: str, ortex: str):
     try:
-        push_log("Starting scan… (manual)")
+        push_log("Starting scan…")
+        push_log("This scans the market, ranks tickers, then outputs the Top 5 Squeeze + Top 5 Momentum.")
         push_log("Scanner thread started. Calling scanner.run_scan()...")
 
         html_path = scanner.run_scan(
@@ -442,6 +452,7 @@ def stream(scan_id: str):
         last_row_seq = 0
         last_meta_seq = 0
         last_done_seq = 0
+        last_ping = time.time()
 
         snap = _state_snapshot()
         if snap["scan_id"] != scan_id:
@@ -450,6 +461,11 @@ def stream(scan_id: str):
 
         while True:
             snap = _state_snapshot()
+
+            # Keep-alive ping (helps some hosts/proxies)
+            if time.time() - last_ping > 10:
+                yield _sse("ping", {"t": int(time.time())})
+                last_ping = time.time()
 
             if snap["log_seq"] != last_log_seq:
                 with STATE_LOCK:
@@ -486,18 +502,15 @@ def _sse(event_name: str, data_obj: dict):
 
 def _sse_response(gen_fn):
     from starlette.responses import StreamingResponse
-
     return StreamingResponse(gen_fn(), media_type="text/event-stream")
 
 
 # -------------------- TRADES API (NOTEBOOK) --------------------
 @app.get("/api/trades")
 def api_get_trades(view: str = "all", user_id: str | None = None):
-    try:
-        rows = trades_select(view=view, user_id=user_id)
-        return {"ok": True, "trades": rows}
-    except Exception as e:
-        return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=500)
+    # IMPORTANT: never 500 here; if DB broken, return empty list so UI stays alive.
+    rows = trades_select_safe(view=view, user_id=user_id)
+    return {"ok": True, "trades": rows}
 
 
 @app.post("/api/trades")
@@ -542,29 +555,34 @@ async def api_create_trade(request: Request):
         "review_flags": json.dumps(payload.get("review_flags") or []),
     }
 
+    ok, _ = db_init_safe()
+    if not ok:
+        # DB not available: don't crash UI
+        return {"ok": False, "error": "DB not configured. Notebook is disabled until DATABASE_URL is set."}
+
     try:
         with db_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                INSERT INTO trades (
-                  id, user_id, scan_id, scan_date_ct,
-                  ticker, bucket, subtype, confidence, plan,
-                  trigger, stop, scan_close, move_pct, dollar_vol, range_pct, hold_pct, rel_vol, si_pct_ff, ctb, avail,
-                  entry_price, entry_time_ct, exit_price, exit_time_ct, shares, review_flags
-                ) VALUES (
-                  %(id)s, %(user_id)s, %(scan_id)s, %(scan_date_ct)s,
-                  %(ticker)s, %(bucket)s, %(subtype)s, %(confidence)s, %(plan)s,
-                  %(trigger)s, %(stop)s, %(scan_close)s, %(move_pct)s, %(dollar_vol)s, %(range_pct)s, %(hold_pct)s, %(rel_vol)s, %(si_pct_ff)s, %(ctb)s, %(avail)s,
-                  %(entry_price)s, %(entry_time_ct)s, %(exit_price)s, %(exit_time_ct)s, %(shares)s, %(review_flags)s
-                );
-                """,
+                    INSERT INTO trades (
+                      id, user_id, scan_id, scan_date_ct,
+                      ticker, bucket, subtype, confidence, plan,
+                      trigger, stop, scan_close, move_pct, dollar_vol, range_pct, hold_pct, rel_vol, si_pct_ff, ctb, avail,
+                      entry_price, entry_time_ct, exit_price, exit_time_ct, shares, review_flags
+                    ) VALUES (
+                      %(id)s, %(user_id)s, %(scan_id)s, %(scan_date_ct)s,
+                      %(ticker)s, %(bucket)s, %(subtype)s, %(confidence)s, %(plan)s,
+                      %(trigger)s, %(stop)s, %(scan_close)s, %(move_pct)s, %(dollar_vol)s, %(range_pct)s, %(hold_pct)s, %(rel_vol)s, %(si_pct_ff)s, %(ctb)s, %(avail)s,
+                      %(entry_price)s, %(entry_time_ct)s, %(exit_price)s, %(exit_time_ct)s, %(shares)s, %(review_flags)s
+                    );
+                    """,
                     row,
                 )
                 conn.commit()
         return {"ok": True, "id": trade_id, "user_id": user_id}
     except Exception as e:
-        return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=500)
+        return {"ok": False, "error": f"{type(e).__name__}: {str(e)[:180]}"}
 
 
 @app.patch("/api/trades/{trade_id}")
@@ -576,28 +594,32 @@ async def api_close_trade(trade_id: str, request: Request, user_id: str | None =
 
     exit_time_ct = payload.get("exit_time_ct") or now_ct_str()
 
+    ok, _ = db_init_safe()
+    if not ok:
+        return {"ok": False, "error": "DB not configured. Notebook is disabled until DATABASE_URL is set."}
+
     try:
         with db_conn() as conn:
             with conn.cursor() as cur:
                 if user_id:
                     cur.execute(
                         """
-                    UPDATE trades
-                    SET exit_price = %s, exit_time_ct = %s
-                    WHERE id = %s AND user_id = %s
-                    """,
+                        UPDATE trades
+                        SET exit_price = %s, exit_time_ct = %s
+                        WHERE id = %s AND user_id = %s
+                        """,
                         (float(exit_price), exit_time_ct, trade_id, user_id),
                     )
                 else:
                     cur.execute(
                         """
-                    UPDATE trades
-                    SET exit_price = %s, exit_time_ct = %s
-                    WHERE id = %s
-                    """,
+                        UPDATE trades
+                        SET exit_price = %s, exit_time_ct = %s
+                        WHERE id = %s
+                        """,
                         (float(exit_price), exit_time_ct, trade_id),
                     )
                 conn.commit()
         return {"ok": True}
     except Exception as e:
-        return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=500)
+        return {"ok": False, "error": f"{type(e).__name__}: {str(e)[:180]}"}
