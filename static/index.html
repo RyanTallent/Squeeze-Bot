@@ -82,7 +82,6 @@
       font-size:12px;
       line-height:1.45;
     }
-    .hintbox b{color:var(--navy)}
     .kbd{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;background:#F1F3F5;border:1px solid #E3E6EA;border-radius:8px;padding:2px 6px}
   </style>
 </head>
@@ -105,6 +104,7 @@
 
       <div class="bar">
         <div class="pillbar">
+          <div class="pill" id="pillApi">API: <b>checking…</b></div>
           <div class="pill" id="pillMode">Mode: <b>auto</b></div>
           <div class="pill" id="pillWindow">Window: <b>—</b></div>
           <div class="pill" id="pillOrtex">ORTEX: <b>OFF</b></div>
@@ -118,11 +118,11 @@
         </div>
       </div>
 
-      <div class="hintbox" id="topHints">
+      <div class="hintbox">
         <b>How to use this (simple):</b><br/>
         1) Turn ORTEX <b>ON</b> (optional) → 2) Click <b>Scan Stocks</b> → 3) Click a row to see the plan → 4) Click <b>Add</b> to save to Notebook.
         <br/>
-        <span style="color:var(--muted)">Tip: A “SQUEEZE” row with strong Conf is usually higher risk/higher reward. Momentum is “gainers only.”</span>
+        <span style="color:var(--muted)">Tip: “SQUEEZE” is usually higher risk/higher reward. Momentum is “gainers only.”</span>
       </div>
     </div>
 
@@ -163,10 +163,9 @@
 
         <div class="hintbox" style="margin-top:12px">
           <b>Reading the plan:</b>
-          <span class="kbd">ENTRY</span> is a breakout trigger, <span class="kbd">STOP</span> is the “I’m wrong” line,
+          <span class="kbd">ENTRY</span> is a breakout trigger,
+          <span class="kbd">STOP</span> is the “I’m wrong” line,
           <span class="kbd">TARGET</span> is where you can scale out.
-          <br/>
-          <span style="color:var(--muted)">Reminder: this is a scanner, not financial advice — always size risk first.</span>
         </div>
       </div>
     </div>
@@ -205,10 +204,7 @@
       </div>
 
       <div class="hintbox" style="margin-top:12px">
-        <b>Notebook tips:</b>
-        Add a trade when you take it. Close it when you exit. This helps you track discipline & results.
-        <br/>
-        <span style="color:var(--muted)">If your database is down, the scanner still runs — the notebook may be empty.</span>
+        <b>Notebook tips:</b> Add when you enter. Close when you exit. This helps you learn and improve.
       </div>
     </div>
   </div>
@@ -216,7 +212,6 @@
 <script>
   const el = (id) => document.getElementById(id);
 
-  // Saved toggle
   let selectedMode = "auto";
   let selectedOrtex = (localStorage.getItem("squeeze_ortex") || "off").toLowerCase();
   if (!["on","off"].includes(selectedOrtex)) selectedOrtex = "off";
@@ -228,6 +223,13 @@
   let scannedCount = null;
   let lastUpdatedStr = "—";
   const results = { SQUEEZE: [], MOMENTUM: [] };
+
+  function log(line){
+    const box = el("logBox");
+    box.textContent += (line + "\n");
+    box.scrollTop = box.scrollHeight;
+    parseMetaFromLog(line);
+  }
 
   function paintOrtexUI(v){
     const btn = el("btnOrtex");
@@ -242,8 +244,6 @@
     if (!["on","off"].includes(selectedOrtex)) selectedOrtex = "off";
     localStorage.setItem("squeeze_ortex", selectedOrtex);
     paintOrtexUI(selectedOrtex);
-
-    // Persist to server (nice-to-have, no harm if server ignores)
     fetch(`/set_ortex?value=${encodeURIComponent(selectedOrtex)}`, { method:"POST" }).catch(()=>{});
   }
 
@@ -251,28 +251,17 @@
     setOrtex(selectedOrtex === "on" ? "off" : "on");
   });
 
-  function log(line){
-    const box = el("logBox");
-    box.textContent += (line + "\n");
-    box.scrollTop = box.scrollHeight;
-    parseMetaFromLog(line);
-  }
-
   function parseMetaFromLog(line){
     const m1 = line.match(/Snapshot tickers received:\s*(\d+)/i);
     if(m1){
       scannedCount = Number(m1[1]);
       updateMetaLines();
     }
-
-    // window line
     const m2 = line.match(/Market window:\s*([A-Z \(\)]+)\s*\(/i);
     if(m2){
       el("pillWindow").innerHTML = `Window: <b>${m2[1].trim()}</b>`;
     }
-
-    // ORTEX mode line (matches your scanner.py log line)
-    const m3 = line.match(/ORTEX mode:\s*(ON|OFF).*$/i);
+    const m3 = line.match(/ORTEX mode:\s*(ON|OFF)/i);
     if(m3){
       el("pillOrtex").innerHTML = `ORTEX: <b>${m3[1].toUpperCase()}</b>`;
     }
@@ -318,7 +307,6 @@
     for(const r of list){
       const tr = document.createElement("tr");
       tr.style.cursor = "pointer";
-
       const goldClass = isGoldPick(r) ? "gold" : "";
 
       tr.innerHTML = `
@@ -336,31 +324,18 @@
 
         const planBox = el("planBox");
         planBox.style.display = "block";
-
-        const bucket = (r.bucket || "").toUpperCase();
-        const bucketLine = bucket === "SQUEEZE"
-          ? "SQUEEZE = short-squeeze potential (higher risk / higher reward)."
-          : "MOMENTUM = strong gainer with solid volume/structure.";
-
-        const ortexNote = (selectedOrtex === "on")
-          ? "ORTEX requested ON. If it’s within 7am–4pm CT and key exists, SI/CTB/Avail will populate."
-          : "ORTEX is OFF. SI/CTB/Avail may show NA.";
-
         planBox.textContent =
           `What you're seeing (simple):\n` +
-          `• ${bucketLine}\n` +
-          `• Conf = ranking score (1–10). Higher = cleaner setup.\n` +
-          `• Move = % change vs prior close.\n` +
-          `• SFloat = size clue (bigger often moves slower).\n` +
-          `• ${ortexNote}\n\n` +
+          `• Conf = ranking score (1–10)\n` +
+          `• Move = % change vs prior close\n` +
+          `• SFloat = shares estimate (bigger usually moves slower)\n\n` +
           `${r.ticker} — ${r.subtype}\n\n` +
           (r.plan || "(no plan)") + "\n\n" +
           `Quick stats:\n` +
           `• Trigger: ${fmtNum(r.trigger,4)} | Stop: ${fmtNum(r.stop,4)}\n` +
           `• Range: ${fmtPct(r.range_pct)} | Hold: ${fmtPct(r.hold_pct)} | RelVol: ${fmtNum(r.rel_vol,2)}\n` +
           `• SI%: ${fmtNum(r.si_pct_ff,1)} | CTB: ${fmtNum(r.ctb,1)} | Avail: ${fmtInt(r.avail)}\n` +
-          `• $Vol: ${fmtInt(r.dollar_vol)}\n\n` +
-          `Beginner reminder: Risk small. A stop is not optional.`;
+          `• $Vol: ${fmtInt(r.dollar_vol)}`;
       });
 
       body.appendChild(tr);
@@ -397,6 +372,31 @@
     renderResults();
   });
 
+  async function safeReadJson(resp){
+    // Try JSON first. If it fails, return { _rawText, _status, _ok }
+    const status = resp.status;
+    const ok = resp.ok;
+    const ct = (resp.headers.get("content-type") || "").toLowerCase();
+
+    try{
+      if(ct.includes("application/json")){
+        const j = await resp.json();
+        return { ...j, _status: status, _ok_http: ok };
+      }
+      // not json => read text
+      const t = await resp.text();
+      return { ok: false, error: t.slice(0, 300), _status: status, _ok_http: ok };
+    }catch(e){
+      // json parse failed => read text fallback
+      try{
+        const t2 = await resp.text();
+        return { ok: false, error: t2.slice(0, 300), _status: status, _ok_http: ok };
+      }catch(_e2){
+        return { ok: false, error: "Could not read server response", _status: status, _ok_http: ok };
+      }
+    }
+  }
+
   async function runScan(){
     el("btnScan").disabled = true;
     el("logStatus").textContent = "Running…";
@@ -417,23 +417,27 @@
     const mode = selectedMode || "auto";
     const ortex = selectedOrtex || "off";
 
-    // clear log UI (optional)
     el("logBox").textContent = "";
 
     let resp, data;
     try{
       resp = await fetch(`/run_scan?mode=${encodeURIComponent(mode)}&ortex=${encodeURIComponent(ortex)}`, { method:"POST" });
-      data = await resp.json();
+      data = await safeReadJson(resp);
     }catch(err){
-      el("logStatus").textContent = "Could not start scan (network error).";
+      el("logStatus").textContent = "Could not reach server.";
       el("btnScan").disabled = false;
+      log(`[UI] fetch failed: ${String(err).slice(0,200)}`);
       return;
     }
 
-    if(!data.ok){
+    if(!resp.ok || !data.ok){
       el("logStatus").textContent = "Error starting scan.";
       el("btnScan").disabled = false;
-      log(`[UI] run_scan error: ${data.error || "unknown"}`);
+
+      const status = data._status ?? resp.status;
+      log(`[UI] /run_scan failed (HTTP ${status})`);
+      if(data.error) log(`[UI] ${String(data.error).replace(/\s+/g," ").slice(0,260)}`);
+      log(`[UI] Fix hint: Check Render logs for the real Python exception above this.`);
       return;
     }
 
@@ -483,12 +487,6 @@
       el("btnScan").disabled = false;
       setTimeout(() => { if(es){ try{ es.close(); }catch(e){} es=null; } }, 1200);
     });
-
-    es.onerror = () => {
-      // some proxies close SSE; show friendly message
-      // (done event still usually arrives, but if not, user sees something)
-      // do not spam
-    };
   }
 
   el("btnScan").addEventListener("click", runScan);
@@ -499,16 +497,14 @@
     el("logStatus").textContent = "Cleared.";
   });
 
-  // Notebook
   async function loadNotebook(){
     const view = el("noteView").value;
 
     let resp, data;
     try{
       resp = await fetch(`/api/trades?view=${encodeURIComponent(view)}&user_id=demo`);
-      data = await resp.json();
+      data = await safeReadJson(resp);
     }catch(e){
-      // show empty but keep UI alive
       data = { trades: [] };
     }
 
@@ -599,9 +595,24 @@
 
   el("noteView").addEventListener("change", loadNotebook);
 
+  async function checkApi(){
+    try{
+      const r = await fetch("/health");
+      const j = await safeReadJson(r);
+      if(r.ok && j && j.ok){
+        el("pillApi").innerHTML = `API: <b class="good">OK</b>`;
+      }else{
+        el("pillApi").innerHTML = `API: <b class="bad">ERR</b>`;
+      }
+    }catch(e){
+      el("pillApi").innerHTML = `API: <b class="bad">DOWN</b>`;
+    }
+  }
+
   // Boot
   setOrtex(selectedOrtex);
   updateMetaLines();
+  checkApi().catch(()=>{});
   loadNotebook().catch(()=>{});
 </script>
 </body>
