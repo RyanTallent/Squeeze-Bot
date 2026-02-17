@@ -1,4 +1,3 @@
-
 import os
 import json
 import math
@@ -8,15 +7,15 @@ from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
 # ============================================================
-# SETTINGS
+# ENGINE V2.4 — ORTEX TOGGLE + STREAM ONLY FINAL TOP 5
 # ============================================================
 
 TOP_N_PER_BUCKET = 5
 
 DEEP_ANALYZE_TOP_DAY = 75
-DEEP_ANALYZE_TOP_NIGHT = 35
-
 ORTEX_FINALISTS_DAY = 25
+
+DEEP_ANALYZE_TOP_NIGHT = 35
 ORTEX_FINALISTS_NIGHT = 0
 
 MIN_DOLLAR_VOL_PROXY = 250_000
@@ -25,7 +24,6 @@ MIN_MOVE_PROXY_PCT = 0.01
 PRICE_TIERS = [(0.01, 2.50), (2.50, 5.00), (5.00, 10.00)]
 MAX_CANDIDATES_PER_TIER_SNAPSHOT = 600
 
-# Market hours (CT)
 PM_START_CT = (3, 0)
 PM_END_CT   = (8, 29)
 
@@ -35,21 +33,18 @@ REG_END_CT   = (15, 0)
 AH_START_CT = (15, 0)
 AH_END_CT   = (19, 0)
 
-# ORTEX allowed window (CT)
 ORTEX_ON_START_CT = (7, 0)
 ORTEX_ON_END_CT   = (16, 0)
 
-# Keys
 POLYGON_KEY = os.getenv("POLYGON_API_KEY")
 ORTEX_KEY = os.getenv("ORTEX_API_KEY")
 
 SESSION = requests.Session()
-SESSION.headers.update({"User-Agent": "squeeze-bot/engine-v2.5"})
+SESSION.headers.update({"User-Agent": "squeeze-bot/engine-v2.4"})
 
 OUT_DIR = Path("outputs")
 OUT_DIR.mkdir(exist_ok=True)
 
-# Timezone (CT)
 try:
     from zoneinfo import ZoneInfo
     CT_TZ = ZoneInfo("America/Chicago")
@@ -57,9 +52,9 @@ except Exception:
     CT_TZ = timezone(timedelta(hours=-6))
 
 
-# ============================================================
-# Utils
-# ============================================================
+def json_dumps(obj) -> str:
+    return json.dumps(obj, separators=(",", ":"), ensure_ascii=False)
+
 def now_ct() -> datetime:
     return datetime.now(tz=CT_TZ)
 
@@ -99,13 +94,7 @@ def score_to_prob(score: float) -> float:
     return sigmoid((score - 55.0) / 12.0)
 
 
-# ============================================================
-# Market window logic
-# ============================================================
 def current_market_window(dt: datetime) -> tuple[str, datetime, datetime]:
-    """
-    Returns (window_name, start_ct, end_ct) in CT.
-    """
     if dt.weekday() >= 5:
         back = 1 if dt.weekday() == 5 else 2
         y = dt - timedelta(days=back)
@@ -126,13 +115,10 @@ def current_market_window(dt: datetime) -> tuple[str, datetime, datetime]:
 
     if pm_start <= dt <= pm_end:
         return ("PREMARKET", pm_start, dt)
-
     if reg_start <= dt <= reg_end:
         return ("REGULAR", reg_start, dt)
-
     if ah_start <= dt <= ah_end:
         return ("AFTERHOURS", ah_start, dt)
-
     if dt > ah_end:
         return ("AFTERHOURS (LAST)", ah_start, ah_end)
 
@@ -154,30 +140,29 @@ def ortex_allowed_now(dt: datetime) -> bool:
 
 def resolve_ortex_on(mode: str, ortex_request: str, dt: datetime) -> tuple[bool, str]:
     """
-    Beginner rule:
-      - If no ORTEX key => OFF
-      - If user chose OFF => OFF
-      - If user chose ON => ON only during 7:00am–4:00pm CT weekdays
+    Behavior:
+      - If ORTEX_API_KEY missing => OFF
+      - If user requested ON:
+          - ON only during 7:00am–4:00pm CT weekdays (your rule)
+      - If user requested OFF:
+          - OFF always
     """
+    if not ORTEX_KEY:
+        return (False, "OFF")
+
     req = (ortex_request or "off").strip().lower()
     if req not in ("on", "off"):
         req = "off"
 
-    if not ORTEX_KEY:
-        return (False, "OFF (no key)")
-
     if req == "off":
-        return (False, "OFF (you turned it off)")
+        return (False, "OFF")
 
+    # req == on
     if ortex_allowed_now(dt):
         return (True, "ON")
-
     return (False, "OFF (outside 7am–4pm CT)")
 
 
-# ============================================================
-# Polygon
-# ============================================================
 def polygon_get(url: str, params: dict | None = None, log_fn=None, retries: int = 3) -> dict:
     if not POLYGON_KEY:
         raise RuntimeError("POLYGON_API_KEY environment variable is not set")
@@ -241,9 +226,6 @@ def polygon_reference(ticker: str, log_fn=None) -> dict | None:
         return None
 
 
-# ============================================================
-# ORTEX
-# ============================================================
 def ortex_get(url: str, log_fn=None) -> dict | None:
     if not ORTEX_KEY:
         return None
@@ -321,9 +303,6 @@ def ortex_availability_latest(ticker: str, log_fn=None) -> float | None:
     return None
 
 
-# ============================================================
-# Candidate selection
-# ============================================================
 def pick_snapshot_candidates(snap: list[dict], price_min: float, price_max: float) -> list[tuple[float, str, dict]]:
     out: list[tuple[float, str, dict]] = []
 
@@ -359,9 +338,6 @@ def pick_snapshot_candidates(snap: list[dict], price_min: float, price_max: floa
     return out[:MAX_CANDIDATES_PER_TIER_SNAPSHOT]
 
 
-# ============================================================
-# Deep analysis
-# ============================================================
 def compute_rel_vol(window_vol: float, avg_daily_vol: float | None, window_minutes: int) -> float | None:
     if avg_daily_vol is None or avg_daily_vol <= 0:
         return None
@@ -442,9 +418,6 @@ def analyze_ticker_window(
     }
 
 
-# ============================================================
-# Scoring + beginner confidence
-# ============================================================
 def compute_scores(feat: dict) -> tuple[float, float, float]:
     si = feat.get("si_pct_ff") or 0.0
     si_chg = feat.get("si_pct_chg") or 0.0
@@ -468,49 +441,64 @@ def compute_scores(feat: dict) -> tuple[float, float, float]:
 
     window = feat.get("window")
     if window == "PREMARKET":
-        pw, ow, sw = 0.38, 0.30, 0.32
+        pressure_weight = 0.38
+        opportunity_weight = 0.30
+        structure_weight = 0.32
     else:
-        pw, ow, sw = 0.34, 0.33, 0.33
+        pressure_weight = 0.34
+        opportunity_weight = 0.33
+        structure_weight = 0.33
 
-    base_score = (pw * pressure) + (ow * opportunity) + (sw * structure)
+    base_score = (
+        pressure_weight * pressure +
+        opportunity_weight * opportunity +
+        structure_weight * structure
+    )
+
     prob = score_to_prob(base_score)
     return base_score, prob, pressure
 
 def confidence_1_to_10(prob: float, ortex_on: bool, has_borrow: bool) -> int:
-    """
-    Beginner confidence:
-      - ORTEX OFF => slight penalty
-      - If ORTEX ON + borrow data exists => can reach 10
-    """
-    p = prob * (1.0 if ortex_on else 0.88)
+    p = prob
+    if not ortex_on:
+        p = p * 0.86
 
     if ortex_on and has_borrow and p >= 0.965:
         return 10
 
     c = int(round(clamp(p, 0, 0.99) * 8)) + 1
-    return max(1, min(10, c))
+    if not ortex_on and c >= 9:
+        c = 8 if p < 0.93 else 9
+    return max(1, min(9, c))
 
 def is_true_squeeze(feat: dict, ortex_on: bool) -> bool:
     if not ortex_on:
         return False
+
     si = feat.get("si_pct_ff")
     if si is None or si < 8.0:
         return False
+
     if feat.get("ctb") is None or feat.get("avail") is None:
         return False
+
     if feat.get("avail") is not None and feat["avail"] > 250_000:
         return False
+
     if (feat.get("dollar_vol") or 0.0) < 250_000:
         return False
+
     if (feat.get("hold_pct") or 0.0) < 0.25:
         return False
+
     if (feat.get("range_pct") or 0.0) < 0.02:
         return False
+
     return True
 
 def setup_subtype(feat: dict, label: str) -> str:
     if label == "TRUE_SQUEEZE":
-        return "true squeeze (breakout)" if (feat.get("hold_pct") or 0) >= 0.30 else "true squeeze (pullback)"
+        return "true squeeze breakout" if (feat.get("hold_pct") or 0) >= 0.30 else "true squeeze pullback"
     if label == "SQUEEZE_WATCH":
         return "squeeze watch"
     if (feat.get("dollar_vol") or 0) < 300_000:
@@ -527,18 +515,15 @@ def trade_plan(feat: dict) -> str:
     ceiling = trig + (risk * 3.0)
 
     return (
-        f"Beginner plan:\n"
-        f"• Entry = break above {trig:.4f}\n"
-        f"• Stop = below {stop:.4f}\n"
-        f"• Target = {target1:.4f} (about 2x your risk)\n"
-        f"• Stretch target = {ceiling:.4f}\n\n"
-        f"Rule: Take partial profits at Target. If Stretch target hits, exit fully."
+        f"ENTRY {trig:.4f} | "
+        f"STOP {stop:.4f} | "
+        f"TARGET {target1:.4f} (2R) | "
+        f"CEILING {ceiling:.4f} (AUTO-SELL ZONE). "
+        f"Beginner note: Trigger = breakout high, Stop = session low. "
+        f"System rule: Sell majority at TARGET. "
+        f"If CEILING hits, exit fully — no exceptions."
     )
 
-
-# ============================================================
-# HTML report
-# ============================================================
 def write_html_report(meta: dict, squeeze_rows: list[dict], momentum_rows: list[dict]) -> str:
     ts = now_ct().strftime("%Y-%m-%d_%H-%M-%S")
     base = f"scan_{meta['date']}_{ts}"
@@ -588,7 +573,7 @@ def write_html_report(meta: dict, squeeze_rows: list[dict], momentum_rows: list[
         """
 
     html = f"""<!doctype html>
-<html><head><meta charset="utf-8"><title>Precipice Analytica — {meta['date']}</title>
+<html><head><meta charset="utf-8"><title>SqueezeBot {meta['date']}</title>
 <style>
 body {{ font-family: Arial, sans-serif; background:#0b0f14; color:#e7eefc; margin:24px; }}
 .card {{ background:#111827; border:1px solid #253045; border-radius:16px; padding:16px; margin-bottom:16px; }}
@@ -600,18 +585,17 @@ th {{ text-align:left; color:#93a4bd; font-weight:700; }}
 </style></head>
 <body>
 <div class="card">
-  <h1>Precipice Analytica</h1>
+  <h1>SqueezeBot</h1>
   <div class="muted">{meta.get("date")} • Window: {meta.get("window")} • Mode: {meta.get("mode")} • ORTEX: {meta.get("ortex")}</div>
-  <div class="muted">Beginner note: ORTEX adds short-interest / borrow signals (when enabled + during allowed hours).</div>
 </div>
 <div class="card">
   <h2>SQUEEZE</h2>
-  <div class="muted">Top candidates where shorts may be under pressure (confirmed squeezes require ORTEX ON).</div>
+  <div class="muted">True squeezes (confirmed) + Squeeze Watch (if none confirmed)</div>
   {table(squeeze_rows)}
 </div>
 <div class="card">
   <h2>MOMENTUM</h2>
-  <div class="muted">Top gainers with strong price structure + liquidity.</div>
+  <div class="muted">Gainers only</div>
   {table(momentum_rows)}
 </div>
 </body></html>
@@ -620,9 +604,6 @@ th {{ text-align:left; color:#93a4bd; font-weight:700; }}
     return str(html_path).replace("\\", "/")
 
 
-# ============================================================
-# Public entrypoint
-# ============================================================
 def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "off") -> str | None:
     mode = (mode or "day").lower().strip()
     if mode not in ("day", "night"):
@@ -632,17 +613,16 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "off") ->
     window, w_start, w_end = current_market_window(dt)
     date_str = ct_date_str(w_start)
 
-    # ORTEX effective (simple rule)
     ortex_on, ortex_label = resolve_ortex_on(mode, ortex, dt)
 
     deep_top = DEEP_ANALYZE_TOP_DAY if mode == "day" else DEEP_ANALYZE_TOP_NIGHT
-    ortex_finalists = ORTEX_FINALISTS_DAY if (mode == "day" and ortex_on) else ORTEX_FINALISTS_NIGHT
+    ortex_finalists = ORTEX_FINALISTS_DAY if ortex_on else ORTEX_FINALISTS_NIGHT
 
     if log_fn:
-        log_fn(f"Mode: {mode.upper()} (Polygon{' + ORTEX' if ortex_on else ''})")
+        log_fn(f"Mode: {mode.upper()} ({'Polygon + ORTEX' if ortex_on else 'Polygon only'})")
         log_fn(f"Date: {date_str}")
         log_fn(f"Market window: {window} ({w_start.strftime('%H:%M')}–{w_end.strftime('%H:%M')} CT)")
-        log_fn(f"ORTEX: request={ortex.upper()} | effective={ortex_label}")
+        log_fn(f"ORTEX request: {str(ortex).upper()} | ORTEX mode: {ortex_label}")
 
     snap = get_snapshot_all_tickers(log_fn=log_fn)
     if log_fn:
@@ -659,7 +639,6 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "off") ->
 
     analyzed: list[dict] = []
 
-    # PASS 1: Polygon deep analysis
     for idx, (_proxy_score, ticker, snap_meta) in enumerate(deep_list, start=1):
         if log_fn and idx % 10 == 0:
             log_fn(f"Analyzing (Polygon) {idx}/{len(deep_list)}...")
@@ -670,6 +649,7 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "off") ->
                 continue
 
             feat["window"] = window
+
             feat["si_pct_ff"] = None
             feat["si_pct_chg"] = None
             feat["ctb"] = None
@@ -714,7 +694,6 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "off") ->
             log_fn("No tickers passed deep analysis.")
         return None
 
-    # PASS 2: ORTEX enrich finalists (only if ortex_on)
     finalists = []
     if ortex_on and ortex_finalists > 0:
         finalists = sorted(
@@ -743,7 +722,6 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "off") ->
             feat = dict(r)
             feat["window"] = window
             base_score, prob, pressure = compute_scores(feat)
-
             has_borrow = (r.get("ctb") is not None and r.get("avail") is not None)
             r["base_score"] = round(base_score, 2)
             r["prob"] = round(prob, 4)
@@ -762,7 +740,6 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "off") ->
         except Exception:
             continue
 
-    # Final SQUEEZE list
     squeezes_true = [r for r in analyzed if r.get("bucket") == "SQUEEZE"]
 
     if squeezes_true:
@@ -781,14 +758,13 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "off") ->
         for r in watch_sorted:
             rr = dict(r)
             rr["bucket"] = "SQUEEZE"
-            rr["subtype"] = "squeeze watch (needs ORTEX confirmation)"
+            rr["subtype"] = "squeeze watch"
             rr["confidence"] = min(int(rr.get("confidence") or 1), 7)
-            rr["plan"] = (rr.get("plan") or "") + "\n\nNote: This is a watchlist pick because ORTEX confirmation is not active."
+            rr["plan"] = (rr.get("plan") or "") + " (Watchlist: ORTEX confirmation not present.)"
             squeezes.append(rr)
             if len(squeezes) >= TOP_N_PER_BUCKET:
                 break
 
-    # Final MOMENTUM list (gainers only)
     momentum = [
         r for r in analyzed
         if r.get("bucket") != "SQUEEZE"
@@ -801,7 +777,6 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "off") ->
         reverse=True
     )[:TOP_N_PER_BUCKET]
 
-    # Stream only final top rows
     if row_fn:
         for r in squeezes + momentum:
             row_fn(r)
