@@ -5,12 +5,10 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Precipice Analytica</title>
 
-  <!-- Playfair Display -->
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&display=swap" rel="stylesheet">
 
   <style>
     :root{
-      /* Academic light palette */
       --bg:#F7F8FA;
       --panel:#FFFFFF;
       --panel2:#FBFCFD;
@@ -24,180 +22,55 @@
       --btn:#0D1B2A;
       --chip:#F1F3F5;
     }
-
     *{box-sizing:border-box}
-
-    body{
-      margin:0;
-      font-family:'Playfair Display', serif;
-      background: var(--bg);
-      color:var(--text);
-    }
-
+    body{margin:0;font-family:'Playfair Display', serif;background:var(--bg);color:var(--text);}
     .wrap{max-width:1180px;margin:0 auto;padding:30px 18px}
-    .h1{font-size:44px; font-weight:700; letter-spacing:.2px; margin:0; color:var(--navy)}
-    .h1 em{font-style:italic; font-weight:700}
-    .h2{color:rgba(13,27,42,.82); font-size:18px; margin:6px 0 0 0; font-weight:600}
-    .sub{color:var(--muted); font-size:14px; margin:10px 0 0 0; max-width:860px; line-height:1.55}
+    .h1{font-size:44px;font-weight:700;margin:0;color:var(--navy)}
+    .h1 em{font-style:italic;font-weight:700}
+    .h2{color:rgba(13,27,42,.82);font-size:18px;margin:6px 0 0 0;font-weight:600}
+    .sub{color:var(--muted);font-size:14px;margin:10px 0 0 0;max-width:900px;line-height:1.55}
 
-    .card{
-      background:var(--panel);
-      border:1px solid var(--border);
-      border-radius:14px;
-      padding:16px;
-      box-shadow:0 10px 22px rgba(0,0,0,.05);
-      margin-top:18px;
-    }
+    .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:16px;box-shadow:0 10px 22px rgba(0,0,0,.05);margin-top:18px;}
+    .bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:16px;}
+    .pillbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:10px 12px;border-radius:12px;border:1px solid var(--border);background:var(--panel2);}
+    .pill{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:13px;padding:6px 10px;border-radius:999px;border:1px solid var(--border);background:var(--chip);white-space:nowrap;}
+    .pill b{color:var(--navy);font-weight:700}
 
-    .bar{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:12px;
-      flex-wrap:wrap;
-      margin-top:16px;
-    }
+    .btns{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .btn{border:none;border-radius:10px;padding:10px 14px;background:var(--btn);color:white;font-weight:700;cursor:pointer;box-shadow:0 10px 16px rgba(13,27,42,.16);font-family:'Playfair Display', serif;}
+    .btn:disabled{opacity:.55;cursor:not-allowed}
+    .btn.secondary{background:white;color:var(--navy);border:1px solid var(--border);box-shadow:none;}
 
-    .pillbar{
-      display:flex; gap:10px; flex-wrap:wrap; align-items:center;
-      padding:10px 12px;
-      border-radius:12px;
-      border:1px solid var(--border);
-      background:var(--panel2);
-    }
+    .btn.toggle{background:white;color:var(--navy);border:1px solid var(--border);box-shadow:none;}
+    .btn.toggle.on{background:rgba(30,127,79,.10);border-color:rgba(30,127,79,.35);color:var(--green);}
+    .btn.toggle.off{background:rgba(178,58,58,.08);border-color:rgba(178,58,58,.30);color:var(--red);}
 
-    .pill{
-      display:flex; gap:8px; align-items:center;
-      color:var(--muted);
-      font-size:13px;
-      padding:6px 10px;
-      border-radius:999px;
-      border:1px solid var(--border);
-      background:var(--chip);
-      white-space:nowrap;
-    }
-    .pill b{color:var(--navy); font-weight:700}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
+    @media (max-width: 980px){.grid{grid-template-columns:1fr}}
 
-    .btns{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
-    .btn{
-      border:none; border-radius:10px; padding:10px 14px;
-      background:var(--btn); color:white; font-weight:700; cursor:pointer;
-      box-shadow:0 10px 16px rgba(13,27,42,.16);
-      font-family:'Playfair Display', serif;
-    }
-    .btn:disabled{opacity:.55; cursor:not-allowed}
-    .btn.secondary{
-      background:white;
-      color:var(--navy);
-      border:1px solid var(--border);
-      font-weight:700;
-      box-shadow:none;
-    }
+    .title{font-weight:700;font-size:18px;margin:0 0 6px 0;color:var(--navy)}
+    .smallline{color:var(--muted);font-size:12px;margin:0 0 12px 0}
 
-    /* ✅ ORTEX toggle styling */
-    .btn.toggle{
-      background: white;
-      color: var(--navy);
-      border: 1px solid var(--border);
-      box-shadow:none;
-    }
-    .btn.toggle.on{
-      background: rgba(30,127,79,.10);
-      border-color: rgba(30,127,79,.35);
-      color: var(--green);
-    }
-    .btn.toggle.off{
-      background: rgba(178,58,58,.08);
-      border-color: rgba(178,58,58,.30);
-      color: var(--red);
-    }
+    .logbox{height:250px;overflow:auto;background:var(--panel2);border:1px solid var(--border);border-radius:12px;padding:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:12px;line-height:1.35;color:#111827;white-space:pre-wrap;}
 
-    .grid{display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:16px}
-    @media (max-width: 980px){ .grid{grid-template-columns:1fr} }
+    .tabs{display:flex;gap:10px;margin:10px 0 10px 0}
+    .tab{padding:7px 12px;border-radius:999px;border:1px solid var(--border);background:var(--chip);color:var(--navy);cursor:pointer;font-weight:700;font-size:12px;font-family:'Playfair Display', serif;}
+    .tab.active{background:rgba(198,161,74,.18);border-color:rgba(198,161,74,.55);color:var(--navy);}
 
-    .title{font-weight:700; font-size:18px; margin:0 0 6px 0; color:var(--navy)}
-    .smallline{color:var(--muted); font-size:12px; margin:0 0 12px 0}
-
-    .logbox{
-      height:250px; overflow:auto;
-      background:var(--panel2);
-      border:1px solid var(--border);
-      border-radius:12px;
-      padding:12px;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      font-size:12px;
-      line-height:1.35;
-      color:#111827;
-      white-space:pre-wrap;
-    }
-
-    .tabs{display:flex; gap:10px; margin:10px 0 10px 0}
-    .tab{
-      padding:7px 12px;
-      border-radius:999px;
-      border:1px solid var(--border);
-      background:var(--chip);
-      color:var(--navy);
-      cursor:pointer;
-      font-weight:700;
-      font-size:12px;
-      font-family:'Playfair Display', serif;
-    }
-    .tab.active{
-      background:rgba(198,161,74,.18);
-      border-color:rgba(198,161,74,.55);
-      color:var(--navy);
-    }
-
-    table{width:100%; border-collapse:collapse}
-    th,td{border-bottom:1px solid var(--border); padding:10px 8px; font-size:13px; vertical-align:top}
-    th{color:var(--muted); text-align:left; font-weight:700}
+    table{width:100%;border-collapse:collapse}
+    th,td{border-bottom:1px solid var(--border);padding:10px 8px;font-size:13px;vertical-align:top}
+    th{color:var(--muted);text-align:left;font-weight:700}
     tr:hover td{background:#FAFBFC}
     .right{text-align:right}
-    .good{color:var(--green); font-weight:700}
-    .bad{color:var(--red); font-weight:700}
-    .gold{color:var(--gold); font-weight:800}
+    .good{color:var(--green);font-weight:700}
+    .bad{color:var(--red);font-weight:700}
+    .gold{color:var(--gold);font-weight:800}
 
-    .addbtn{
-      padding:7px 10px;
-      border-radius:10px;
-      border:1px solid var(--border);
-      background:var(--chip);
-      color:var(--navy);
-      cursor:pointer;
-      font-weight:700;
-      font-family:'Playfair Display', serif;
-    }
+    .addbtn{padding:7px 10px;border-radius:10px;border:1px solid var(--border);background:var(--chip);color:var(--navy);cursor:pointer;font-weight:700;font-family:'Playfair Display', serif;}
+    .rowexp{margin-top:12px;padding:12px;border:1px dashed rgba(13,27,42,.25);border-radius:12px;background:var(--panel2);color:#111827;font-size:12px;display:none;white-space:pre-wrap;}
 
-    .rowexp{
-      margin-top:12px;
-      padding:12px;
-      border:1px dashed rgba(13,27,42,.25);
-      border-radius:12px;
-      background:var(--panel2);
-      color:#111827;
-      font-size:12px;
-      display:none;
-      white-space:pre-wrap;
-    }
-
-    .notehead{
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      gap:12px;
-      flex-wrap:wrap;
-      margin-bottom:8px;
-    }
-    .select{
-      padding:9px 10px;
-      border-radius:10px;
-      border:1px solid var(--border);
-      background:white;
-      color:var(--navy);
-      font-weight:700;
-      font-family:'Playfair Display', serif;
-    }
+    .notehead{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px;}
+    .select{padding:9px 10px;border-radius:10px;border:1px solid var(--border);background:white;color:var(--navy);font-weight:700;font-family:'Playfair Display', serif;}
   </style>
 </head>
 
@@ -205,8 +78,15 @@
   <div class="wrap">
     <div>
       <div class="h1">Precipice <em>Analytica</em></div>
-      <div class="h2">Systematic Equity Signals &amp; Short-Interest Research</div>
-      <div class="sub">Detecting inflection points from liquidity, price structure and borrow/short metrics.</div>
+      <div class="h2">Beginner-Friendly Stock Scanner (Squeeze + Momentum)</div>
+      <div class="sub">
+        <b>Confidence (1–10)</b> is a ranking score (not a guarantee).
+        <b>Move</b> is % change vs prior close.
+        <b>SFloat</b> is an estimate of shares outstanding (used as a size/liquidity clue).
+        <br/><br/>
+        <b>ORTEX</b> adds short-interest / borrow data (helpful for squeeze confirmation).
+        It only becomes <b>effective</b> during <b>7:00am–4:00pm CT</b> on weekdays and only if you turn it ON.
+      </div>
 
       <div class="bar">
         <div class="pillbar">
@@ -217,9 +97,7 @@
         </div>
 
         <div class="btns">
-          <!-- ✅ ORTEX TOGGLE BUTTON (ON/OFF only) -->
-          <button class="btn toggle off" id="btnOrtex" title="Toggle ORTEX ON/OFF">ORTEX: OFF</button>
-
+          <button class="btn toggle off" id="btnOrtex" title="Turn ORTEX request ON/OFF">ORTEX: OFF</button>
           <button class="btn" id="btnScan">Scan Stocks</button>
           <button class="btn secondary" id="btnClear">Clear Log</button>
         </div>
@@ -234,7 +112,7 @@
       </div>
 
       <div class="card">
-        <div class="title">Stock Scanning Results</div>
+        <div class="title">Results</div>
         <div class="smallline" id="resultsMeta">US Equities • Updated — • — scanned</div>
 
         <div class="tabs">
@@ -248,7 +126,7 @@
               <tr>
                 <th>Ticker</th>
                 <th>Conf</th>
-                <th>Subtype</th>
+                <th>Setup</th>
                 <th class="right">Price</th>
                 <th class="right">Move</th>
                 <th class="right">SFloat</th>
@@ -260,8 +138,7 @@
         </div>
 
         <div class="rowexp" id="planBox"></div>
-        <div class="smallline" style="margin-top:10px">Method: SI • Borrow • Liquidity • Price structure</div>
-        <div class="smallline">Click a row to expand the plan.</div>
+        <div class="smallline" style="margin-top:10px">Tip: Click a row for a simple “entry / stop / target” plan.</div>
       </div>
     </div>
 
@@ -269,7 +146,7 @@
       <div class="notehead">
         <div>
           <div class="title" style="margin-bottom:4px">Notebook</div>
-          <div class="smallline" id="noteMeta">US Equities • Updated — • — scanned</div>
+          <div class="smallline" id="noteMeta">Trades you add will appear here (DB must be configured).</div>
         </div>
 
         <select class="select" id="noteView">
@@ -298,20 +175,14 @@
         </table>
       </div>
 
-      <div class="smallline" style="margin-top:10px">Click a trade row to expand for deeper snapshot.</div>
+      <div class="smallline" style="margin-top:10px">If your DB isn’t set, this will stay empty (scanner still works).</div>
     </div>
   </div>
 
 <script>
-  // -------------------------
-  // State
-  // -------------------------
   const el = (id) => document.getElementById(id);
 
-  // Keep mode auto unless you later add UI
   let selectedMode = "auto";
-
-  // ✅ ORTEX is ON/OFF only (persisted)
   let selectedOrtex = (localStorage.getItem("squeeze_ortex") || "off").toLowerCase();
   if (!["on","off"].includes(selectedOrtex)) selectedOrtex = "off";
 
@@ -321,26 +192,14 @@
 
   let scannedCount = null;
   let lastUpdatedStr = "—";
-
   const results = { SQUEEZE: [], MOMENTUM: [] };
-
-  // -------------------------
-  // UI setters
-  // -------------------------
-  function setMode(mode){
-    selectedMode = (mode || "auto").toLowerCase();
-    el("pillMode").innerHTML = `Mode: <b>${selectedMode}</b>`;
-  }
 
   function paintOrtexUI(v){
     const btn = el("btnOrtex");
     const label = (v === "on") ? "ON" : "OFF";
     btn.textContent = `ORTEX: ${label}`;
-
     btn.classList.remove("on","off");
     btn.classList.add(v === "on" ? "on" : "off");
-
-    el("pillOrtex").innerHTML = `ORTEX: <b>${label}</b>`;
   }
 
   function setOrtex(v){
@@ -350,14 +209,10 @@
     paintOrtexUI(selectedOrtex);
   }
 
-  // Toggle button
   el("btnOrtex").addEventListener("click", () => {
     setOrtex(selectedOrtex === "on" ? "off" : "on");
   });
 
-  // -------------------------
-  // Log + meta parsing
-  // -------------------------
   function log(line){
     const box = el("logBox");
     box.textContent += (line + "\n");
@@ -371,16 +226,13 @@
       scannedCount = Number(m1[1]);
       updateMetaLines();
     }
-
     const m2 = line.match(/Market window:\s*([A-Z \(\)]+)\s*\(/i);
     if(m2){
       el("pillWindow").innerHTML = `Window: <b>${m2[1].trim()}</b>`;
     }
-
-    // If scanner logs "ORTEX mode: ON/OFF"
-    const m3 = line.match(/ORTEX.*mode:\s*(ON|OFF)/i);
+    const m3 = line.match(/ORTEX:\s*request=.*effective=(.*)$/i);
     if(m3){
-      el("pillOrtex").innerHTML = `ORTEX: <b>${m3[1].toUpperCase()}</b>`;
+      el("pillOrtex").innerHTML = `ORTEX: <b>${m3[1].trim()}</b>`;
     }
   }
 
@@ -441,13 +293,19 @@
         if(e.target && e.target.matches("button.addbtn")) return;
         const planBox = el("planBox");
         planBox.style.display = "block";
+
         planBox.textContent =
+          `What this means (simple):\n` +
+          `• Conf = ranking score (1–10)\n` +
+          `• Move = % change vs prior close\n` +
+          `• SFloat = estimated shares (bigger = usually harder to move)\n\n` +
           `${r.ticker} — ${r.subtype}\n\n` +
           (r.plan || "(no plan)") + "\n\n" +
-          `Trigger: ${fmtNum(r.trigger,4)} | Stop: ${fmtNum(r.stop,4)}\n` +
-          `Range: ${fmtPct(r.range_pct)} | Hold: ${fmtPct(r.hold_pct)} | RelVol: ${fmtNum(r.rel_vol,2)}\n` +
-          `SI%: ${fmtNum(r.si_pct_ff,1)} | CTB: ${fmtNum(r.ctb,1)} | Avail: ${fmtInt(r.avail)}\n` +
-          `$Vol: ${fmtInt(r.dollar_vol)}`;
+          `Quick stats:\n` +
+          `• Trigger: ${fmtNum(r.trigger,4)} | Stop: ${fmtNum(r.stop,4)}\n` +
+          `• Range: ${fmtPct(r.range_pct)} | Hold: ${fmtPct(r.hold_pct)} | RelVol: ${fmtNum(r.rel_vol,2)}\n` +
+          `• SI%: ${fmtNum(r.si_pct_ff,1)} | CTB: ${fmtNum(r.ctb,1)} | Avail: ${fmtInt(r.avail)}\n` +
+          `• $Vol: ${fmtInt(r.dollar_vol)}`;
       });
 
       body.appendChild(tr);
@@ -471,7 +329,6 @@
     });
   }
 
-  // Tabs
   el("tabSqueeze").addEventListener("click", () => {
     showing = "SQUEEZE";
     el("tabSqueeze").classList.add("active");
@@ -485,7 +342,6 @@
     renderResults();
   });
 
-  // Scan
   async function runScan(){
     el("btnScan").disabled = true;
     el("logStatus").textContent = "Running…";
@@ -504,7 +360,7 @@
     renderResults();
 
     const mode = selectedMode || "auto";
-    const ortex = selectedOrtex || "off"; // ✅ ON/OFF only
+    const ortex = selectedOrtex || "off";
 
     const resp = await fetch(`/run_scan?mode=${encodeURIComponent(mode)}&ortex=${encodeURIComponent(ortex)}`, { method:"POST" });
     const data = await resp.json();
@@ -517,13 +373,9 @@
 
     scanId = data.scan_id;
 
-    // Initial pills from response
     el("pillMode").innerHTML = `Mode: <b>${(data.mode || mode)}</b>`;
     el("pillWindow").innerHTML = `Window: <b>${(data.window || "—")}</b>`;
-    // show effective label (from server), but keep your button state as chosen
-    if(data.ortex_effective){
-      el("pillOrtex").innerHTML = `ORTEX: <b>${data.ortex_effective}</b>`;
-    }
+    el("pillOrtex").innerHTML = `ORTEX: <b>${(data.ortex_effective || "OFF")}</b>`;
 
     es = new EventSource(`/stream/${scanId}`);
 
@@ -536,7 +388,6 @@
       }
     });
 
-    // ✅ meta event keeps pills accurate
     es.addEventListener("meta", (ev) => {
       let m = {};
       try{ m = JSON.parse(ev.data); }catch(e){ return; }
@@ -564,30 +415,25 @@
       try{ j = JSON.parse(ev.data); }catch(e){}
       el("logStatus").textContent = j.ok ? "Done." : "Done (error).";
       el("btnScan").disabled = false;
-
       setTimeout(() => { if(es){ try{ es.close(); }catch(e){} es=null; } }, 1200);
     });
   }
 
   el("btnScan").addEventListener("click", runScan);
 
-  // Clear log
   el("btnClear").addEventListener("click", async () => {
     await fetch("/clear_log", { method:"POST" });
     el("logBox").textContent = "";
     el("logStatus").textContent = "Cleared.";
   });
 
-  // -------------------------
-  // Notebook (expects your existing API)
-  // -------------------------
+  // Notebook
   async function loadNotebook(){
     const view = el("noteView").value;
     const resp = await fetch(`/api/trades?view=${encodeURIComponent(view)}&user_id=demo`);
     const data = await resp.json();
-    if(!data.ok) return;
 
-    const rows = data.trades || [];
+    const rows = (data && data.trades) ? data.trades : [];
     const body = el("noteBody");
     body.innerHTML = "";
 
@@ -617,23 +463,6 @@
           ${t.exit_price == null ? `<button class="addbtn" data-close="${t.id}">Close</button>` : "—"}
         </td>
       `;
-
-      tr.addEventListener("click", (e) => {
-        if(e.target && e.target.matches("button")) return;
-        const planBox = el("planBox");
-        planBox.style.display = "block";
-        planBox.textContent =
-          `TRADE ${t.ticker}\n\n` +
-          `Setup: ${t.subtype || ""} | Conf: ${t.confidence ?? ""}\n` +
-          `Entry: ${t.entry_price} @ ${t.entry_time_ct}\n` +
-          `Exit: ${t.exit_price ?? "—"} @ ${t.exit_time_ct ?? "—"}\n\n` +
-          `Scanner Snapshot:\n` +
-          `Trigger: ${t.trigger ?? "—"} | Stop: ${t.stop ?? "—"}\n` +
-          `Move: ${t.move_pct ?? "—"} | $Vol: ${t.dollar_vol ?? "—"}\n` +
-          `Range: ${t.range_pct ?? "—"} | Hold: ${t.hold_pct ?? "—"} | RelVol: ${t.rel_vol ?? "—"}\n` +
-          `SI%: ${t.si_pct_ff ?? "—"} | CTB: ${t.ctb ?? "—"} | Avail: ${t.avail ?? "—"}\n\n` +
-          (t.plan || "");
-      });
 
       body.appendChild(tr);
     }
@@ -687,8 +516,7 @@
   el("noteView").addEventListener("change", loadNotebook);
 
   // Boot
-  setMode("auto");
-  setOrtex(selectedOrtex);     // paints button + pill
+  setOrtex(selectedOrtex);
   updateMetaLines();
   loadNotebook().catch(()=>{});
 </script>
