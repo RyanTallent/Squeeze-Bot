@@ -1,23 +1,27 @@
-# main.py — stable UI + beginner-friendly ORTEX + DB-safe notebook
-
 import os
 import json
 import time
 import uuid
 import threading
+import sqlite3
 from pathlib import Path
 from collections import deque
 from datetime import datetime, timedelta
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
-import psycopg
-from psycopg.rows import dict_row
+# Optional Postgres (only used if DATABASE_URL is set)
+try:
+    import psycopg
+    from psycopg.rows import dict_row
+except Exception:
+    psycopg = None
+    dict_row = None
 
-import scanner
+import scanner  # your scanner.py
 
 
 # -------------------- timezone helpers (CT) --------------------
@@ -49,109 +53,103 @@ def yesterday_ct_date() -> str:
     return (now_ct() - timedelta(days=1)).strftime("%Y-%m-%d")
 
 
-# -------------------- DB (SAFE) --------------------
-def _db_url() -> str | None:
-    """
-    Render sometimes uses DATABASE_URL; other setups may use POSTGRES_URL vars.
-    """
-    return (
-        os.getenv("DATABASE_URL")
-        or os.getenv("POSTGRES_URL")
-        or os.getenv("POSTGRES_URL_NON_POOLING")
-    )
+# -------------------- Storage (Postgres if available, else SQLite fallback) --------------------
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+
+BASE_DIR = Path(__file__).resolve().parent
+OUT_DIR = BASE_DIR / "outputs"
+OUT_DIR.mkdir(exist_ok=True)
+
+SQLITE_PATH = OUT_DIR / "trades.sqlite3"
 
 
-def _ensure_sslmode(url: str) -> str:
-    """
-    Many hosted Postgres require SSL. If the URL doesn't specify sslmode, add it.
-    """
-    if "sslmode=" in url:
-        return url
-    joiner = "&" if "?" in url else "?"
-    return url + f"{joiner}sslmode=require"
+def using_postgres() -> bool:
+    return bool(DATABASE_URL) and psycopg is not None
 
 
-def db_conn():
-    url = _db_url()
-    if not url:
-        raise RuntimeError("DATABASE_URL is not set (Notebook will run in 'no-db' mode).")
-    url = _ensure_sslmode(url)
-    return psycopg.connect(url, row_factory=dict_row)
+def pg_conn():
+    # Only call when using_postgres() is True
+    return psycopg.connect(DATABASE_URL, row_factory=dict_row)
 
 
-def db_init_safe() -> tuple[bool, str]:
+def sqlite_conn():
+    # Built-in DB, always available
+    conn = sqlite3.connect(str(SQLITE_PATH), check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def db_init():
+    # Same schema for both
+    schema_sql = """
+    CREATE TABLE IF NOT EXISTS trades (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      created_at_utc TEXT NOT NULL,
+
+      scan_id TEXT,
+      scan_date_ct TEXT,
+
+      ticker TEXT NOT NULL,
+      bucket TEXT,
+      subtype TEXT,
+      confidence REAL,
+      plan TEXT,
+
+      trigger REAL,
+      stop REAL,
+      scan_close REAL,
+      move_pct REAL,
+      dollar_vol REAL,
+      range_pct REAL,
+      hold_pct REAL,
+      rel_vol REAL,
+      si_pct_ff REAL,
+      ctb REAL,
+      avail REAL,
+
+      entry_price REAL,
+      entry_time_ct TEXT,
+      exit_price REAL,
+      exit_time_ct TEXT,
+      shares REAL,
+
+      review_flags TEXT
+    );
     """
-    Try to create trades table. Never crash the whole app if DB is missing/broken.
-    Returns (ok, message).
-    """
-    try:
-        with db_conn() as conn:
+
+    if using_postgres():
+        with pg_conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS trades (
-                      id TEXT PRIMARY KEY,
-                      user_id TEXT NOT NULL,
-                      created_at_utc TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-                      scan_id TEXT,
-                      scan_date_ct TEXT,
-
-                      ticker TEXT NOT NULL,
-                      bucket TEXT,
-                      subtype TEXT,
-                      confidence REAL,
-                      plan TEXT,
-
-                      trigger REAL,
-                      stop REAL,
-                      scan_close REAL,
-                      move_pct REAL,
-                      dollar_vol REAL,
-                      range_pct REAL,
-                      hold_pct REAL,
-                      rel_vol REAL,
-                      si_pct_ff REAL,
-                      ctb REAL,
-                      avail REAL,
-
-                      entry_price REAL,
-                      entry_time_ct TEXT,
-                      exit_price REAL,
-                      exit_time_ct TEXT,
-                      shares REAL,
-
-                      review_flags TEXT
-                    );
-                    """
-                )
+                cur.execute(schema_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ"))
                 conn.commit()
-        return True, "db ok"
-    except Exception as e:
-        return False, f"db init failed: {type(e).__name__}: {str(e)[:180]}"
+    else:
+        conn = sqlite_conn()
+        try:
+            cur = conn.cursor()
+            cur.execute(schema_sql)
+            conn.commit()
+        finally:
+            conn.close()
 
 
-def trades_select_safe(view: str, user_id: str | None) -> list[dict]:
-    """
-    Never raises: if DB/table is missing, returns [].
-    """
+def trades_select(view: str, user_id: str | None) -> list[dict]:
     view = (view or "all").lower().strip()
     if view not in ("all", "yesterday"):
         view = "all"
 
-    where = ""
-    params: list = []
+    where = []
+    params = []
 
     if user_id:
-        where = "WHERE user_id = %s"
+        where.append("user_id = ?")
         params.append(user_id)
 
     if view == "yesterday":
-        if where:
-            where += " AND scan_date_ct = %s"
-        else:
-            where = "WHERE scan_date_ct = %s"
+        where.append("scan_date_ct = ?")
         params.append(yesterday_ct_date())
+
+    where_sql = ("WHERE " + " AND ".join(where)) if where else ""
 
     sql = f"""
     SELECT
@@ -159,39 +157,150 @@ def trades_select_safe(view: str, user_id: str | None) -> list[dict]:
       ticker, bucket, subtype, confidence, plan,
       trigger, stop, scan_close, move_pct, dollar_vol, range_pct, hold_pct, rel_vol, si_pct_ff, ctb, avail,
       entry_price, entry_time_ct, exit_price, exit_time_ct, shares,
-      review_flags,
-      CASE
-        WHEN exit_price IS NULL OR entry_price IS NULL OR shares IS NULL THEN NULL
-        ELSE (exit_price - entry_price) * shares
-      END AS pnl_dollars,
-      CASE
-        WHEN exit_price IS NULL OR entry_price IS NULL OR entry_price = 0 THEN NULL
-        ELSE (exit_price - entry_price) / entry_price
-      END AS pnl_pct
+      review_flags
     FROM trades
-    {where}
+    {where_sql}
     ORDER BY created_at_utc DESC
     LIMIT 500;
     """
 
-    try:
-        with db_conn() as conn:
+    if using_postgres():
+        # Postgres uses %s placeholders
+        where_pg = where_sql.replace("?", "%s")
+        sql_pg = sql.replace(where_sql, where_pg)
+        with pg_conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(sql, params)
+                cur.execute(sql_pg, params)
                 rows = cur.fetchall()
+        rows = [dict(r) for r in rows]
+    else:
+        conn = sqlite_conn()
+        try:
+            cur = conn.cursor()
+            cur.execute(sql, params)
+            rows = [dict(r) for r in cur.fetchall()]
+        finally:
+            conn.close()
 
-        for r in rows:
-            try:
-                if r.get("review_flags") is None:
-                    r["review_flags"] = "[]"
-                elif not isinstance(r["review_flags"], str):
-                    r["review_flags"] = json.dumps(r["review_flags"])
-            except Exception:
+    # normalize review_flags to JSON-string
+    for r in rows:
+        try:
+            if r.get("review_flags") is None:
                 r["review_flags"] = "[]"
+            elif not isinstance(r["review_flags"], str):
+                r["review_flags"] = json.dumps(r["review_flags"])
+        except Exception:
+            r["review_flags"] = "[]"
 
-        return rows
-    except Exception:
-        return []
+    # add pnl fields
+    for r in rows:
+        ep = r.get("entry_price")
+        xp = r.get("exit_price")
+        sh = r.get("shares")
+        if ep is None or xp is None or sh is None:
+            r["pnl_dollars"] = None
+            r["pnl_pct"] = None
+        else:
+            try:
+                r["pnl_dollars"] = (float(xp) - float(ep)) * float(sh)
+                r["pnl_pct"] = (float(xp) - float(ep)) / float(ep) if float(ep) != 0 else None
+            except Exception:
+                r["pnl_dollars"] = None
+                r["pnl_pct"] = None
+
+    return rows
+
+
+def trade_insert(row: dict):
+    if using_postgres():
+        with pg_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO trades (
+                      id, user_id, created_at_utc,
+                      scan_id, scan_date_ct,
+                      ticker, bucket, subtype, confidence, plan,
+                      trigger, stop, scan_close, move_pct, dollar_vol, range_pct, hold_pct, rel_vol, si_pct_ff, ctb, avail,
+                      entry_price, entry_time_ct, exit_price, exit_time_ct, shares, review_flags
+                    ) VALUES (
+                      %(id)s, %(user_id)s, NOW(),
+                      %(scan_id)s, %(scan_date_ct)s,
+                      %(ticker)s, %(bucket)s, %(subtype)s, %(confidence)s, %(plan)s,
+                      %(trigger)s, %(stop)s, %(scan_close)s, %(move_pct)s, %(dollar_vol)s, %(range_pct)s, %(hold_pct)s, %(rel_vol)s, %(si_pct_ff)s, %(ctb)s, %(avail)s,
+                      %(entry_price)s, %(entry_time_ct)s, %(exit_price)s, %(exit_time_ct)s, %(shares)s, %(review_flags)s
+                    );
+                    """,
+                    row,
+                )
+                conn.commit()
+    else:
+        conn = sqlite_conn()
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                INSERT INTO trades (
+                  id, user_id, created_at_utc,
+                  scan_id, scan_date_ct,
+                  ticker, bucket, subtype, confidence, plan,
+                  trigger, stop, scan_close, move_pct, dollar_vol, range_pct, hold_pct, rel_vol, si_pct_ff, ctb, avail,
+                  entry_price, entry_time_ct, exit_price, exit_time_ct, shares, review_flags
+                ) VALUES (
+                  ?, ?, ?,
+                  ?, ?,
+                  ?, ?, ?, ?, ?,
+                  ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                  ?, ?, ?, ?, ?, ?
+                );
+                """,
+                (
+                    row["id"], row["user_id"], row["created_at_utc"],
+                    row.get("scan_id"), row.get("scan_date_ct"),
+                    row.get("ticker"), row.get("bucket"), row.get("subtype"), row.get("confidence"), row.get("plan"),
+                    row.get("trigger"), row.get("stop"), row.get("scan_close"), row.get("move_pct"), row.get("dollar_vol"),
+                    row.get("range_pct"), row.get("hold_pct"), row.get("rel_vol"), row.get("si_pct_ff"), row.get("ctb"), row.get("avail"),
+                    row.get("entry_price"), row.get("entry_time_ct"), row.get("exit_price"), row.get("exit_time_ct"),
+                    row.get("shares"), row.get("review_flags"),
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def trade_close(trade_id: str, exit_price: float, exit_time_ct: str, user_id: str | None = None):
+    if using_postgres():
+        with pg_conn() as conn:
+            with conn.cursor() as cur:
+                if user_id:
+                    cur.execute(
+                        "UPDATE trades SET exit_price=%s, exit_time_ct=%s WHERE id=%s AND user_id=%s",
+                        (exit_price, exit_time_ct, trade_id, user_id),
+                    )
+                else:
+                    cur.execute(
+                        "UPDATE trades SET exit_price=%s, exit_time_ct=%s WHERE id=%s",
+                        (exit_price, exit_time_ct, trade_id),
+                    )
+                conn.commit()
+    else:
+        conn = sqlite_conn()
+        try:
+            cur = conn.cursor()
+            if user_id:
+                cur.execute(
+                    "UPDATE trades SET exit_price=?, exit_time_ct=? WHERE id=? AND user_id=?",
+                    (exit_price, exit_time_ct, trade_id, user_id),
+                )
+            else:
+                cur.execute(
+                    "UPDATE trades SET exit_price=?, exit_time_ct=? WHERE id=?",
+                    (exit_price, exit_time_ct, trade_id),
+                )
+            conn.commit()
+        finally:
+            conn.close()
 
 
 # -------------------- FastAPI app --------------------
@@ -207,17 +316,12 @@ app.add_middleware(
 
 # Serve UI + outputs
 app.mount("/static", StaticFiles(directory="static"), name="static")
-
-OUT_DIR = Path("outputs")
-OUT_DIR.mkdir(exist_ok=True)
 app.mount("/outputs", StaticFiles(directory=str(OUT_DIR)), name="outputs")
 
 
 @app.on_event("startup")
 def _startup():
-    ok, msg = db_init_safe()
-    # Don't crash startup if DB isn't ready
-    print(f"[startup] {msg}")
+    db_init()
 
 
 # -------------------- scan state (in-memory) --------------------
@@ -226,12 +330,12 @@ STATE = {
     "running": False,
     "scan_id": None,
     "started_at_ct": None,
-    "logs": deque(maxlen=3000),
-    "rows": deque(maxlen=500),
+    "logs": deque(maxlen=2500),
+    "rows": deque(maxlen=400),
     "meta": {
         "mode": "auto",
-        "ortex_requested": "off",   # user choice
-        "ortex_effective": "OFF",   # effective result
+        "ortex_requested": "off",
+        "ortex_effective": "OFF",
         "window": "—",
         "date": None,
         "scanned_count": None,
@@ -248,19 +352,23 @@ STATE = {
 
 def _state_snapshot():
     with STATE_LOCK:
-        return json.loads(json.dumps({
-            "running": STATE["running"],
-            "scan_id": STATE["scan_id"],
-            "started_at_ct": STATE["started_at_ct"],
-            "meta": STATE["meta"],
-            "done": STATE["done"],
-            "ok": STATE["ok"],
-            "html_path": STATE["html_path"],
-            "log_seq": STATE["log_seq"],
-            "row_seq": STATE["row_seq"],
-            "meta_seq": STATE["meta_seq"],
-            "done_seq": STATE["done_seq"],
-        }))
+        return json.loads(
+            json.dumps(
+                {
+                    "running": STATE["running"],
+                    "scan_id": STATE["scan_id"],
+                    "started_at_ct": STATE["started_at_ct"],
+                    "meta": STATE["meta"],
+                    "done": STATE["done"],
+                    "ok": STATE["ok"],
+                    "html_path": STATE["html_path"],
+                    "log_seq": STATE["log_seq"],
+                    "row_seq": STATE["row_seq"],
+                    "meta_seq": STATE["meta_seq"],
+                    "done_seq": STATE["done_seq"],
+                }
+            )
+        )
 
 
 def push_log(line: str):
@@ -318,14 +426,20 @@ def root():
 
 @app.get("/favicon.ico")
 def favicon():
-    # Optional: you can add /static/favicon.ico later
-    return JSONResponse({}, status_code=204)
+    return Response(status_code=204)
 
 
 @app.get("/health")
 def health():
     snap = _state_snapshot()
-    return {"ok": True, "running": snap["running"], "scan_id": snap["scan_id"], "meta": snap["meta"]}
+    return {
+        "ok": True,
+        "running": snap["running"],
+        "scan_id": snap["scan_id"],
+        "meta": snap["meta"],
+        "storage": "postgres" if using_postgres() else "sqlite",
+        "database_url_set": bool(DATABASE_URL),
+    }
 
 
 @app.post("/clear_log")
@@ -338,16 +452,19 @@ def clear_log():
     return {"ok": True}
 
 
+@app.post("/set_ortex")
+def set_ortex(value: str = "off"):
+    v = (value or "off").strip().lower()
+    if v not in ("on", "off"):
+        v = "off"
+    with STATE_LOCK:
+        STATE["meta"]["ortex_requested"] = v
+        STATE["meta_seq"] += 1
+    return {"ok": True, "ortex": v}
+
+
 @app.post("/run_scan")
 def run_scan(mode: str = "auto", ortex: str = "off"):
-    """
-    mode: auto/day/night
-    ortex: on/off (user choice)
-    Effective ORTEX will only be ON when:
-      - ORTEX key exists
-      - user chose ON
-      - time is 7:00am–4:00pm CT weekdays
-    """
     mode = (mode or "auto").strip().lower()
     ortex = (ortex or "off").strip().lower()
 
@@ -365,8 +482,11 @@ def run_scan(mode: str = "auto", ortex: str = "off"):
     else:
         eff_mode = mode
 
-    # Decide effective ORTEX (simple + user-controlled)
-    ortex_on, ortex_label = scanner.resolve_ortex_on(eff_mode, ortex, dt)
+    try:
+        ortex_on, ortex_label = scanner.resolve_ortex_on(eff_mode, ortex, dt)
+    except Exception as e:
+        ortex_on, ortex_label = (False, f"OFF (resolve err)")
+
     ortex_for_worker = "on" if ortex_on else "off"
 
     with STATE_LOCK:
@@ -422,24 +542,20 @@ def run_scan(mode: str = "auto", ortex: str = "off"):
 
 def _scan_worker(scan_id: str, mode: str, ortex: str):
     try:
-        push_log("Starting scan…")
-        push_log("This scans the market, ranks tickers, then outputs the Top 5 Squeeze + Top 5 Momentum.")
+        push_log("Starting scan… (manual)")
         push_log("Scanner thread started. Calling scanner.run_scan()...")
-
         html_path = scanner.run_scan(
             log_fn=push_log,
             row_fn=push_row,
             mode=mode,
             ortex=ortex,
         )
-
         if html_path:
             push_log(f"Saved HTML: {html_path}")
             mark_done(True, html_path)
         else:
             push_log("No candidates passed filters.")
             mark_done(True, None)
-
     except Exception as e:
         push_log(f"[FATAL] {type(e).__name__}: {str(e)[:200]}")
         mark_done(False, None)
@@ -452,26 +568,23 @@ def stream(scan_id: str):
         last_row_seq = 0
         last_meta_seq = 0
         last_done_seq = 0
-        last_ping = time.time()
 
         snap = _state_snapshot()
         if snap["scan_id"] != scan_id:
             yield _sse("done", {"ok": False, "error": "Unknown scan_id"})
             return
 
+        # initial meta
+        yield _sse("meta", snap["meta"])
+
         while True:
             snap = _state_snapshot()
-
-            # Keep-alive ping (helps some hosts/proxies)
-            if time.time() - last_ping > 10:
-                yield _sse("ping", {"t": int(time.time())})
-                last_ping = time.time()
 
             if snap["log_seq"] != last_log_seq:
                 with STATE_LOCK:
                     logs = list(STATE["logs"])
                     seq = STATE["log_seq"]
-                for line in logs[-50:]:
+                for line in logs[-60:]:
                     yield _sse("log", {"line": line})
                 last_log_seq = seq
 
@@ -483,7 +596,7 @@ def stream(scan_id: str):
                 with STATE_LOCK:
                     rows = list(STATE["rows"])
                     seq = STATE["row_seq"]
-                for r in rows[-20:]:
+                for r in rows[-25:]:
                     yield _sse("row", r)
                 last_row_seq = seq
 
@@ -491,6 +604,8 @@ def stream(scan_id: str):
                 yield _sse("done", {"ok": snap["ok"], "html_path": snap["html_path"]})
                 return
 
+            # heartbeat keeps proxies happy
+            yield ": ping\n\n"
             time.sleep(0.35)
 
     return _sse_response(event_gen)
@@ -508,9 +623,11 @@ def _sse_response(gen_fn):
 # -------------------- TRADES API (NOTEBOOK) --------------------
 @app.get("/api/trades")
 def api_get_trades(view: str = "all", user_id: str | None = None):
-    # IMPORTANT: never 500 here; if DB broken, return empty list so UI stays alive.
-    rows = trades_select_safe(view=view, user_id=user_id)
-    return {"ok": True, "trades": rows}
+    try:
+        rows = trades_select(view=view, user_id=user_id)
+        return {"ok": True, "trades": rows}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=500)
 
 
 @app.post("/api/trades")
@@ -529,13 +646,17 @@ async def api_create_trade(request: Request):
     row = {
         "id": trade_id,
         "user_id": user_id,
+        "created_at_utc": datetime.utcnow().isoformat(),
+
         "scan_id": payload.get("scan_id"),
         "scan_date_ct": scan_date_ct,
+
         "ticker": payload.get("ticker"),
         "bucket": payload.get("bucket"),
         "subtype": payload.get("subtype"),
         "confidence": payload.get("confidence"),
         "plan": payload.get("plan"),
+
         "trigger": payload.get("trigger"),
         "stop": payload.get("stop"),
         "scan_close": payload.get("scan_close"),
@@ -547,42 +668,21 @@ async def api_create_trade(request: Request):
         "si_pct_ff": payload.get("si_pct_ff"),
         "ctb": payload.get("ctb"),
         "avail": payload.get("avail"),
+
         "entry_price": float(entry_price) if entry_price is not None else None,
         "entry_time_ct": entry_time_ct,
         "exit_price": None,
         "exit_time_ct": None,
         "shares": float(shares) if shares is not None else None,
+
         "review_flags": json.dumps(payload.get("review_flags") or []),
     }
 
-    ok, _ = db_init_safe()
-    if not ok:
-        # DB not available: don't crash UI
-        return {"ok": False, "error": "DB not configured. Notebook is disabled until DATABASE_URL is set."}
-
     try:
-        with db_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    INSERT INTO trades (
-                      id, user_id, scan_id, scan_date_ct,
-                      ticker, bucket, subtype, confidence, plan,
-                      trigger, stop, scan_close, move_pct, dollar_vol, range_pct, hold_pct, rel_vol, si_pct_ff, ctb, avail,
-                      entry_price, entry_time_ct, exit_price, exit_time_ct, shares, review_flags
-                    ) VALUES (
-                      %(id)s, %(user_id)s, %(scan_id)s, %(scan_date_ct)s,
-                      %(ticker)s, %(bucket)s, %(subtype)s, %(confidence)s, %(plan)s,
-                      %(trigger)s, %(stop)s, %(scan_close)s, %(move_pct)s, %(dollar_vol)s, %(range_pct)s, %(hold_pct)s, %(rel_vol)s, %(si_pct_ff)s, %(ctb)s, %(avail)s,
-                      %(entry_price)s, %(entry_time_ct)s, %(exit_price)s, %(exit_time_ct)s, %(shares)s, %(review_flags)s
-                    );
-                    """,
-                    row,
-                )
-                conn.commit()
+        trade_insert(row)
         return {"ok": True, "id": trade_id, "user_id": user_id}
     except Exception as e:
-        return {"ok": False, "error": f"{type(e).__name__}: {str(e)[:180]}"}
+        return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=500)
 
 
 @app.patch("/api/trades/{trade_id}")
@@ -594,32 +694,8 @@ async def api_close_trade(trade_id: str, request: Request, user_id: str | None =
 
     exit_time_ct = payload.get("exit_time_ct") or now_ct_str()
 
-    ok, _ = db_init_safe()
-    if not ok:
-        return {"ok": False, "error": "DB not configured. Notebook is disabled until DATABASE_URL is set."}
-
     try:
-        with db_conn() as conn:
-            with conn.cursor() as cur:
-                if user_id:
-                    cur.execute(
-                        """
-                        UPDATE trades
-                        SET exit_price = %s, exit_time_ct = %s
-                        WHERE id = %s AND user_id = %s
-                        """,
-                        (float(exit_price), exit_time_ct, trade_id, user_id),
-                    )
-                else:
-                    cur.execute(
-                        """
-                        UPDATE trades
-                        SET exit_price = %s, exit_time_ct = %s
-                        WHERE id = %s
-                        """,
-                        (float(exit_price), exit_time_ct, trade_id),
-                    )
-                conn.commit()
+        trade_close(trade_id, float(exit_price), exit_time_ct, user_id=user_id)
         return {"ok": True}
     except Exception as e:
-        return {"ok": False, "error": f"{type(e).__name__}: {str(e)[:180]}"}
+        return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=500)
