@@ -551,22 +551,32 @@ def run_scan(mode: str = "auto", ortex: str = "off"):
 def _scan_worker(scan_id: str, mode: str, ortex: str):
     try:
         push_log("Starting scan… (manual)")
-        push_log("Scanner thread started. Calling scanner.run_scan()...")
-        html_path = scanner.run_scan(
-            log_fn=push_log,
-            row_fn=push_row,
-            mode=mode,
-            ortex=ortex,
-        )
+        push_log(f"Worker params → mode={mode} | ortex={ortex}")
+
+        # HARD SAFE WRAP around scanner
+        try:
+            html_path = scanner.run_scan(
+                log_fn=push_log,
+                row_fn=push_row,
+                mode=mode,
+                ortex=ortex,
+            )
+        except Exception as scan_err:
+            push_log(f"[SCANNER ERROR] {type(scan_err).__name__}: {str(scan_err)}")
+            mark_done(False, None)
+            return
+
         if html_path:
             push_log(f"Saved HTML: {html_path}")
             mark_done(True, html_path)
         else:
-            push_log("No candidates passed filters.")
+            push_log("Scan completed. No candidates passed filters.")
             mark_done(True, None)
+
     except Exception as e:
-        push_log(f"[FATAL] {type(e).__name__}: {str(e)[:200]}")
+        push_log(f"[FATAL WORKER ERROR] {type(e).__name__}: {str(e)}")
         mark_done(False, None)
+
 
 
 @app.get("/stream/{scan_id}")
