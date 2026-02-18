@@ -138,20 +138,20 @@ def trades_select(view: str, user_id: str | None) -> list[dict]:
     if view not in ("all", "yesterday"):
         view = "all"
 
-    where_clauses = []
+    where = []
     params = []
 
     if user_id:
-        where_clauses.append("user_id = %s")
+        where.append("user_id = %s")
         params.append(user_id)
 
     if view == "yesterday":
-        where_clauses.append("scan_date_ct = %s")
+        where.append("scan_date_ct = %s")
         params.append(yesterday_ct_date())
 
     where_sql = ""
-    if where_clauses:
-        where_sql = "WHERE " + " AND ".join(where_clauses)
+    if where:
+        where_sql = "WHERE " + " AND ".join(where)
 
     sql = f"""
     SELECT
@@ -166,47 +166,34 @@ def trades_select(view: str, user_id: str | None) -> list[dict]:
     LIMIT 500;
     """
 
-    if using_postgres():
-        with pg_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(sql, params)
-                rows = cur.fetchall()
-        rows = [dict(r) for r in rows]
-    else:
-        conn = sqlite_conn()
-        try:
-            cur = conn.cursor()
-            # SQLite uses ?
-            sql_sqlite = sql.replace("%s", "?")
-            cur.execute(sql_sqlite, params)
-            rows = [dict(r) for r in cur.fetchall()]
-        finally:
-            conn.close()
+    with pg_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
 
-    # normalize review_flags
+    rows = [dict(r) for r in rows]
+
     for r in rows:
         if r.get("review_flags") is None:
             r["review_flags"] = "[]"
-        elif not isinstance(r["review_flags"], str):
-            r["review_flags"] = json.dumps(r["review_flags"])
 
-    # add pnl
-    for r in rows:
         ep = r.get("entry_price")
         xp = r.get("exit_price")
         sh = r.get("shares")
-        if ep is None or xp is None or sh is None:
-            r["pnl_dollars"] = None
-            r["pnl_pct"] = None
-        else:
+
+        if ep and xp and sh:
             try:
                 r["pnl_dollars"] = (float(xp) - float(ep)) * float(sh)
-                r["pnl_pct"] = (float(xp) - float(ep)) / float(ep) if float(ep) != 0 else None
+                r["pnl_pct"] = (float(xp) - float(ep)) / float(ep)
             except Exception:
                 r["pnl_dollars"] = None
                 r["pnl_pct"] = None
+        else:
+            r["pnl_dollars"] = None
+            r["pnl_pct"] = None
 
     return rows
+
 
 
 def trade_insert(row: dict):
@@ -551,7 +538,8 @@ def _scan_worker(scan_id: str, mode: str, ortex: str):
         push_log("Starting scan… (manual)")
         push_log(f"Worker params → mode={mode} | ortex={ortex}")
 
-        # HARD SAFE WRAP around scanner
+        html_path = None
+
         try:
             html_path = scanner.run_scan(
                 log_fn=push_log,
@@ -566,10 +554,10 @@ def _scan_worker(scan_id: str, mode: str, ortex: str):
 
         if html_path:
             push_log(f"Saved HTML: {html_path}")
-            mark_done(True, html_path)
         else:
             push_log("Scan completed. No candidates passed filters.")
-            mark_done(True, None)
+
+        mark_done(True, html_path)
 
     except Exception as e:
         push_log(f"[FATAL WORKER ERROR] {type(e).__name__}: {str(e)}")
