@@ -138,18 +138,20 @@ def trades_select(view: str, user_id: str | None) -> list[dict]:
     if view not in ("all", "yesterday"):
         view = "all"
 
-    where = []
+    where_clauses = []
     params = []
 
     if user_id:
-        where.append("user_id = ?")
+        where_clauses.append("user_id = %s")
         params.append(user_id)
 
     if view == "yesterday":
-        where.append("scan_date_ct = ?")
+        where_clauses.append("scan_date_ct = %s")
         params.append(yesterday_ct_date())
 
-    where_sql = ("WHERE " + " AND ".join(where)) if where else ""
+    where_sql = ""
+    if where_clauses:
+        where_sql = "WHERE " + " AND ".join(where_clauses)
 
     sql = f"""
     SELECT
@@ -165,34 +167,30 @@ def trades_select(view: str, user_id: str | None) -> list[dict]:
     """
 
     if using_postgres():
-        # Postgres uses %s placeholders
-        where_pg = where_sql.replace("?", "%s")
-        sql_pg = sql.replace(where_sql, where_pg)
         with pg_conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(sql_pg, params)
+                cur.execute(sql, params)
                 rows = cur.fetchall()
         rows = [dict(r) for r in rows]
     else:
         conn = sqlite_conn()
         try:
             cur = conn.cursor()
-            cur.execute(sql, params)
+            # SQLite uses ?
+            sql_sqlite = sql.replace("%s", "?")
+            cur.execute(sql_sqlite, params)
             rows = [dict(r) for r in cur.fetchall()]
         finally:
             conn.close()
 
-    # normalize review_flags to JSON-string
+    # normalize review_flags
     for r in rows:
-        try:
-            if r.get("review_flags") is None:
-                r["review_flags"] = "[]"
-            elif not isinstance(r["review_flags"], str):
-                r["review_flags"] = json.dumps(r["review_flags"])
-        except Exception:
+        if r.get("review_flags") is None:
             r["review_flags"] = "[]"
+        elif not isinstance(r["review_flags"], str):
+            r["review_flags"] = json.dumps(r["review_flags"])
 
-    # add pnl fields
+    # add pnl
     for r in rows:
         ep = r.get("entry_price")
         xp = r.get("exit_price")
