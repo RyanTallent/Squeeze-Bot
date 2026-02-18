@@ -539,16 +539,7 @@ def run_scan(mode: str = "auto", ortex: str = "off"):
 
         snap = _state_snapshot()
         return {
-            "ok": True,
-            "scan_id": scan_id,
-            "mode": snap["meta"]["mode"],
-            "window": snap["meta"]["window"],
-            "date": snap["meta"]["date"],
-            "ortex_requested": snap["meta"]["ortex_requested"],
-            "ortex_effective": snap["meta"]["ortex_effective"],
-            "started_at_ct": snap["started_at_ct"],
-            "scanned_count": snap["meta"]["scanned_count"],
-        }
+
 
     except Exception as e:
         # THIS is what prevents Render-HTML 502 and shows the real cause
