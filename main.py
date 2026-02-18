@@ -1,3 +1,4 @@
+import traceback
 import os
 import json
 import time
@@ -458,59 +459,61 @@ def set_ortex(value: str = "off"):
 
 @app.post("/run_scan")
 def run_scan(mode: str = "auto", ortex: str = "off"):
-    mode = (mode or "auto").strip().lower()
-    ortex = (ortex or "off").strip().lower()
-
-    if mode not in ("auto", "day", "night"):
-        mode = "auto"
-    if ortex not in ("on", "off"):
-        ortex = "off"
-
-    dt = scanner.now_ct()
-    window_name, w_start, _w_end = scanner.current_market_window(dt)
-    date_str = scanner.ct_date_str(w_start)
-
-    if mode == "auto":
-        eff_mode = "day" if window_name in ("PREMARKET", "REGULAR", "AFTERHOURS") else "night"
-    else:
-        eff_mode = mode
-
     try:
-        ortex_on, ortex_label = scanner.resolve_ortex_on(eff_mode, ortex, dt)
-    except Exception as e:
-        ortex_on, ortex_label = (False, f"OFF (resolve err)")
+        mode = (mode or "auto").strip().lower()
+        ortex = (ortex or "off").strip().lower()
 
-    ortex_for_worker = "on" if ortex_on else "off"
+        if mode not in ("auto", "day", "night"):
+            mode = "auto"
+        if ortex not in ("on", "off"):
+            ortex = "off"
 
-    with STATE_LOCK:
-        if STATE["running"]:
-            return JSONResponse({"ok": False, "error": "Scan already running."}, status_code=409)
+        dt = scanner.now_ct()
+        window_name, w_start, _w_end = scanner.current_market_window(dt)
+        date_str = scanner.ct_date_str(w_start)
 
-        scan_id = str(uuid.uuid4())
+        if mode == "auto":
+            eff_mode = "day" if window_name in ("PREMARKET", "REGULAR", "AFTERHOURS") else "night"
+        else:
+            eff_mode = mode
 
-        STATE["running"] = True
-        STATE["scan_id"] = scan_id
-        STATE["done"] = False
-        STATE["ok"] = True
-        STATE["html_path"] = None
+        try:
+            ortex_on, ortex_label = scanner.resolve_ortex_on(eff_mode, ortex, dt)
+        except Exception:
+            ortex_on, ortex_label = (False, "OFF (resolve err)")
 
-        STATE["logs"].clear()
-        STATE["rows"].clear()
-        STATE["log_seq"] += 1
-        STATE["row_seq"] += 1
-        STATE["meta_seq"] += 1
-        STATE["done_seq"] += 1
+        ortex_for_worker = "on" if ortex_on else "off"
 
-        STATE["started_at_ct"] = now_ct_str()
-        STATE["meta"] = {
-            "mode": eff_mode,
-            "ortex_requested": ortex,
-            "ortex_effective": ortex_label,
-            "window": window_name,
-            "date": date_str,
-            "scanned_count": None,
-        }
+        with STATE_LOCK:
+            if STATE["running"]:
+                return JSONResponse({"ok": False, "error": "Scan already running."}, status_code=409)
 
+            scan_id = str(uuid.uuid4())
+
+            STATE["running"] = True
+            STATE["scan_id"] = scan_id
+            STATE["done"] = False
+            STATE["ok"] = True
+            STATE["html_path"] = None
+
+            STATE["logs"].clear()
+            STATE["rows"].clear()
+            STATE["log_seq"] += 1
+            STATE["row_seq"] += 1
+            STATE["meta_seq"] += 1
+            STATE["done_seq"] += 1
+
+            STATE["started_at_ct"] = now_ct_str()
+            STATE["meta"] = {
+                "mode": eff_mode,
+                "ortex_requested": ortex,
+                "ortex_effective": ortex_label,
+                "window": window_name,
+                "date": date_str,
+                "scanned_count": None,
+            }
+
+        # start worker AFTER lock released
         th = threading.Thread(
             target=_scan_worker,
             args=(scan_id, eff_mode, ortex_for_worker),
@@ -519,8 +522,31 @@ def run_scan(mode: str = "auto", ortex: str = "off"):
         th.start()
 
         snap = _state_snapshot()
+        return {
+            "ok": True,
+            "scan_id": scan_id,
+            "mode": snap["meta"]["mode"],
+            "window": snap["meta"]["window"],
+            "date": snap["meta"]["date"],
+            "ortex_requested": snap["meta"]["ortex_requested"],
+            "ortex_effective": snap["meta"]["ortex_effective"],
+            "started_at_ct": snap["started_at_ct"],
+            "scanned_count": snap["meta"]["scanned_count"],
+        }
 
-    return {
+    except Exception as e:
+        # THIS is what prevents Render-HTML 502 and shows the real cause
+        tb = traceback.format_exc()
+        try:
+            push_log(f"[RUN_SCAN ERROR] {type(e).__name__}: {str(e)}")
+            push_log(tb)
+        except Exception:
+            pass
+        return JSONResponse(
+            {"ok": False, "error": f"{type(e).__name__}: {str(e)}", "trace": tb[-1500:]},
+            status_code=500,
+        )
+
         "ok": True,
         "scan_id": scan_id,
         "mode": snap["meta"]["mode"],
