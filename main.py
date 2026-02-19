@@ -70,7 +70,12 @@ def using_postgres() -> bool:
 
 def pg_conn():
     # Only call when using_postgres() is True
-    return psycopg.connect(DATABASE_URL, row_factory=dict_row)
+    # Force SSL for managed Postgres providers (common on Render/Supabase/etc.)
+    url = DATABASE_URL
+    if "sslmode=" not in url:
+        url += ("&" if "?" in url else "?") + "sslmode=require"
+    return psycopg.connect(url, row_factory=dict_row, connect_timeout=8)
+)
 
 
 def sqlite_conn():
@@ -558,9 +563,10 @@ def run_scan(mode: str = "auto", ortex: str = "off"):
         except Exception:
             pass
         return JSONResponse(
-            {"ok": False, "error": f"{type(e).__name__}: {str(e)}", "trace": tb[-1500:]},
+            {"ok": False, "error": f"{type(e).__name__}: {str(e)}"},
             status_code=500,
         )
+
 
 
 def _scan_worker(scan_id: str, mode: str, ortex: str):
