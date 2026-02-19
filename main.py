@@ -75,7 +75,7 @@ def pg_conn():
     if "sslmode=" not in url:
         url += ("&" if "?" in url else "?") + "sslmode=require"
     return psycopg.connect(url, row_factory=dict_row, connect_timeout=8)
-)
+
 
 
 def sqlite_conn():
