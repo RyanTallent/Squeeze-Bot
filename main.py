@@ -70,12 +70,12 @@ def using_postgres() -> bool:
 
 def pg_conn():
     # Only call when using_postgres() is True
-    # Force SSL for managed Postgres providers (common on Render/Supabase/etc.)
+    # Force SSL for managed Postgres providers (Render/Supabase/etc.)
     url = DATABASE_URL
     if "sslmode=" not in url:
         url += ("&" if "?" in url else "?") + "sslmode=require"
     return psycopg.connect(url, row_factory=dict_row, connect_timeout=8)
-)
+
 
 
 def sqlite_conn():
