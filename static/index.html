@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Precipice Analytica</title>
+  <title>Precipice Analytica v2026-02-23-01</title>
 
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&display=swap" rel="stylesheet">
 
@@ -38,6 +38,35 @@
     }
 
     .wrap{max-width:1180px;margin:0 auto;padding:28px 18px}
+
+    /* VERSION BANNER (super obvious) */
+    .versionBanner{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      flex-wrap:wrap;
+      margin:0 0 14px 0;
+      padding:10px 12px;
+      border-radius:12px;
+      border:1px solid rgba(13,27,42,.20);
+      background:linear-gradient(180deg, #FFFFFF, #F7F8FA);
+      box-shadow:var(--shadow);
+      color:rgba(13,27,42,.88);
+      font-size:12.5px;
+      font-weight:700;
+    }
+    .versionBanner .tag{
+      padding:4px 10px;
+      border-radius:999px;
+      border:1px solid rgba(198,161,74,.55);
+      background:rgba(198,161,74,.14);
+      color:var(--navy);
+      font-weight:900;
+      letter-spacing:.3px;
+      white-space:nowrap;
+    }
+    .versionBanner .muted{color:var(--muted);font-weight:700}
 
     /* Header */
     .brand{
@@ -308,8 +337,13 @@
 </head>
 
 <body>
+  <!-- VERSION: 2026-02-23-01 -->
   <div class="wrap">
-    <!-- Compact header (less text density) -->
+    <div class="versionBanner">
+      <div><span class="tag">LIVE VERSION</span> <span class="muted">If you can read this, the new index.html is deployed.</span></div>
+      <div class="muted">v2026-02-23-01</div>
+    </div>
+
     <div class="brand">
       <div>
         <div class="h1">Precipice <em>Analytica</em></div>
@@ -318,7 +352,6 @@
           Confidence is a <b>ranking</b> (not a guarantee). Click a row to view the plan. Use Notebook to track discipline.
         </div>
 
-        <!-- “How signals work” dropdown -->
         <details class="explain">
           <summary>How signals work</summary>
           <div class="inside">
@@ -400,7 +433,6 @@
           <div class="title" style="margin-bottom:4px">Notebook</div>
           <div class="smallline" id="noteMeta">Trades you add will appear here.</div>
 
-          <!-- Summary row + chart -->
           <div class="summaryRow">
             <div class="summaryPills">
               <div class="sumPill">Trades: <b id="sumTrades">—</b></div>
@@ -744,11 +776,9 @@
     const ctx = c.getContext("2d");
     if(!ctx) return;
 
-    // Clear
     ctx.clearRect(0,0,c.width,c.height);
 
     if(!points || points.length < 2){
-      // Light placeholder line
       ctx.globalAlpha = 0.35;
       ctx.strokeStyle = "#0D1B2A";
       ctx.lineWidth = 2;
@@ -761,9 +791,7 @@
     }
 
     const pad = 10;
-    const xs = points.map((_,i)=>i);
     const ys = points;
-
     const minY = Math.min(...ys);
     const maxY = Math.max(...ys);
     const spanY = (maxY - minY) || 1;
@@ -771,10 +799,9 @@
     const w = c.width - pad*2;
     const h = c.height - pad*2;
 
-    const X = (i) => pad + (i/(xs.length-1))*w;
+    const X = (i) => pad + (i/(ys.length-1))*w;
     const Y = (v) => pad + (1 - ((v - minY)/spanY))*h;
 
-    // Midline (subtle)
     ctx.globalAlpha = 0.18;
     ctx.strokeStyle = "#0D1B2A";
     ctx.lineWidth = 1;
@@ -784,7 +811,6 @@
     ctx.stroke();
     ctx.globalAlpha = 1;
 
-    // Curve
     ctx.strokeStyle = "#0D1B2A";
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -824,7 +850,6 @@
     setText("sumAvgLoss", avgLoss == null ? "—" : (avgLoss.toFixed(2)));
     setText("sumTotal", (total >= 0 ? "+" : "") + total.toFixed(2));
 
-    // Equity curve (cumulative P/L of closed trades in display order)
     let cum = 0;
     const curve = [];
     for(const t of closed){
