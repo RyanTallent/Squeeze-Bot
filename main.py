@@ -5,12 +5,13 @@ import time
 import uuid
 import threading
 import sqlite3
+import hashlib
 from pathlib import Path
 from collections import deque
 from datetime import datetime, timedelta
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, RedirectResponse, Response
+from fastapi.responses import JSONResponse, RedirectResponse, Response, FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -58,6 +59,7 @@ def yesterday_ct_date() -> str:
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 
 BASE_DIR = Path(__file__).resolve().parent
+STATIC_DIR = BASE_DIR / "static"
 OUT_DIR = BASE_DIR / "outputs"
 OUT_DIR.mkdir(exist_ok=True)
 
@@ -75,7 +77,6 @@ def pg_conn():
     if "sslmode=" not in url:
         url += ("&" if "?" in url else "?") + "sslmode=require"
     return psycopg.connect(url, row_factory=dict_row, connect_timeout=8)
-
 
 
 def sqlite_conn():
@@ -171,14 +172,12 @@ def trades_select(view: str, user_id: str | None) -> list[dict]:
     """
 
     if using_postgres():
-        # Postgres uses %s placeholders already
         with pg_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(sql, params)
                 rows = cur.fetchall()
         rows = [dict(r) for r in rows]
     else:
-        # SQLite uses ? placeholders
         sql_sqlite = sql.replace("%s", "?")
         conn = sqlite_conn()
         try:
@@ -214,8 +213,6 @@ def trades_select(view: str, user_id: str | None) -> list[dict]:
                 r["pnl_pct"] = None
 
     return rows
-
-
 
 
 def trade_insert(row: dict):
@@ -322,13 +319,25 @@ app.add_middleware(
 )
 
 # Serve UI + outputs
-app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 app.mount("/outputs", StaticFiles(directory=str(OUT_DIR)), name="outputs")
 
 
 @app.on_event("startup")
 def _startup():
     db_init()
+
+
+# -------------------- UI no-cache routes (fixes "nothing changed") --------------------
+INDEX_PATH = STATIC_DIR / "index.html"
+
+
+def _sha256(path: Path) -> str:
+    try:
+        b = path.read_bytes()
+        return hashlib.sha256(b).hexdigest()[:12]
+    except Exception:
+        return "missing"
 
 
 # -------------------- scan state (in-memory) --------------------
@@ -428,7 +437,28 @@ def mark_done(ok: bool, html_path: str | None):
 # -------------------- routes --------------------
 @app.get("/")
 def root():
-    return RedirectResponse(url="/static/index.html")
+    # Always land on /ui (no-cache HTML)
+    return RedirectResponse(url="/ui")
+
+
+@app.get("/ui")
+def ui():
+    # Serve HTML with no-store so changes show immediately
+    return FileResponse(
+        str(INDEX_PATH),
+        media_type="text/html",
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
+
+
+@app.get("/__ui_version")
+def ui_version():
+    # Quick proof of which HTML file is live
+    return PlainTextResponse(f"index.html sha={_sha256(INDEX_PATH)}\n")
 
 
 @app.get("/favicon.ico")
@@ -448,9 +478,9 @@ def health():
         "database_url_set": bool(DATABASE_URL),
     }
 
+
 @app.get("/debug_keys")
 def debug_keys():
-    import os
     return {
         "POLYGON_API_KEY_set": bool(os.getenv("POLYGON_API_KEY")),
         "ORTEX_API_KEY_set": bool(os.getenv("ORTEX_API_KEY")),
@@ -534,7 +564,6 @@ def run_scan(mode: str = "auto", ortex: str = "off"):
                 "scanned_count": None,
             }
 
-        # start worker AFTER lock released
         th = threading.Thread(
             target=_scan_worker,
             args=(scan_id, eff_mode, ortex_for_worker),
@@ -568,7 +597,6 @@ def run_scan(mode: str = "auto", ortex: str = "off"):
         )
 
 
-
 def _scan_worker(scan_id: str, mode: str, ortex: str):
     try:
         push_log("Starting scan… (manual)")
@@ -600,7 +628,6 @@ def _scan_worker(scan_id: str, mode: str, ortex: str):
         mark_done(False, None)
 
 
-
 @app.get("/stream/{scan_id}")
 def stream(scan_id: str):
     def event_gen():
@@ -614,7 +641,6 @@ def stream(scan_id: str):
             yield _sse("done", {"ok": False, "error": "Unknown scan_id"})
             return
 
-        # initial meta
         yield _sse("meta", snap["meta"])
 
         while True:
@@ -644,7 +670,6 @@ def stream(scan_id: str):
                 yield _sse("done", {"ok": snap["ok"], "html_path": snap["html_path"]})
                 return
 
-            # heartbeat keeps proxies happy
             yield ": ping\n\n"
             time.sleep(0.35)
 
