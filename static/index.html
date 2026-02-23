@@ -9,120 +9,351 @@
 
   <style>
     :root{
-      --bg:#F7F8FA;
+      /* Higher contrast, still classy */
+      --bg:#F2F4F7;
       --panel:#FFFFFF;
-      --panel2:#FBFCFD;
-      --border:#E3E6EA;
-      --text:#161A1D;
+      --panel2:#F7F8FA;
+      --border:#D5DAE1;
+      --text:#121619;
       --muted:#6B7280;
+
       --navy:#0D1B2A;
       --gold:#C6A14A;
       --green:#1E7F4F;
       --red:#B23A3A;
-      --btn:#0D1B2A;
-      --chip:#F1F3F5;
-    }
-    *{box-sizing:border-box}
-    body{margin:0;font-family:'Playfair Display', serif;background:var(--bg);color:var(--text);}
-    .wrap{max-width:1180px;margin:0 auto;padding:30px 18px}
-    .h1{font-size:44px;font-weight:700;margin:0;color:var(--navy)}
-    .h1 em{font-style:italic;font-weight:700}
-    .h2{color:rgba(13,27,42,.82);font-size:18px;margin:6px 0 0 0;font-weight:600}
-    .sub{color:var(--muted);font-size:14px;margin:10px 0 0 0;max-width:980px;line-height:1.55}
 
-    .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:16px;box-shadow:0 10px 22px rgba(0,0,0,.05);margin-top:18px;}
-    .bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:16px;}
-    .pillbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:10px 12px;border-radius:12px;border:1px solid var(--border);background:var(--panel2);}
-    .pill{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:13px;padding:6px 10px;border-radius:999px;border:1px solid var(--border);background:var(--chip);white-space:nowrap;}
+      --btn:#0D1B2A;
+      --chip:#EFF2F5;
+
+      --shadow: 0 10px 22px rgba(0,0,0,.06);
+      --shadow2: 0 10px 18px rgba(13,27,42,.14);
+    }
+
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family:'Playfair Display', serif;
+      background:var(--bg);
+      color:var(--text);
+    }
+
+    .wrap{max-width:1180px;margin:0 auto;padding:28px 18px}
+
+    /* Header */
+    .brand{
+      display:flex;
+      align-items:flex-end;
+      justify-content:space-between;
+      gap:16px;
+      flex-wrap:wrap;
+    }
+    .h1{font-size:44px;font-weight:700;margin:0;color:var(--navy);letter-spacing:.2px}
+    .h1 em{font-style:italic;font-weight:700}
+    .h2{color:rgba(13,27,42,.85);font-size:16px;margin:6px 0 0 0;font-weight:600}
+    .micro{
+      margin-top:10px;
+      color:var(--muted);
+      font-size:13px;
+      line-height:1.5;
+      max-width:980px;
+    }
+
+    .card{
+      background:var(--panel);
+      border:1px solid var(--border);
+      border-radius:14px;
+      padding:16px;
+      box-shadow:var(--shadow);
+      margin-top:16px;
+    }
+
+    /* Status + controls */
+    .bar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      flex-wrap:wrap;
+      margin-top:16px;
+    }
+    .pillbar{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      align-items:center;
+      padding:10px 12px;
+      border-radius:12px;
+      border:1px solid var(--border);
+      background:var(--panel2);
+    }
+    .pill{
+      display:flex;
+      gap:8px;
+      align-items:center;
+      color:var(--muted);
+      font-size:12.5px;
+      padding:6px 10px;
+      border-radius:999px;
+      border:1px solid var(--border);
+      background:var(--chip);
+      white-space:nowrap;
+    }
     .pill b{color:var(--navy);font-weight:700}
 
     .btns{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-    .btn{border:none;border-radius:10px;padding:10px 14px;background:var(--btn);color:white;font-weight:700;cursor:pointer;box-shadow:0 10px 16px rgba(13,27,42,.16);font-family:'Playfair Display', serif;}
-    .btn:disabled{opacity:.55;cursor:not-allowed}
-    .btn.secondary{background:white;color:var(--navy);border:1px solid var(--border);box-shadow:none;}
 
-    .btn.toggle{background:white;color:var(--navy);border:1px solid var(--border);box-shadow:none;}
+    /* Make Scan button feel more “command” */
+    .btn{
+      border:none;
+      border-radius:12px;
+      padding:11px 16px;
+      background:var(--btn);
+      color:white;
+      font-weight:800;
+      cursor:pointer;
+      box-shadow:var(--shadow2);
+      font-family:'Playfair Display', serif;
+      letter-spacing:.4px;
+      transition:transform .10s ease, box-shadow .10s ease, opacity .10s ease;
+    }
+    .btn:hover{transform:translateY(-1px)}
+    .btn:active{transform:translateY(0px);opacity:.95}
+    .btn:disabled{opacity:.55;cursor:not-allowed;transform:none}
+
+    .btn.secondary{
+      background:white;
+      color:var(--navy);
+      border:1px solid var(--border);
+      box-shadow:none;
+      letter-spacing:0;
+      font-weight:700;
+    }
+
+    .btn.toggle{
+      background:white;
+      color:var(--navy);
+      border:1px solid var(--border);
+      box-shadow:none;
+      letter-spacing:0;
+      font-weight:700;
+    }
     .btn.toggle.on{background:rgba(30,127,79,.10);border-color:rgba(30,127,79,.35);color:var(--green);}
     .btn.toggle.off{background:rgba(178,58,58,.08);border-color:rgba(178,58,58,.30);color:var(--red);}
 
     .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
     @media (max-width: 980px){.grid{grid-template-columns:1fr}}
 
-    .title{font-weight:700;font-size:18px;margin:0 0 6px 0;color:var(--navy)}
+    .title{font-weight:800;font-size:18px;margin:0 0 6px 0;color:var(--navy)}
     .smallline{color:var(--muted);font-size:12px;margin:0 0 12px 0}
 
-    .logbox{height:250px;overflow:auto;background:var(--panel2);border:1px solid var(--border);border-radius:12px;padding:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:12px;line-height:1.35;color:#111827;white-space:pre-wrap;}
+    .logbox{
+      height:250px;
+      overflow:auto;
+      background:var(--panel2);
+      border:1px solid var(--border);
+      border-radius:12px;
+      padding:12px;
+      font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+      font-size:12px;
+      line-height:1.35;
+      color:#111827;
+      white-space:pre-wrap;
+    }
 
     .tabs{display:flex;gap:10px;margin:10px 0 10px 0}
-    .tab{padding:7px 12px;border-radius:999px;border:1px solid var(--border);background:var(--chip);color:var(--navy);cursor:pointer;font-weight:700;font-size:12px;font-family:'Playfair Display', serif;}
+    .tab{
+      padding:7px 12px;
+      border-radius:999px;
+      border:1px solid var(--border);
+      background:var(--chip);
+      color:var(--navy);
+      cursor:pointer;
+      font-weight:800;
+      font-size:12px;
+      font-family:'Playfair Display', serif;
+    }
     .tab.active{background:rgba(198,161,74,.18);border-color:rgba(198,161,74,.55);color:var(--navy);}
 
     table{width:100%;border-collapse:collapse}
     th,td{border-bottom:1px solid var(--border);padding:10px 8px;font-size:13px;vertical-align:top}
-    th{color:var(--muted);text-align:left;font-weight:700}
-    tr:hover td{background:#FAFBFC}
+    th{
+      color:rgba(13,27,42,.70);
+      text-align:left;
+      font-weight:800;
+      background:linear-gradient(180deg, #FBFCFD, #F6F7F9);
+      position:sticky;
+      top:0;
+      z-index:1;
+    }
+    tr:hover td{background:#F7F8FA}
     .right{text-align:right}
-    .good{color:var(--green);font-weight:700}
-    .bad{color:var(--red);font-weight:700}
-    .gold{color:var(--gold);font-weight:800}
 
-    .addbtn{padding:7px 10px;border-radius:10px;border:1px solid var(--border);background:var(--chip);color:var(--navy);cursor:pointer;font-weight:700;font-family:'Playfair Display', serif;}
-    .rowexp{margin-top:12px;padding:12px;border:1px dashed rgba(13,27,42,.25);border-radius:12px;background:var(--panel2);color:#111827;font-size:12px;display:none;white-space:pre-wrap;}
+    .good{color:var(--green);font-weight:800}
+    .bad{color:var(--red);font-weight:800}
+    .gold{color:var(--gold);font-weight:900}
 
-    .notehead{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px;}
-    .select{padding:9px 10px;border-radius:10px;border:1px solid var(--border);background:white;color:var(--navy);font-weight:700;font-family:'Playfair Display', serif;}
+    .tickerCell b{letter-spacing:.2px}
 
-    .hintbox{
-      margin-top:10px;
+    .addbtn{
+      padding:7px 10px;
+      border-radius:10px;
+      border:1px solid var(--border);
+      background:var(--chip);
+      color:var(--navy);
+      cursor:pointer;
+      font-weight:800;
+      font-family:'Playfair Display', serif;
+    }
+    .addbtn:hover{filter:brightness(.98)}
+
+    .rowexp{
+      margin-top:12px;
       padding:12px;
+      border:1px dashed rgba(13,27,42,.28);
       border-radius:12px;
-      border:1px solid rgba(13,27,42,.12);
-      background:linear-gradient(180deg, #FBFCFD, #FFFFFF);
+      background:var(--panel2);
       color:#111827;
       font-size:12px;
-      line-height:1.45;
+      display:none;
+      white-space:pre-wrap;
     }
-    .kbd{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;background:#F1F3F5;border:1px solid #E3E6EA;border-radius:8px;padding:2px 6px}
+
+    /* Compact dropdown explainer */
+    details.explain{
+      margin-top:10px;
+      border:1px solid var(--border);
+      border-radius:12px;
+      background:linear-gradient(180deg, #FBFCFD, #FFFFFF);
+      padding:10px 12px;
+    }
+    details.explain summary{
+      cursor:pointer;
+      font-weight:800;
+      color:var(--navy);
+      user-select:none;
+    }
+    details.explain .inside{
+      margin-top:10px;
+      color:#111827;
+      font-size:12.5px;
+      line-height:1.5;
+    }
+    .kbd{
+      font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+      background:#EEF2F6;
+      border:1px solid var(--border);
+      border-radius:8px;
+      padding:2px 6px;
+    }
+
+    /* Notebook header + summary */
+    .notehead{
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap:12px;
+      flex-wrap:wrap;
+      margin-bottom:10px;
+    }
+    .select{
+      padding:9px 10px;
+      border-radius:10px;
+      border:1px solid var(--border);
+      background:white;
+      color:var(--navy);
+      font-weight:800;
+      font-family:'Playfair Display', serif;
+    }
+
+    .summaryRow{
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
+      align-items:center;
+      justify-content:space-between;
+      margin-top:10px;
+    }
+    .summaryPills{
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
+      align-items:center;
+    }
+    .sumPill{
+      padding:8px 10px;
+      border-radius:999px;
+      border:1px solid var(--border);
+      background:var(--panel2);
+      font-size:12.5px;
+      color:var(--muted);
+      white-space:nowrap;
+    }
+    .sumPill b{color:var(--navy)}
+    .chartBox{
+      width:260px;
+      max-width:100%;
+      border:1px solid var(--border);
+      background:var(--panel2);
+      border-radius:12px;
+      padding:10px;
+    }
+    .chartTitle{
+      font-size:12px;
+      color:var(--muted);
+      margin:0 0 6px 0;
+      font-weight:800;
+    }
+    canvas{display:block;width:100%;height:70px}
   </style>
 </head>
 
 <body>
   <div class="wrap">
-    <div>
-      <div class="h1">Precipice <em>Analytica</em></div>
-      <div class="h2">Beginner-Friendly Stock Scanner (Squeeze + Momentum)</div>
-
-      <div class="sub">
-        <b>Confidence (1–10)</b> is a ranking score (not a guarantee). Higher = better setup quality.
-        <b>Move</b> is % change vs prior close.
-        <b>SFloat</b> is a shares-outstanding estimate (bigger usually moves slower).
-        <br/><br/>
-        <b>ORTEX</b> (when ON) adds short-interest & borrow metrics to help confirm squeezes:
-        <b>SI%</b> = short interest % of float, <b>CTB</b> = cost to borrow, <b>Avail</b> = shares available to short.
-        ORTEX can only be <b>effective</b> on weekdays between <b>7:00am–4:00pm CT</b> (and only if you turn it ON).
-      </div>
-
-      <div class="bar">
-        <div class="pillbar">
-          <div class="pill" id="pillApi">API: <b>checking…</b></div>
-          <div class="pill" id="pillMode">Mode: <b>auto</b></div>
-          <div class="pill" id="pillWindow">Window: <b>—</b></div>
-          <div class="pill" id="pillOrtex">ORTEX: <b>OFF</b></div>
-          <div class="pill" id="pillLast">Last Scan: <b>—</b></div>
+    <!-- Compact header (less text density) -->
+    <div class="brand">
+      <div>
+        <div class="h1">Precipice <em>Analytica</em></div>
+        <div class="h2">Stock Scanner • Squeeze + Momentum</div>
+        <div class="micro">
+          Confidence is a <b>ranking</b> (not a guarantee). Click a row to view the plan. Use Notebook to track discipline.
         </div>
 
-        <div class="btns">
-          <button class="btn toggle off" id="btnOrtex" title="Turn ORTEX request ON/OFF">ORTEX: OFF</button>
-          <button class="btn" id="btnScan">Scan Stocks</button>
-          <button class="btn secondary" id="btnClear">Clear Log</button>
-        </div>
+        <!-- “How signals work” dropdown -->
+        <details class="explain">
+          <summary>How signals work</summary>
+          <div class="inside">
+            <div style="margin-bottom:8px">
+              <b>Fields:</b>
+              Conf = 1–10 setup rank • Move = % vs prior close • SFloat = shares estimate (larger often moves slower)
+            </div>
+            <div style="margin-bottom:8px">
+              <b>ORTEX (optional):</b> adds short-interest & borrow metrics (SI%, CTB, Avail) to help confirm squeezes.
+              Best during weekdays <b>7:00am–4:00pm CT</b> when it’s ON.
+            </div>
+            <div>
+              <b>Reading the plan:</b>
+              <span class="kbd">ENTRY</span> trigger •
+              <span class="kbd">STOP</span> “I’m wrong” •
+              <span class="kbd">TARGET</span> scale out
+            </div>
+          </div>
+        </details>
+      </div>
+    </div>
+
+    <div class="bar">
+      <div class="pillbar">
+        <div class="pill" id="pillApi">API: <b>checking…</b></div>
+        <div class="pill" id="pillMode">Mode: <b>auto</b></div>
+        <div class="pill" id="pillWindow">Window: <b>—</b></div>
+        <div class="pill" id="pillOrtex">ORTEX: <b>OFF</b></div>
+        <div class="pill" id="pillLast">Last Scan: <b>—</b></div>
       </div>
 
-      <div class="hintbox">
-        <b>How to use this (simple):</b><br/>
-        1) Turn ORTEX <b>ON</b> (optional) → 2) Click <b>Scan Stocks</b> → 3) Click a row to see the plan → 4) Click <b>Add</b> to save to Notebook.
-        <br/>
-        <span style="color:var(--muted)">Tip: “SQUEEZE” is usually higher risk/higher reward. Momentum is “gainers only.”</span>
+      <div class="btns">
+        <button class="btn toggle off" id="btnOrtex" title="Turn ORTEX request ON/OFF">ORTEX: OFF</button>
+        <button class="btn" id="btnScan">Scan Stocks</button>
+        <button class="btn secondary" id="btnClear">Clear Log</button>
       </div>
     </div>
 
@@ -142,7 +373,7 @@
           <button class="tab" id="tabMomentum">MOMENTUM</button>
         </div>
 
-        <div style="overflow:auto">
+        <div style="overflow:auto; max-height:420px; border-radius:12px; border:1px solid var(--border);">
           <table>
             <thead>
               <tr>
@@ -160,13 +391,6 @@
         </div>
 
         <div class="rowexp" id="planBox"></div>
-
-        <div class="hintbox" style="margin-top:12px">
-          <b>Reading the plan:</b>
-          <span class="kbd">ENTRY</span> is a breakout trigger,
-          <span class="kbd">STOP</span> is the “I’m wrong” line,
-          <span class="kbd">TARGET</span> is where you can scale out.
-        </div>
       </div>
     </div>
 
@@ -175,6 +399,22 @@
         <div>
           <div class="title" style="margin-bottom:4px">Notebook</div>
           <div class="smallline" id="noteMeta">Trades you add will appear here.</div>
+
+          <!-- Summary row + chart -->
+          <div class="summaryRow">
+            <div class="summaryPills">
+              <div class="sumPill">Trades: <b id="sumTrades">—</b></div>
+              <div class="sumPill">Win rate: <b id="sumWinrate">—</b></div>
+              <div class="sumPill">Avg win: <b id="sumAvgWin">—</b></div>
+              <div class="sumPill">Avg loss: <b id="sumAvgLoss">—</b></div>
+              <div class="sumPill">Total P/L: <b id="sumTotal">—</b></div>
+            </div>
+
+            <div class="chartBox">
+              <div class="chartTitle">Equity curve (Notebook)</div>
+              <canvas id="pnlChart" width="520" height="140"></canvas>
+            </div>
+          </div>
         </div>
 
         <select class="select" id="noteView">
@@ -183,7 +423,7 @@
         </select>
       </div>
 
-      <div style="overflow:auto">
+      <div style="overflow:auto; border:1px solid var(--border); border-radius:12px; max-height:320px;">
         <table>
           <thead>
             <tr>
@@ -201,10 +441,6 @@
           </thead>
           <tbody id="noteBody"></tbody>
         </table>
-      </div>
-
-      <div class="hintbox" style="margin-top:12px">
-        <b>Notebook tips:</b> Add when you enter. Close when you exit. This helps you learn and improve.
       </div>
     </div>
   </div>
@@ -299,6 +535,14 @@
     return conf >= 9 || ((r.bucket || "").toUpperCase() === "SQUEEZE" && conf >= 8);
   }
 
+  function moveClass(move_pct){
+    const n = Number(move_pct);
+    if(Number.isNaN(n)) return "";
+    if(n > 0) return "good";
+    if(n < 0) return "bad";
+    return "";
+  }
+
   function renderResults(){
     const body = el("resultsBody");
     body.innerHTML = "";
@@ -308,13 +552,14 @@
       const tr = document.createElement("tr");
       tr.style.cursor = "pointer";
       const goldClass = isGoldPick(r) ? "gold" : "";
+      const mvClass = moveClass(r.move_pct);
 
       tr.innerHTML = `
-        <td><b class="${goldClass}">${r.ticker || ""}</b></td>
+        <td class="tickerCell"><b class="${goldClass}">${r.ticker || ""}</b></td>
         <td class="${goldClass}">${r.confidence ?? ""}</td>
         <td>${r.subtype || ""}</td>
         <td class="right">${fmtNum(r.close,2)}</td>
-        <td class="right">${fmtPct(r.move_pct)}</td>
+        <td class="right ${mvClass}">${fmtPct(r.move_pct)}</td>
         <td class="right">${fmtInt(r.float_shares)}</td>
         <td class="right"><button class="addbtn" data-t="${r.ticker}">Add</button></td>
       `;
@@ -325,10 +570,6 @@
         const planBox = el("planBox");
         planBox.style.display = "block";
         planBox.textContent =
-          `What you're seeing (simple):\n` +
-          `• Conf = ranking score (1–10)\n` +
-          `• Move = % change vs prior close\n` +
-          `• SFloat = shares estimate (bigger usually moves slower)\n\n` +
           `${r.ticker} — ${r.subtype}\n\n` +
           (r.plan || "(no plan)") + "\n\n" +
           `Quick stats:\n` +
@@ -373,7 +614,6 @@
   });
 
   async function safeReadJson(resp){
-    // Try JSON first. If it fails, return { _rawText, _status, _ok }
     const status = resp.status;
     const ok = resp.ok;
     const ct = (resp.headers.get("content-type") || "").toLowerCase();
@@ -383,11 +623,9 @@
         const j = await resp.json();
         return { ...j, _status: status, _ok_http: ok };
       }
-      // not json => read text
       const t = await resp.text();
       return { ok: false, error: t.slice(0, 300), _status: status, _ok_http: ok };
     }catch(e){
-      // json parse failed => read text fallback
       try{
         const t2 = await resp.text();
         return { ok: false, error: t2.slice(0, 300), _status: status, _ok_http: ok };
@@ -497,6 +735,105 @@
     el("logStatus").textContent = "Cleared.";
   });
 
+  /* ---------- Notebook summary + chart ---------- */
+  function setText(id, txt){ const n = el(id); if(n) n.textContent = txt; }
+
+  function drawEquityCurve(points){
+    const c = el("pnlChart");
+    if(!c) return;
+    const ctx = c.getContext("2d");
+    if(!ctx) return;
+
+    // Clear
+    ctx.clearRect(0,0,c.width,c.height);
+
+    if(!points || points.length < 2){
+      // Light placeholder line
+      ctx.globalAlpha = 0.35;
+      ctx.strokeStyle = "#0D1B2A";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(10, c.height/2);
+      ctx.lineTo(c.width-10, c.height/2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      return;
+    }
+
+    const pad = 10;
+    const xs = points.map((_,i)=>i);
+    const ys = points;
+
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    const spanY = (maxY - minY) || 1;
+
+    const w = c.width - pad*2;
+    const h = c.height - pad*2;
+
+    const X = (i) => pad + (i/(xs.length-1))*w;
+    const Y = (v) => pad + (1 - ((v - minY)/spanY))*h;
+
+    // Midline (subtle)
+    ctx.globalAlpha = 0.18;
+    ctx.strokeStyle = "#0D1B2A";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(pad, Y(0));
+    ctx.lineTo(c.width-pad, Y(0));
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    // Curve
+    ctx.strokeStyle = "#0D1B2A";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(X(0), Y(ys[0]));
+    for(let i=1;i<ys.length;i++){
+      ctx.lineTo(X(i), Y(ys[i]));
+    }
+    ctx.stroke();
+  }
+
+  function renderNotebookSummary(rows){
+    const trades = rows || [];
+    const closed = trades.filter(t => t.exit_price != null && t.pnl_dollars != null);
+
+    setText("sumTrades", String(trades.length));
+
+    if(closed.length === 0){
+      setText("sumWinrate", "—");
+      setText("sumAvgWin", "—");
+      setText("sumAvgLoss", "—");
+      setText("sumTotal", "—");
+      drawEquityCurve([]);
+      return;
+    }
+
+    const wins = closed.filter(t => Number(t.pnl_dollars) > 0);
+    const losses = closed.filter(t => Number(t.pnl_dollars) < 0);
+
+    const winrate = (wins.length / closed.length) * 100;
+
+    const avgWin = wins.length ? (wins.reduce((a,t)=>a+Number(t.pnl_dollars),0)/wins.length) : null;
+    const avgLoss = losses.length ? (losses.reduce((a,t)=>a+Number(t.pnl_dollars),0)/losses.length) : null;
+    const total = closed.reduce((a,t)=>a+Number(t.pnl_dollars),0);
+
+    setText("sumWinrate", winrate.toFixed(0) + "%");
+    setText("sumAvgWin", avgWin == null ? "—" : ("+" + avgWin.toFixed(2)));
+    setText("sumAvgLoss", avgLoss == null ? "—" : (avgLoss.toFixed(2)));
+    setText("sumTotal", (total >= 0 ? "+" : "") + total.toFixed(2));
+
+    // Equity curve (cumulative P/L of closed trades in display order)
+    let cum = 0;
+    const curve = [];
+    for(const t of closed){
+      cum += Number(t.pnl_dollars);
+      curve.push(cum);
+    }
+    drawEquityCurve(curve);
+  }
+
   async function loadNotebook(){
     const view = el("noteView").value;
 
@@ -561,6 +898,8 @@
         await loadNotebook();
       });
     });
+
+    renderNotebookSummary(rows);
   }
 
   async function createTradeFromRow(row, entryPrice, shares){
