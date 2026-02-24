@@ -3,97 +3,99 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Precipice Analytica v2026-02-23-01</title>
+  <title>Precipice Analytica</title>
 
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&display=swap" rel="stylesheet">
 
   <style>
     :root{
-      /* Higher contrast, still classy */
-      --bg:#F2F4F7;
-      --panel:#FFFFFF;
-      --panel2:#F7F8FA;
-      --border:#D5DAE1;
-      --text:#121619;
-      --muted:#6B7280;
+      /* Premium dark palette (navy + darker gold + optional brown) */
+      --bg:#071019;          /* deep navy background */
+      --panel:#0B1622;       /* main card */
+      --panel2:#0E1C2B;      /* inner panel */
+      --border:#1D334A;      /* subtle navy border */
+      --text:#E9EEF4;        /* near-white */
+      --muted:#9AA7B6;       /* muted text */
 
-      --navy:#0D1B2A;
-      --gold:#C6A14A;
-      --green:#1E7F4F;
-      --red:#B23A3A;
+      --navy:#0A1420;
+      --gold:#B08B2E;        /* darker gold */
+      --gold2:#8F6F1F;
+      --brown:#2B1E12;       /* optional warm accent */
+      --green:#2AAE6A;
+      --red:#D16060;
 
-      --btn:#0D1B2A;
-      --chip:#EFF2F5;
+      --btn:#0F2438;
+      --chip:#0E2032;
 
-      --shadow: 0 10px 22px rgba(0,0,0,.06);
-      --shadow2: 0 10px 18px rgba(13,27,42,.14);
+      --shadow: 0 16px 36px rgba(0,0,0,.35);
+      --shadow2: 0 14px 26px rgba(0,0,0,.35);
+
+      --radius:14px;
     }
 
     *{box-sizing:border-box}
     body{
       margin:0;
       font-family:'Playfair Display', serif;
-      background:var(--bg);
+      background:
+        radial-gradient(1200px 700px at 20% 0%, rgba(176,139,46,.10), transparent 55%),
+        radial-gradient(900px 600px at 85% 10%, rgba(42,174,106,.07), transparent 55%),
+        var(--bg);
       color:var(--text);
     }
 
-    .wrap{max-width:1180px;margin:0 auto;padding:28px 18px}
+    .wrap{max-width:1180px;margin:0 auto;padding:26px 18px}
 
-    /* VERSION BANNER (super obvious) */
-    .versionBanner{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:10px;
-      flex-wrap:wrap;
-      margin:0 0 14px 0;
-      padding:10px 12px;
-      border-radius:12px;
-      border:1px solid rgba(13,27,42,.20);
-      background:linear-gradient(180deg, #FFFFFF, #F7F8FA);
-      box-shadow:var(--shadow);
-      color:rgba(13,27,42,.88);
-      font-size:12.5px;
-      font-weight:700;
-    }
-    .versionBanner .tag{
-      padding:4px 10px;
-      border-radius:999px;
-      border:1px solid rgba(198,161,74,.55);
-      background:rgba(198,161,74,.14);
-      color:var(--navy);
-      font-weight:900;
-      letter-spacing:.3px;
-      white-space:nowrap;
-    }
-    .versionBanner .muted{color:var(--muted);font-weight:700}
-
-    /* Header */
+    /* Top header */
     .brand{
       display:flex;
-      align-items:flex-end;
+      align-items:center;
       justify-content:space-between;
       gap:16px;
       flex-wrap:wrap;
     }
-    .h1{font-size:44px;font-weight:700;margin:0;color:var(--navy);letter-spacing:.2px}
-    .h1 em{font-style:italic;font-weight:700}
-    .h2{color:rgba(13,27,42,.85);font-size:16px;margin:6px 0 0 0;font-weight:600}
+    .brandLeft{
+      display:flex;
+      align-items:center;
+      gap:14px;
+      min-width:260px;
+    }
+    .logo{
+      width:54px;height:54px;
+      border-radius:14px;
+      border:1px solid rgba(176,139,46,.35);
+      background:linear-gradient(180deg, rgba(176,139,46,.10), rgba(15,36,56,.10));
+      box-shadow:0 10px 24px rgba(0,0,0,.35);
+      display:grid;
+      place-items:center;
+      overflow:hidden;
+    }
+    .logo svg{display:block}
+    .h1{font-size:44px;font-weight:700;margin:0;color:var(--text);letter-spacing:.2px}
+    .h1 em{font-style:italic;font-weight:700;color:var(--gold)}
+    .h2{color:rgba(233,238,244,.85);font-size:15px;margin:6px 0 0 0;font-weight:600}
+    .byline{
+      margin-top:4px;
+      font-size:13px;
+      color:var(--muted);
+    }
+    .byline b{color:var(--gold);font-weight:800}
     .micro{
       margin-top:10px;
       color:var(--muted);
       font-size:13px;
-      line-height:1.5;
+      line-height:1.55;
       max-width:980px;
     }
 
     .card{
-      background:var(--panel);
-      border:1px solid var(--border);
-      border-radius:14px;
+      background:linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,.01));
+      border:1px solid rgba(29,51,74,.85);
+      border-radius:var(--radius);
       padding:16px;
       box-shadow:var(--shadow);
       margin-top:16px;
+      backdrop-filter: blur(6px);
     }
 
     /* Status + controls */
@@ -112,8 +114,8 @@
       align-items:center;
       padding:10px 12px;
       border-radius:12px;
-      border:1px solid var(--border);
-      background:var(--panel2);
+      border:1px solid rgba(29,51,74,.85);
+      background:linear-gradient(180deg, rgba(14,32,50,.9), rgba(11,22,34,.9));
     }
     .pill{
       display:flex;
@@ -123,69 +125,77 @@
       font-size:12.5px;
       padding:6px 10px;
       border-radius:999px;
-      border:1px solid var(--border);
-      background:var(--chip);
+      border:1px solid rgba(29,51,74,.9);
+      background:rgba(14,32,50,.75);
       white-space:nowrap;
     }
-    .pill b{color:var(--navy);font-weight:700}
+    .pill b{color:var(--text);font-weight:800}
 
     .btns{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 
-    /* Make Scan button feel more “command” */
     .btn{
       border:none;
       border-radius:12px;
       padding:11px 16px;
-      background:var(--btn);
-      color:white;
-      font-weight:800;
+      background:linear-gradient(180deg, rgba(15,36,56,1), rgba(12,28,44,1));
+      color:var(--text);
+      font-weight:900;
       cursor:pointer;
       box-shadow:var(--shadow2);
       font-family:'Playfair Display', serif;
-      letter-spacing:.4px;
-      transition:transform .10s ease, box-shadow .10s ease, opacity .10s ease;
+      letter-spacing:.35px;
+      transition:transform .10s ease, opacity .10s ease, filter .10s ease;
+      border:1px solid rgba(29,51,74,.85);
     }
-    .btn:hover{transform:translateY(-1px)}
-    .btn:active{transform:translateY(0px);opacity:.95}
+    .btn:hover{transform:translateY(-1px);filter:brightness(1.03)}
+    .btn:active{transform:translateY(0px);opacity:.96}
     .btn:disabled{opacity:.55;cursor:not-allowed;transform:none}
 
     .btn.secondary{
-      background:white;
-      color:var(--navy);
-      border:1px solid var(--border);
+      background:rgba(14,32,50,.65);
+      color:var(--text);
+      border:1px solid rgba(29,51,74,.85);
       box-shadow:none;
       letter-spacing:0;
-      font-weight:700;
+      font-weight:800;
     }
 
     .btn.toggle{
-      background:white;
-      color:var(--navy);
-      border:1px solid var(--border);
+      background:rgba(14,32,50,.65);
+      color:var(--text);
+      border:1px solid rgba(29,51,74,.85);
       box-shadow:none;
       letter-spacing:0;
-      font-weight:700;
+      font-weight:900;
     }
-    .btn.toggle.on{background:rgba(30,127,79,.10);border-color:rgba(30,127,79,.35);color:var(--green);}
-    .btn.toggle.off{background:rgba(178,58,58,.08);border-color:rgba(178,58,58,.30);color:var(--red);}
+    .btn.toggle.on{
+      background:rgba(42,174,106,.12);
+      border-color:rgba(42,174,106,.45);
+      color:rgba(205,255,229,.95);
+    }
+    .btn.toggle.off{
+      background:rgba(209,96,96,.10);
+      border-color:rgba(209,96,96,.35);
+      color:rgba(255,210,210,.92);
+    }
 
     .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
     @media (max-width: 980px){.grid{grid-template-columns:1fr}}
 
-    .title{font-weight:800;font-size:18px;margin:0 0 6px 0;color:var(--navy)}
+    .title{font-weight:900;font-size:18px;margin:0 0 6px 0;color:var(--text)}
     .smallline{color:var(--muted);font-size:12px;margin:0 0 12px 0}
 
     .logbox{
       height:250px;
       overflow:auto;
-      background:var(--panel2);
-      border:1px solid var(--border);
+      background:rgba(14,32,50,.55);
+      border:1px solid rgba(29,51,74,.85);
       border-radius:12px;
       padding:12px;
       font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
       font-size:12px;
       line-height:1.35;
-      color:#111827;
+      color:#E9EEF4;
       white-space:pre-wrap;
     }
 
@@ -193,89 +203,97 @@
     .tab{
       padding:7px 12px;
       border-radius:999px;
-      border:1px solid var(--border);
-      background:var(--chip);
-      color:var(--navy);
+      border:1px solid rgba(29,51,74,.85);
+      background:rgba(14,32,50,.65);
+      color:rgba(233,238,244,.92);
       cursor:pointer;
-      font-weight:800;
+      font-weight:900;
       font-size:12px;
       font-family:'Playfair Display', serif;
     }
-    .tab.active{background:rgba(198,161,74,.18);border-color:rgba(198,161,74,.55);color:var(--navy);}
+    .tab.active{
+      background:rgba(176,139,46,.16);
+      border-color:rgba(176,139,46,.55);
+      color:rgba(255,244,214,.95);
+    }
 
     table{width:100%;border-collapse:collapse}
-    th,td{border-bottom:1px solid var(--border);padding:10px 8px;font-size:13px;vertical-align:top}
+    th,td{border-bottom:1px solid rgba(29,51,74,.7);padding:10px 8px;font-size:13px;vertical-align:top}
     th{
-      color:rgba(13,27,42,.70);
+      color:rgba(233,238,244,.70);
       text-align:left;
-      font-weight:800;
-      background:linear-gradient(180deg, #FBFCFD, #F6F7F9);
+      font-weight:900;
+      background:linear-gradient(180deg, rgba(14,32,50,.9), rgba(11,22,34,.9));
       position:sticky;
       top:0;
       z-index:1;
     }
-    tr:hover td{background:#F7F8FA}
+    tr:hover td{background:rgba(14,32,50,.35)}
     .right{text-align:right}
 
-    .good{color:var(--green);font-weight:800}
-    .bad{color:var(--red);font-weight:800}
-    .gold{color:var(--gold);font-weight:900}
+    .good{color:rgba(120,255,190,.92);font-weight:900}
+    .bad{color:rgba(255,150,150,.92);font-weight:900}
+    .gold{color:rgba(255,232,170,.95);font-weight:900}
 
     .tickerCell b{letter-spacing:.2px}
 
     .addbtn{
       padding:7px 10px;
       border-radius:10px;
-      border:1px solid var(--border);
-      background:var(--chip);
-      color:var(--navy);
+      border:1px solid rgba(29,51,74,.85);
+      background:rgba(14,32,50,.65);
+      color:rgba(233,238,244,.95);
       cursor:pointer;
-      font-weight:800;
+      font-weight:900;
       font-family:'Playfair Display', serif;
     }
-    .addbtn:hover{filter:brightness(.98)}
+    .addbtn:hover{filter:brightness(1.05)}
 
     .rowexp{
       margin-top:12px;
       padding:12px;
-      border:1px dashed rgba(13,27,42,.28);
+      border:1px dashed rgba(176,139,46,.35);
       border-radius:12px;
-      background:var(--panel2);
-      color:#111827;
+      background:rgba(14,32,50,.55);
+      color:rgba(233,238,244,.95);
       font-size:12px;
       display:none;
       white-space:pre-wrap;
     }
 
-    /* Compact dropdown explainer */
+    /* Explain dropdowns */
     details.explain{
-      margin-top:10px;
-      border:1px solid var(--border);
+      margin-top:12px;
+      border:1px solid rgba(29,51,74,.85);
       border-radius:12px;
-      background:linear-gradient(180deg, #FBFCFD, #FFFFFF);
+      background:linear-gradient(180deg, rgba(14,32,50,.6), rgba(11,22,34,.45));
       padding:10px 12px;
     }
     details.explain summary{
       cursor:pointer;
-      font-weight:800;
-      color:var(--navy);
+      font-weight:900;
+      color:rgba(233,238,244,.92);
       user-select:none;
     }
     details.explain .inside{
       margin-top:10px;
-      color:#111827;
+      color:rgba(233,238,244,.92);
       font-size:12.5px;
-      line-height:1.5;
+      line-height:1.55;
     }
     .kbd{
       font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
-      background:#EEF2F6;
-      border:1px solid var(--border);
+      background:rgba(176,139,46,.14);
+      border:1px solid rgba(176,139,46,.35);
       border-radius:8px;
       padding:2px 6px;
+      color:rgba(255,244,214,.95);
     }
+    .bullet{margin:8px 0 0 0;padding-left:16px}
+    .bullet li{margin:6px 0;color:rgba(233,238,244,.90)}
+    .goldDot{color:rgba(255,232,170,.95);font-weight:900}
 
-    /* Notebook header + summary */
+    /* Notebook */
     .notehead{
       display:flex;
       justify-content:space-between;
@@ -287,10 +305,10 @@
     .select{
       padding:9px 10px;
       border-radius:10px;
-      border:1px solid var(--border);
-      background:white;
-      color:var(--navy);
-      font-weight:800;
+      border:1px solid rgba(29,51,74,.85);
+      background:rgba(14,32,50,.55);
+      color:rgba(233,238,244,.95);
+      font-weight:900;
       font-family:'Playfair Display', serif;
     }
 
@@ -311,18 +329,18 @@
     .sumPill{
       padding:8px 10px;
       border-radius:999px;
-      border:1px solid var(--border);
-      background:var(--panel2);
+      border:1px solid rgba(29,51,74,.85);
+      background:rgba(14,32,50,.55);
       font-size:12.5px;
       color:var(--muted);
       white-space:nowrap;
     }
-    .sumPill b{color:var(--navy)}
+    .sumPill b{color:rgba(233,238,244,.95)}
     .chartBox{
       width:260px;
       max-width:100%;
-      border:1px solid var(--border);
-      background:var(--panel2);
+      border:1px solid rgba(29,51,74,.85);
+      background:rgba(14,32,50,.55);
       border-radius:12px;
       padding:10px;
     }
@@ -330,50 +348,133 @@
       font-size:12px;
       color:var(--muted);
       margin:0 0 6px 0;
-      font-weight:800;
+      font-weight:900;
     }
     canvas{display:block;width:100%;height:70px}
+
+    /* Notebook actions row */
+    .noteActions{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      align-items:center;
+      margin-top:12px;
+    }
+    .pillMini{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding:7px 10px;
+      border-radius:999px;
+      border:1px solid rgba(176,139,46,.35);
+      background:rgba(176,139,46,.10);
+      color:rgba(255,244,214,.92);
+      font-size:12px;
+      font-weight:900;
+      white-space:nowrap;
+    }
   </style>
 </head>
 
 <body>
-  <!-- VERSION: 2026-02-23-01 -->
   <div class="wrap">
-    <div class="versionBanner">
-      <div><span class="tag">LIVE VERSION</span> <span class="muted">If you can read this, the new index.html is deployed.</span></div>
-      <div class="muted">v2026-02-23-01</div>
-    </div>
 
+    <!-- Header -->
     <div class="brand">
-      <div>
-        <div class="h1">Precipice <em>Analytica</em></div>
-        <div class="h2">Stock Scanner • Squeeze + Momentum</div>
-        <div class="micro">
-          Confidence is a <b>ranking</b> (not a guarantee). Click a row to view the plan. Use Notebook to track discipline.
+      <div class="brandLeft">
+        <!-- Simple Orion vs Bull constellation logo, with rising belt stars -->
+        <div class="logo" aria-label="Orion vs Bull logo">
+          <svg width="46" height="46" viewBox="0 0 46 46" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <!-- background starfield -->
+            <circle cx="10" cy="10" r="1" fill="rgba(255,244,214,.55)"/>
+            <circle cx="34" cy="9" r="1" fill="rgba(233,238,244,.40)"/>
+            <circle cx="40" cy="18" r="1" fill="rgba(255,244,214,.35)"/>
+            <circle cx="7" cy="30" r="1" fill="rgba(233,238,244,.30)"/>
+            <circle cx="18" cy="40" r="1" fill="rgba(255,244,214,.30)"/>
+
+            <!-- Bull constellation (simple) -->
+            <path d="M28 14 L36 10 L40 16 L34 22 L28 20 L24 16 Z"
+                  stroke="rgba(233,238,244,.35)" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="36" cy="10" r="1.4" fill="rgba(233,238,244,.55)"/>
+            <circle cx="40" cy="16" r="1.4" fill="rgba(233,238,244,.55)"/>
+            <circle cx="34" cy="22" r="1.4" fill="rgba(233,238,244,.55)"/>
+            <circle cx="28" cy="20" r="1.4" fill="rgba(233,238,244,.55)"/>
+
+            <!-- Orion body (simple) -->
+            <path d="M10 30 L14 20 L20 18 L24 24 L18 32 Z"
+                  stroke="rgba(176,139,46,.55)" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="14" cy="20" r="1.5" fill="rgba(255,232,170,.95)"/>
+            <circle cx="20" cy="18" r="1.5" fill="rgba(255,232,170,.85)"/>
+            <circle cx="24" cy="24" r="1.5" fill="rgba(255,232,170,.80)"/>
+
+            <!-- Orion belt rising like a stock: 3 stars up-right -->
+            <path d="M14 26 L19 24 L24 22"
+                  stroke="rgba(176,139,46,.75)" stroke-width="1.4" stroke-linecap="round"/>
+            <circle cx="14" cy="26" r="1.7" fill="rgba(255,232,170,.95)"/>
+            <circle cx="19" cy="24" r="1.7" fill="rgba(255,232,170,.95)"/>
+            <circle cx="24" cy="22" r="1.7" fill="rgba(255,232,170,.95)"/>
+
+            <!-- subtle upward arrow hint -->
+            <path d="M24 22 L26.5 19.5" stroke="rgba(255,232,170,.65)" stroke-width="1.2" stroke-linecap="round"/>
+            <path d="M26.5 19.5 L26.2 21.6" stroke="rgba(255,232,170,.65)" stroke-width="1.2" stroke-linecap="round"/>
+            <path d="M26.5 19.5 L24.4 19.8" stroke="rgba(255,232,170,.65)" stroke-width="1.2" stroke-linecap="round"/>
+          </svg>
         </div>
 
-        <details class="explain">
-          <summary>How signals work</summary>
-          <div class="inside">
-            <div style="margin-bottom:8px">
-              <b>Fields:</b>
-              Conf = 1–10 setup rank • Move = % vs prior close • SFloat = shares estimate (larger often moves slower)
-            </div>
-            <div style="margin-bottom:8px">
-              <b>ORTEX (optional):</b> adds short-interest & borrow metrics (SI%, CTB, Avail) to help confirm squeezes.
-              Best during weekdays <b>7:00am–4:00pm CT</b> when it’s ON.
-            </div>
-            <div>
-              <b>Reading the plan:</b>
-              <span class="kbd">ENTRY</span> trigger •
-              <span class="kbd">STOP</span> “I’m wrong” •
-              <span class="kbd">TARGET</span> scale out
-            </div>
-          </div>
-        </details>
+        <div>
+          <div class="h1">Precipice <em>Analytica</em></div>
+          <div class="h2">Stock Scanner • Squeeze + Momentum</div>
+          <div class="byline">by <b>Ryan Tallent</b></div>
+        </div>
+      </div>
+
+      <div class="micro">
+        Confidence is a <b>ranking</b> (not a guarantee). Click a row to view the plan. Use Notebook to track discipline.
       </div>
     </div>
 
+    <!-- Info dropdowns (clean by default) -->
+    <details class="explain">
+      <summary>How signals work</summary>
+      <div class="inside">
+        <div style="margin-bottom:8px">
+          <b>Fields:</b>
+          Conf = 1–10 setup rank • Move = % vs prior close • SFloat = shares estimate (larger often moves slower)
+        </div>
+        <div style="margin-bottom:8px">
+          <b>ORTEX (optional):</b> adds short-interest & borrow metrics (SI%, CTB, Avail) to help confirm squeezes.
+          Best during weekdays <b>7:00am–4:00pm CT</b> when it’s ON.
+        </div>
+        <div>
+          <b>Reading the plan:</b>
+          <span class="kbd">ENTRY</span> trigger •
+          <span class="kbd">STOP</span> “I’m wrong” •
+          <span class="kbd">TARGET</span> scale out
+        </div>
+      </div>
+    </details>
+
+    <details class="explain">
+      <summary>Filters + what we’re hunting (click to expand)</summary>
+      <div class="inside">
+        <div style="margin-bottom:8px"><b>Baseline filters (your edge):</b></div>
+        <ul class="bullet">
+          <li><span class="goldDot">Market cap:</span> under <b>$2B</b></li>
+          <li><span class="goldDot">Float:</span> under <b>50M</b></li>
+          <li><span class="goldDot">Relative volume:</span> over <b>1.5</b></li>
+          <li><span class="goldDot">Daily volume:</span> over <b>5M</b></li>
+        </ul>
+
+        <div style="margin:10px 0 8px 0"><b>Setup focus:</b> high <b>range</b> + high <b>volume</b></div>
+        <ul class="bullet">
+          <li><b>Break → Pullback</b>: We want the break, then a controlled pullback.</li>
+          <li><b>VWAP pullback</b>: Prefer entries when price pulls into VWAP and holds/reclaims.</li>
+          <li><b>Cleaner plans</b>: entry/stop/targets reflect break level + VWAP behavior.</li>
+        </ul>
+      </div>
+    </details>
+
+    <!-- Status + controls -->
     <div class="bar">
       <div class="pillbar">
         <div class="pill" id="pillApi">API: <b>checking…</b></div>
@@ -406,7 +507,7 @@
           <button class="tab" id="tabMomentum">MOMENTUM</button>
         </div>
 
-        <div style="overflow:auto; max-height:420px; border-radius:12px; border:1px solid var(--border);">
+        <div style="overflow:auto; max-height:420px; border-radius:12px; border:1px solid rgba(29,51,74,.85);">
           <table>
             <thead>
               <tr>
@@ -447,6 +548,12 @@
               <canvas id="pnlChart" width="520" height="140"></canvas>
             </div>
           </div>
+
+          <!-- Past trade entry + review (UI hooks; backend endpoints come next) -->
+          <div class="noteActions">
+            <button class="btn secondary" id="btnAddPast">Add Past Trade</button>
+            <span class="pillMini">Tip: add old trades → get review/corrections</span>
+          </div>
         </div>
 
         <select class="select" id="noteView">
@@ -455,7 +562,7 @@
         </select>
       </div>
 
-      <div style="overflow:auto; border:1px solid var(--border); border-radius:12px; max-height:320px;">
+      <div style="overflow:auto; border:1px solid rgba(29,51,74,.85); border-radius:12px; max-height:320px;">
         <table>
           <thead>
             <tr>
@@ -767,7 +874,7 @@
     el("logStatus").textContent = "Cleared.";
   });
 
-  /* ---------- Notebook summary + chart ---------- */
+  /* ---------- Notebook: Past trades + summary + chart ---------- */
   function setText(id, txt){ const n = el(id); if(n) n.textContent = txt; }
 
   function drawEquityCurve(points){
@@ -780,7 +887,7 @@
 
     if(!points || points.length < 2){
       ctx.globalAlpha = 0.35;
-      ctx.strokeStyle = "#0D1B2A";
+      ctx.strokeStyle = "rgba(255,232,170,.9)";
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(10, c.height/2);
@@ -803,7 +910,7 @@
     const Y = (v) => pad + (1 - ((v - minY)/spanY))*h;
 
     ctx.globalAlpha = 0.18;
-    ctx.strokeStyle = "#0D1B2A";
+    ctx.strokeStyle = "rgba(255,232,170,.9)";
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(pad, Y(0));
@@ -811,7 +918,7 @@
     ctx.stroke();
     ctx.globalAlpha = 1;
 
-    ctx.strokeStyle = "#0D1B2A";
+    ctx.strokeStyle = "rgba(255,232,170,.95)";
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(X(0), Y(ys[0]));
@@ -901,7 +1008,7 @@
         <td class="right">${pnlPStr}</td>
         <td>${flagsStr || ""}</td>
         <td class="right">
-          ${t.exit_price == null ? `<button class="addbtn" data-close="${t.id}">Close</button>` : "—"}
+          ${t.exit_price == null ? `<button class="addbtn" data-close="${t.id}">Close</button>` : `<button class="addbtn" data-review="${t.id}">Review</button>`}
         </td>
       `;
       body.appendChild(tr);
@@ -921,6 +1028,27 @@
         }).catch(()=>{});
 
         await loadNotebook();
+      });
+    });
+
+    // Review hook (backend endpoint will come next)
+    body.querySelectorAll("button[data-review]").forEach(btn => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const id = btn.getAttribute("data-review");
+        const note = prompt("Any notes/context for this trade? (optional)", "");
+        let resp, data;
+        try{
+          resp = await fetch(`/api/trades/${id}/review?user_id=demo`, {
+            method:"POST",
+            headers:{ "Content-Type":"application/json" },
+            body: JSON.stringify({ note: note || "" })
+          });
+          data = await safeReadJson(resp);
+        }catch(_e){
+          data = { ok:false, error:"Review endpoint not live yet." };
+        }
+        alert(data.ok ? (data.review || "Review complete.") : (data.error || "Review failed."));
       });
     });
 
@@ -956,6 +1084,49 @@
       body: JSON.stringify(payload)
     }).catch(()=>{});
   }
+
+  // Add Past Trade (manual entry)
+  el("btnAddPast").addEventListener("click", async () => {
+    const ticker = prompt("Ticker?", "");
+    if(!ticker) return;
+
+    const date_ct = prompt("Date (YYYY-MM-DD)?", "");
+    const setup = prompt("Setup (ex: VWAP pullback, Break+PB)?", "VWAP pullback");
+    const entry = prompt("Entry price?", "");
+    if(entry === null) return;
+    const exit = prompt("Exit price? (leave blank if open)", "");
+    const shares = prompt("Shares?", "100");
+    const conf = prompt("Confidence 1–10? (optional)", "");
+    const note = prompt("Notes (optional)", "");
+
+    const payload = {
+      user_id:"demo",
+      scan_id:null,
+      scan_date_ct: date_ct || null,
+      ticker: ticker.toUpperCase().trim(),
+      bucket:"MANUAL",
+      subtype: setup || "manual",
+      confidence: conf ? Number(conf) : null,
+      plan: note || "",
+      entry_price: entry ? Number(entry) : null,
+      exit_price: exit ? Number(exit) : null,
+      shares: shares ? Number(shares) : null,
+      source: "past"
+    };
+
+    // NOTE: backend currently accepts /api/trades (it will ignore unknown fields)
+    // We'll upgrade backend next to properly store exit_price + past flag + review.
+    await fetch("/api/trades", {
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify(payload)
+    }).catch(()=>{});
+
+    // If they provided exit, we need backend support to set it on create.
+    // For now, user can create then hit "Close" on that row.
+    await loadNotebook();
+    alert("Past trade added. If you entered an exit, you may need to click Close until we upgrade backend create-trade to accept exit directly.");
+  });
 
   el("noteView").addEventListener("change", loadNotebook);
 
