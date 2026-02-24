@@ -11,7 +11,13 @@ from collections import deque
 from datetime import datetime, timedelta
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, RedirectResponse, Response, FileResponse, PlainTextResponse
+from fastapi.responses import (
+    JSONResponse,
+    RedirectResponse,
+    Response,
+    FileResponse,
+    PlainTextResponse,
+)
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -80,14 +86,52 @@ def pg_conn():
 
 
 def sqlite_conn():
-    # Built-in DB, always available
     conn = sqlite3.connect(str(SQLITE_PATH), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
 
 
+def _table_has_column_sqlite(conn: sqlite3.Connection, table: str, col: str) -> bool:
+    try:
+        cur = conn.cursor()
+        cur.execute(f"PRAGMA table_info({table})")
+        cols = [r[1] for r in cur.fetchall()]
+        return col in cols
+    except Exception:
+        return False
+
+
+def _ensure_schema_migrations():
+    """
+    Minimal, safe migrations:
+      - add trades.review_text (store latest review string)
+      - add trades.reviewed_at_utc (timestamp string)
+    """
+    if using_postgres():
+        try:
+            with pg_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS review_text TEXT;")
+                    cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS reviewed_at_utc TIMESTAMPTZ;")
+                conn.commit()
+        except Exception:
+            # don't crash startup if ALTER fails
+            pass
+    else:
+        conn = sqlite_conn()
+        try:
+            if not _table_has_column_sqlite(conn, "trades", "review_text"):
+                conn.execute("ALTER TABLE trades ADD COLUMN review_text TEXT;")
+            if not _table_has_column_sqlite(conn, "trades", "reviewed_at_utc"):
+                conn.execute("ALTER TABLE trades ADD COLUMN reviewed_at_utc TEXT;")
+            conn.commit()
+        except Exception:
+            pass
+        finally:
+            conn.close()
+
+
 def db_init():
-    # Same schema for both
     schema_sql = """
     CREATE TABLE IF NOT EXISTS trades (
       id TEXT PRIMARY KEY,
@@ -139,6 +183,8 @@ def db_init():
         finally:
             conn.close()
 
+    _ensure_schema_migrations()
+
 
 def trades_select(view: str, user_id: str | None) -> list[dict]:
     view = (view or "all").lower().strip()
@@ -164,7 +210,8 @@ def trades_select(view: str, user_id: str | None) -> list[dict]:
       ticker, bucket, subtype, confidence, plan,
       trigger, stop, scan_close, move_pct, dollar_vol, range_pct, hold_pct, rel_vol, si_pct_ff, ctb, avail,
       entry_price, entry_time_ct, exit_price, exit_time_ct, shares,
-      review_flags
+      review_flags,
+      review_text, reviewed_at_utc
     FROM trades
     {where_sql}
     ORDER BY created_at_utc DESC
@@ -216,6 +263,7 @@ def trades_select(view: str, user_id: str | None) -> list[dict]:
 
 
 def trade_insert(row: dict):
+    # row may contain exit_price (for past trades)
     if using_postgres():
         with pg_conn() as conn:
             with conn.cursor() as cur:
@@ -301,6 +349,41 @@ def trade_close(trade_id: str, exit_price: float, exit_time_ct: str, user_id: st
                 cur.execute(
                     "UPDATE trades SET exit_price=?, exit_time_ct=? WHERE id=?",
                     (exit_price, exit_time_ct, trade_id),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def trade_save_review(trade_id: str, review_text: str, user_id: str | None = None):
+    reviewed_at_utc = datetime.utcnow().isoformat()
+    if using_postgres():
+        with pg_conn() as conn:
+            with conn.cursor() as cur:
+                if user_id:
+                    cur.execute(
+                        "UPDATE trades SET review_text=%s, reviewed_at_utc=NOW() WHERE id=%s AND user_id=%s",
+                        (review_text, trade_id, user_id),
+                    )
+                else:
+                    cur.execute(
+                        "UPDATE trades SET review_text=%s, reviewed_at_utc=NOW() WHERE id=%s",
+                        (review_text, trade_id),
+                    )
+                conn.commit()
+    else:
+        conn = sqlite_conn()
+        try:
+            cur = conn.cursor()
+            if user_id:
+                cur.execute(
+                    "UPDATE trades SET review_text=?, reviewed_at_utc=? WHERE id=? AND user_id=?",
+                    (review_text, reviewed_at_utc, trade_id, user_id),
+                )
+            else:
+                cur.execute(
+                    "UPDATE trades SET review_text=?, reviewed_at_utc=? WHERE id=?",
+                    (review_text, reviewed_at_utc, trade_id),
                 )
             conn.commit()
         finally:
@@ -437,13 +520,11 @@ def mark_done(ok: bool, html_path: str | None):
 # -------------------- routes --------------------
 @app.get("/")
 def root():
-    # Always land on /ui (no-cache HTML)
     return RedirectResponse(url="/ui")
 
 
 @app.get("/ui")
 def ui():
-    # Serve HTML with no-store so changes show immediately
     return FileResponse(
         str(INDEX_PATH),
         media_type="text/html",
@@ -457,7 +538,6 @@ def ui():
 
 @app.get("/__ui_version")
 def ui_version():
-    # Quick proof of which HTML file is live
     return PlainTextResponse(f"index.html sha={_sha256(INDEX_PATH)}\n")
 
 
@@ -703,7 +783,11 @@ async def api_create_trade(request: Request):
     trade_id = str(uuid.uuid4())
 
     scan_date_ct = payload.get("scan_date_ct") or (STATE.get("meta", {}).get("date") if STATE else None) or ct_date()
+
+    # allow past trades to set these explicitly
     entry_time_ct = payload.get("entry_time_ct") or now_ct_str()
+    exit_time_ct = payload.get("exit_time_ct")  # optional
+    exit_price = payload.get("exit_price")      # optional (past trades)
 
     entry_price = payload.get("entry_price")
     shares = payload.get("shares")
@@ -716,7 +800,7 @@ async def api_create_trade(request: Request):
         "scan_id": payload.get("scan_id"),
         "scan_date_ct": scan_date_ct,
 
-        "ticker": payload.get("ticker"),
+        "ticker": (payload.get("ticker") or "").upper().strip(),
         "bucket": payload.get("bucket"),
         "subtype": payload.get("subtype"),
         "confidence": payload.get("confidence"),
@@ -734,11 +818,11 @@ async def api_create_trade(request: Request):
         "ctb": payload.get("ctb"),
         "avail": payload.get("avail"),
 
-        "entry_price": float(entry_price) if entry_price is not None else None,
+        "entry_price": float(entry_price) if entry_price not in (None, "") else None,
         "entry_time_ct": entry_time_ct,
-        "exit_price": None,
-        "exit_time_ct": None,
-        "shares": float(shares) if shares is not None else None,
+        "exit_price": float(exit_price) if exit_price not in (None, "") else None,
+        "exit_time_ct": exit_time_ct,
+        "shares": float(shares) if shares not in (None, "") else None,
 
         "review_flags": json.dumps(payload.get("review_flags") or []),
     }
@@ -764,3 +848,88 @@ async def api_close_trade(trade_id: str, request: Request, user_id: str | None =
         return {"ok": True}
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=500)
+
+
+@app.post("/api/trades/{trade_id}/review")
+async def api_review_trade(trade_id: str, request: Request, user_id: str | None = None):
+    """
+    Returns simple coaching text + saves it to DB.
+    This is *rules-based* advice (no LLM), so it runs on Render with zero extra services.
+    """
+    payload = await request.json()
+    note = (payload.get("note") or "").strip()
+
+    # find trade
+    try:
+        rows = trades_select(view="all", user_id=user_id or "demo")
+        t = next((x for x in rows if x.get("id") == trade_id), None)
+        if not t:
+            return JSONResponse({"ok": False, "error": "Trade not found"}, status_code=404)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=500)
+
+    # basic review checks
+    issues = []
+    tips = []
+
+    ep = t.get("entry_price")
+    xp = t.get("exit_price")
+    sh = t.get("shares")
+    subtype = (t.get("subtype") or "").lower()
+    plan = (t.get("plan") or "").strip()
+
+    if ep is None or sh is None:
+        issues.append("Missing entry price or shares (can’t compute risk/P&L cleanly).")
+
+    if xp is None:
+        tips.append("Trade is still open. Add an exit to get a full post-trade review.")
+
+    if not subtype:
+        tips.append("Add a setup label (ex: VWAP pullback, Break+PB). This helps pattern recognition.")
+
+    if not plan and not note:
+        tips.append("Add 1–2 sentences: why entry, where stop should be, and what target/scale plan was.")
+
+    # heuristics tuned to your style: break → pullback → VWAP
+    if "vwap" in subtype or "vwap" in (note.lower() if note else ""):
+        tips.append("VWAP pullbacks: best entries are reclaim/hold at VWAP with volume returning. Avoid chasing extended candles above VWAP.")
+    else:
+        tips.append("Break→pullback: focus on the retest holding a key level (break line / premarket high) with volume staying elevated.")
+
+    # compute pnl
+    review_lines = []
+    review_lines.append(f"{t.get('ticker','')} • {t.get('subtype','') or 'setup'}")
+    if ep is not None and xp is not None and sh is not None:
+        try:
+            pnl = (float(xp) - float(ep)) * float(sh)
+            pnl_pct = (float(xp) - float(ep)) / float(ep) * 100 if float(ep) != 0 else None
+            review_lines.append(f"P/L: {pnl:+.2f} ({pnl_pct:+.1f}%)" if pnl_pct is not None else f"P/L: {pnl:+.2f}")
+            if pnl < 0:
+                tips.append("Loss review: was the stop respected? If not, reduce size or set a hard stop alert next time.")
+            else:
+                tips.append("Win review: did you scale out into strength and keep a runner? If yes, note the execution rules.")
+        except Exception:
+            pass
+
+    if issues:
+        review_lines.append("\nCorrections:")
+        for it in issues:
+            review_lines.append(f"• {it}")
+
+    if tips:
+        review_lines.append("\nCoaching:")
+        for it in tips[:8]:
+            review_lines.append(f"• {it}")
+
+    if note:
+        review_lines.append("\nYour notes:")
+        review_lines.append(note)
+
+    review_text = "\n".join(review_lines).strip()
+
+    try:
+        trade_save_review(trade_id, review_text, user_id=user_id)
+    except Exception:
+        pass
+
+    return {"ok": True, "review": review_text}
