@@ -1008,22 +1008,37 @@
       const flagsStr = (flags || []).map(f => `${f.icon||""} ${f.label||""}`.trim()).join(" • ");
 
       const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td><b>${t.ticker}</b></td>
-        <td>${t.subtype || ""}</td>
-        <td>${t.confidence ?? ""}</td>
-        <td class="right">${t.entry_price != null ? Number(t.entry_price).toFixed(2) : "—"}</td>
-        <td class="right">${t.exit_price != null ? Number(t.exit_price).toFixed(2) : "—"}</td>
-        <td class="right">${t.shares != null ? Number(t.shares).toFixed(0) : "—"}</td>
-        <td class="right">${pnlDStr}</td>
-        <td class="right">${pnlPStr}</td>
-        <td>${flagsStr || ""}</td>
-        <td class="right">
-          ${t.exit_price == null ? `<button class="addbtn" data-close="${t.id}">Close</button>` : `<button class="addbtn" data-review="${t.id}">Review</button>`}
-        </td>
-      `;
-      body.appendChild(tr);
-    }
+tr.style.cursor = "pointer";
+
+tr.innerHTML = `
+  <td><b>${t.ticker}</b></td>
+  <td>${t.subtype || ""}</td>
+  <td>${t.confidence ?? ""}</td>
+  <td class="right">${t.entry_price != null ? Number(t.entry_price).toFixed(2) : "—"}</td>
+  <td class="right">${t.exit_price != null ? Number(t.exit_price).toFixed(2) : "—"}</td>
+  <td class="right">${t.shares != null ? Number(t.shares).toFixed(0) : "—"}</td>
+  <td class="right">${pnlDStr}</td>
+  <td class="right">${pnlPStr}</td>
+  <td>${flagsStr || ""}</td>
+  <td class="right">
+    ${t.exit_price == null ? `<button class="addbtn" data-close="${t.id}">Close</button>` : `<button class="addbtn" data-review="${t.id}">Review</button>`}
+  </td>
+`;
+
+// click row to view saved review text (if any)
+tr.addEventListener("click", (e) => {
+  // don't trigger when clicking buttons
+  if (e.target && e.target.closest("button")) return;
+
+  const txt = (t.review_text || "").trim();
+  if(!txt){
+    alert("No saved review for this trade yet. Close it, then click Review.");
+    return;
+  }
+  alert(txt);
+});
+
+body.appendChild(tr);
 
     body.querySelectorAll("button[data-close]").forEach(btn => {
       btn.addEventListener("click", async (e) => {
