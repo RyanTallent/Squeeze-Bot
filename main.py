@@ -935,5 +935,29 @@ async def api_review_trade(trade_id: str, request: Request, user_id: str | None 
         trade_save_review(trade_id, review_text, user_id=user_id)
     except Exception:
         pass
-
+try:
+    # persist flags alongside review
+    if review_flags:
+        # quick update using existing close function pattern
+        if using_postgres():
+            with pg_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE trades SET review_flags=%s WHERE id=%s",
+                        (json.dumps(review_flags), trade_id),
+                    )
+                conn.commit()
+        else:
+            conn = sqlite_conn()
+            try:
+                conn.execute(
+                    "UPDATE trades SET review_flags=? WHERE id=?",
+                    (json.dumps(review_flags), trade_id),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+except Exception:
+    pass
+    
     return {"ok": True, "review": review_text}
