@@ -1075,6 +1075,7 @@ body.appendChild(tr);
           data = { ok:false, error:"Review endpoint not live yet." };
         }
         alert(data.ok ? (data.review || "Review complete.") : (data.error || "Review failed."));
+        await loadNotebook();
       });
     });
 
