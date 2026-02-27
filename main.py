@@ -885,9 +885,11 @@ async def api_review_trade(trade_id: str, request: Request, user_id: str | None 
 
     if xp is None:
         tips.append("Trade is still open. Add an exit to get a full post-trade review.")
+        review_flags.append({"icon":"⏳","label":"Still open"})
 
     if not subtype:
         tips.append("Add a setup label (ex: VWAP pullback, Break+PB). This helps pattern recognition.")
+        review_flags.append({"icon":"🏷️","label":"No setup label"})
 
     if not plan and not note:
         tips.append("Add 1–2 sentences: why entry, where stop should be, and what target/scale plan was.")
