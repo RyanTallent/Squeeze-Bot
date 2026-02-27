@@ -615,15 +615,36 @@
   }
 
   function setOrtex(v){
-    selectedOrtex = (v || "off").toLowerCase();
-    if (!["on","off"].includes(selectedOrtex)) selectedOrtex = "off";
+  selectedOrtex = (v || "off").toLowerCase();
+  if (!["on","off"].includes(selectedOrtex)) selectedOrtex = "off";
+
+  // localStorage can fail in some browser/privacy modes — don't let that break the UI
+  try{
     localStorage.setItem("squeeze_ortex", selectedOrtex);
-    paintOrtexUI(selectedOrtex);
+  }catch(e){
+    // ignore storage errors
   }
 
+  paintOrtexUI(selectedOrtex);
+}function setOrtex(v){
+  selectedOrtex = (v || "off").toLowerCase();
+  if (!["on","off"].includes(selectedOrtex)) selectedOrtex = "off";
+
+  // localStorage can fail in some browser/privacy modes — don't let that break the UI
+  try{
+    localStorage.setItem("squeeze_ortex", selectedOrtex);
+  }catch(e){
+    // ignore storage errors
+  }
+
+  paintOrtexUI(selectedOrtex);
+}
+
   el("btnOrtex").addEventListener("click", () => {
-    setOrtex(selectedOrtex === "on" ? "off" : "on");
-  });
+  setOrtex(selectedOrtex === "on" ? "off" : "on");
+  // instant confirmation pill (requested state)
+  el("pillOrtex").innerHTML = `ORTEX: <b>${selectedOrtex.toUpperCase()}</b>`;
+});
 
   function parseMetaFromLog(line){
     const m1 = line.match(/Snapshot tickers received:\s*(\d+)/i);
