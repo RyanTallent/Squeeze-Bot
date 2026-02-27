@@ -584,6 +584,7 @@
     </div>
   </div>
 
+<!-- REPLACE YOUR ENTIRE <script> ... </script> BLOCK WITH THIS ONE -->
 <script>
   const el = (id) => document.getElementById(id);
 
@@ -614,37 +615,25 @@
     btn.classList.add(v === "on" ? "on" : "off");
   }
 
+  // ✅ FIXED: ONLY ONE setOrtex() FUNCTION (your old file had two glued together)
   function setOrtex(v){
-  selectedOrtex = (v || "off").toLowerCase();
-  if (!["on","off"].includes(selectedOrtex)) selectedOrtex = "off";
+    selectedOrtex = (v || "off").toLowerCase();
+    if (!["on","off"].includes(selectedOrtex)) selectedOrtex = "off";
 
-  // localStorage can fail in some browser/privacy modes — don't let that break the UI
-  try{
-    localStorage.setItem("squeeze_ortex", selectedOrtex);
-  }catch(e){
-    // ignore storage errors
+    try{
+      localStorage.setItem("squeeze_ortex", selectedOrtex);
+    }catch(e){
+      // ignore storage errors
+    }
+
+    paintOrtexUI(selectedOrtex);
   }
 
-  paintOrtexUI(selectedOrtex);
-}function setOrtex(v){
-  selectedOrtex = (v || "off").toLowerCase();
-  if (!["on","off"].includes(selectedOrtex)) selectedOrtex = "off";
-
-  // localStorage can fail in some browser/privacy modes — don't let that break the UI
-  try{
-    localStorage.setItem("squeeze_ortex", selectedOrtex);
-  }catch(e){
-    // ignore storage errors
-  }
-
-  paintOrtexUI(selectedOrtex);
-}
-
+  // ✅ FIXED: click handler still works + updates pill instantly
   el("btnOrtex").addEventListener("click", () => {
-  setOrtex(selectedOrtex === "on" ? "off" : "on");
-  // instant confirmation pill (requested state)
-  el("pillOrtex").innerHTML = `ORTEX: <b>${selectedOrtex.toUpperCase()}</b>`;
-});
+    setOrtex(selectedOrtex === "on" ? "off" : "on");
+    el("pillOrtex").innerHTML = `ORTEX: <b>${selectedOrtex.toUpperCase()}</b>`;
+  });
 
   function parseMetaFromLog(line){
     const m1 = line.match(/Snapshot tickers received:\s*(\d+)/i);
@@ -868,26 +857,25 @@
     });
 
     es.addEventListener("row", (ev) => {
-  let r;
-  try{ r = JSON.parse(ev.data); }catch(e){ return; }
+      let r;
+      try{ r = JSON.parse(ev.data); }catch(e){ return; }
 
-  const bucket = (r.bucket || "").toUpperCase() === "SQUEEZE" ? "SQUEEZE" : "MOMENTUM";
-  results[bucket].push(r);
+      const bucket = (r.bucket || "").toUpperCase() === "SQUEEZE" ? "SQUEEZE" : "MOMENTUM";
+      results[bucket].push(r);
 
-  // sort best-first: confidence, then base_score, then dollar_vol
-  results[bucket].sort((a,b) => {
-    const cA = Number(a.confidence || 0), cB = Number(b.confidence || 0);
-    if (cB !== cA) return cB - cA;
+      results[bucket].sort((a,b) => {
+        const cA = Number(a.confidence || 0), cB = Number(b.confidence || 0);
+        if (cB !== cA) return cB - cA;
 
-    const sA = Number(a.base_score || 0), sB = Number(b.base_score || 0);
-    if (sB !== sA) return sB - sA;
+        const sA = Number(a.base_score || 0), sB = Number(b.base_score || 0);
+        if (sB !== sA) return sB - sA;
 
-    const vA = Number(a.dollar_vol || 0), vB = Number(b.dollar_vol || 0);
-    return vB - vA;
-  });
+        const vA = Number(a.dollar_vol || 0), vB = Number(b.dollar_vol || 0);
+        return vB - vA;
+      });
 
-  renderResults();
-});
+      renderResults();
+    });
 
     es.addEventListener("done", (ev) => {
       let j = {};
@@ -1029,37 +1017,36 @@
       const flagsStr = (flags || []).map(f => `${f.icon||""} ${f.label||""}`.trim()).join(" • ");
 
       const tr = document.createElement("tr");
-tr.style.cursor = "pointer";
+      tr.style.cursor = "pointer";
 
-tr.innerHTML = `
-  <td><b>${t.ticker}</b></td>
-  <td>${t.subtype || ""}</td>
-  <td>${t.confidence ?? ""}</td>
-  <td class="right">${t.entry_price != null ? Number(t.entry_price).toFixed(2) : "—"}</td>
-  <td class="right">${t.exit_price != null ? Number(t.exit_price).toFixed(2) : "—"}</td>
-  <td class="right">${t.shares != null ? Number(t.shares).toFixed(0) : "—"}</td>
-  <td class="right">${pnlDStr}</td>
-  <td class="right">${pnlPStr}</td>
-  <td>${flagsStr || ""}</td>
-  <td class="right">
-    ${t.exit_price == null ? `<button class="addbtn" data-close="${t.id}">Close</button>` : `<button class="addbtn" data-review="${t.id}">Review</button>`}
-  </td>
-`;
+      tr.innerHTML = `
+        <td><b>${t.ticker}</b></td>
+        <td>${t.subtype || ""}</td>
+        <td>${t.confidence ?? ""}</td>
+        <td class="right">${t.entry_price != null ? Number(t.entry_price).toFixed(2) : "—"}</td>
+        <td class="right">${t.exit_price != null ? Number(t.exit_price).toFixed(2) : "—"}</td>
+        <td class="right">${t.shares != null ? Number(t.shares).toFixed(0) : "—"}</td>
+        <td class="right">${pnlDStr}</td>
+        <td class="right">${pnlPStr}</td>
+        <td>${flagsStr || ""}</td>
+        <td class="right">
+          ${t.exit_price == null ? `<button class="addbtn" data-close="${t.id}">Close</button>` : `<button class="addbtn" data-review="${t.id}">Review</button>`}
+        </td>
+      `;
 
-// click row to view saved review text (if any)
-tr.addEventListener("click", (e) => {
-  // don't trigger when clicking buttons
-  if (e.target && e.target.closest("button")) return;
+      tr.addEventListener("click", (e) => {
+        if (e.target && e.target.closest("button")) return;
 
-  const txt = (t.review_text || "").trim();
-  if(!txt){
-    alert("No saved review for this trade yet. Close it, then click Review.");
-    return;
-  }
-  alert(txt);
-});
+        const txt = (t.review_text || "").trim();
+        if(!txt){
+          alert("No saved review for this trade yet. Close it, then click Review.");
+          return;
+        }
+        alert(txt);
+      });
 
-body.appendChild(tr);
+      body.appendChild(tr);
+    }
 
     body.querySelectorAll("button[data-close]").forEach(btn => {
       btn.addEventListener("click", async (e) => {
@@ -1078,7 +1065,6 @@ body.appendChild(tr);
       });
     });
 
-    // Review hook (backend endpoint will come next)
     body.querySelectorAll("button[data-review]").forEach(btn => {
       btn.addEventListener("click", async (e) => {
         e.stopPropagation();
@@ -1133,7 +1119,6 @@ body.appendChild(tr);
     }).catch(()=>{});
   }
 
-  // Add Past Trade (manual entry)
   el("btnAddPast").addEventListener("click", async () => {
     const ticker = prompt("Ticker?", "");
     if(!ticker) return;
@@ -1162,16 +1147,12 @@ body.appendChild(tr);
       source: "past"
     };
 
-    // NOTE: backend currently accepts /api/trades (it will ignore unknown fields)
-    // We'll upgrade backend next to properly store exit_price + past flag + review.
     await fetch("/api/trades", {
       method:"POST",
       headers:{ "Content-Type":"application/json" },
       body: JSON.stringify(payload)
     }).catch(()=>{});
 
-    // If they provided exit, we need backend support to set it on create.
-    // For now, user can create then hit "Close" on that row.
     await loadNotebook();
     alert("Past trade added. If you entered an exit, you may need to click Close until we upgrade backend create-trade to accept exit directly.");
   });
