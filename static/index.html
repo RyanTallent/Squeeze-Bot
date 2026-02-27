@@ -848,14 +848,26 @@
     });
 
     es.addEventListener("row", (ev) => {
-      let r;
-      try{ r = JSON.parse(ev.data); }catch(e){ return; }
-      const bucket = (r.bucket || "").toUpperCase() === "SQUEEZE" ? "SQUEEZE" : "MOMENTUM";
-      const arr = results[bucket];
-      arr.push(r);
-      results[bucket] = arr.slice(0,5);
-      renderResults();
-    });
+  let r;
+  try{ r = JSON.parse(ev.data); }catch(e){ return; }
+
+  const bucket = (r.bucket || "").toUpperCase() === "SQUEEZE" ? "SQUEEZE" : "MOMENTUM";
+  results[bucket].push(r);
+
+  // sort best-first: confidence, then base_score, then dollar_vol
+  results[bucket].sort((a,b) => {
+    const cA = Number(a.confidence || 0), cB = Number(b.confidence || 0);
+    if (cB !== cA) return cB - cA;
+
+    const sA = Number(a.base_score || 0), sB = Number(b.base_score || 0);
+    if (sB !== sA) return sB - sA;
+
+    const vA = Number(a.dollar_vol || 0), vB = Number(b.dollar_vol || 0);
+    return vB - vA;
+  });
+
+  renderResults();
+});
 
     es.addEventListener("done", (ev) => {
       let j = {};
