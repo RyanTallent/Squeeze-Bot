@@ -797,7 +797,7 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "off") ->
             feat["avail"] = None
 
             base_score, prob, pressure = compute_scores(feat)
-            conf = confidence_1_to_10(prob, ortex_on=False, has_borrow=False)
+            conf = confidence_1_to_10(prob, ortex_on=ortex_on, has_borrow=False)
 
             row = {
                 "ticker": ticker,
