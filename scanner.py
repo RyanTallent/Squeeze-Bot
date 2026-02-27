@@ -156,19 +156,20 @@ def ortex_allowed_now(dt: datetime) -> bool:
     return start <= dt <= end
 
 def resolve_ortex_on(mode: str, ortex_request: str, dt: datetime) -> tuple[bool, str]:
+    """
+    ORTEX is user-controlled (no time window).
+    If ORTEX_API_KEY exists and user requests ON -> ON.
+    """
     if not ORTEX_KEY:
-        return (False, "OFF")
+        return (False, "OFF (no key)")
 
     req = (ortex_request or "off").strip().lower()
     if req not in ("on", "off"):
         req = "off"
 
-    if req == "off":
-        return (False, "OFF")
-
-    if ortex_allowed_now(dt):
+    if req == "on":
         return (True, "ON")
-    return (False, "OFF (outside 7am–4pm CT)")
+    return (False, "OFF")
 
 
 # ============================================================
