@@ -756,7 +756,7 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "off") ->
     ortex_on, ortex_label = resolve_ortex_on(mode, ortex, dt)
 
     deep_top = DEEP_ANALYZE_TOP_DAY if mode == "day" else DEEP_ANALYZE_TOP_NIGHT
-    ortex_finalists = ORTEX_FINALISTS_DAY if ortex_on else ORTEX_FINALISTS_NIGHT
+    ortex_finalists = ORTEX_FINALISTS_DAY if ortex_on else 0
 
     if log_fn:
         log_fn(f"Mode: {mode.upper()} ({'Polygon + ORTEX' if ortex_on else 'Polygon only'})")
