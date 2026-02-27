@@ -199,8 +199,10 @@ def trades_select(view: str, user_id: str | None) -> list[dict]:
         params.append(user_id)
 
     if view == "yesterday":
-        where.append("scan_date_ct = %s")
-        params.append(yesterday_ct_date())
+    # use scan_date_ct if present; otherwise fallback to created_at_utc date
+    where.append("(scan_date_ct = %s OR substr(created_at_utc,1,10) = %s)")
+    params.append(yesterday_ct_date())
+    params.append(yesterday_ct_date())
 
     where_sql = ("WHERE " + " AND ".join(where)) if where else ""
 
