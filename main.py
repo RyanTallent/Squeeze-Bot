@@ -871,7 +871,8 @@ async def api_review_trade(trade_id: str, request: Request, user_id: str | None 
     # basic review checks
     issues = []
     tips = []
-
+    review_flags = []
+    
     ep = t.get("entry_price")
     xp = t.get("exit_price")
     sh = t.get("shares")
