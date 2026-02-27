@@ -522,7 +522,15 @@ def mark_done(ok: bool, html_path: str | None):
 # -------------------- routes --------------------
 @app.get("/")
 def root():
-    return RedirectResponse(url="/ui")
+    return FileResponse(
+        str(INDEX_PATH),
+        media_type="text/html",
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
 
 
 @app.get("/ui")
