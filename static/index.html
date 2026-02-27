@@ -685,7 +685,7 @@
   function renderResults(){
     const body = el("resultsBody");
     body.innerHTML = "";
-    const list = results[showing] || [];
+    const list = (results[showing] || []).slice(0,5);
 
     for(const r of list){
       const tr = document.createElement("tr");
