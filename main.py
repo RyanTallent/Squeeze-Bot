@@ -881,6 +881,7 @@ async def api_review_trade(trade_id: str, request: Request, user_id: str | None 
 
     if ep is None or sh is None:
         issues.append("Missing entry price or shares (can’t compute risk/P&L cleanly).")
+        review_flags.append({"icon":"⚠️","label":"Missing entry/shares"})
 
     if xp is None:
         tips.append("Trade is still open. Add an exit to get a full post-trade review.")
