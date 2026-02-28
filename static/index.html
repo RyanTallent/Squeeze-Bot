@@ -9,18 +9,17 @@
 
   <style>
     :root{
-      /* Premium dark palette (navy + darker gold + optional brown) */
-      --bg:#071019;          /* deep navy background */
-      --panel:#0B1622;       /* main card */
-      --panel2:#0E1C2B;      /* inner panel */
-      --border:#1D334A;      /* subtle navy border */
-      --text:#E9EEF4;        /* near-white */
-      --muted:#9AA7B6;       /* muted text */
+      --bg:#071019;
+      --panel:#0B1622;
+      --panel2:#0E1C2B;
+      --border:#1D334A;
+      --text:#E9EEF4;
+      --muted:#9AA7B6;
 
       --navy:#0A1420;
-      --gold:#B08B2E;        /* darker gold */
+      --gold:#B08B2E;
       --gold2:#8F6F1F;
-      --brown:#2B1E12;       /* optional warm accent */
+      --brown:#2B1E12;
       --green:#2AAE6A;
       --red:#D16060;
 
@@ -98,25 +97,7 @@
       backdrop-filter: blur(6px);
     }
 
-    /* Status + controls */
-    .bar{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:12px;
-      flex-wrap:wrap;
-      margin-top:16px;
-    }
-    .pillbar{
-      display:flex;
-      gap:10px;
-      flex-wrap:wrap;
-      align-items:center;
-      padding:10px 12px;
-      border-radius:12px;
-      border:1px solid rgba(29,51,74,.85);
-      background:linear-gradient(180deg, rgba(14,32,50,.9), rgba(11,22,34,.9));
-    }
+    /* Pills */
     .pill{
       display:flex;
       gap:8px;
@@ -131,8 +112,7 @@
     }
     .pill b{color:var(--text);font-weight:800}
 
-    .btns{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-
+    /* Buttons */
     .btn{
       border:none;
       border-radius:12px;
@@ -178,6 +158,103 @@
       border-color:rgba(209,96,96,.35);
       color:rgba(255,210,210,.92);
     }
+
+    /* One toolbar */
+    .toolbar{
+      margin-top:16px;
+      display:flex;
+      gap:10px;
+      align-items:center;
+      flex-wrap:wrap;
+      padding:10px 12px;
+      border-radius:12px;
+      border:1px solid rgba(29,51,74,.85);
+      background:linear-gradient(180deg, rgba(14,32,50,.9), rgba(11,22,34,.9));
+    }
+    .toolgroup{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .spacer{flex:1}
+
+    .tbtn{
+      border:1px solid rgba(29,51,74,.85);
+      background:rgba(14,32,50,.55);
+      color:rgba(233,238,244,.95);
+      border-radius:12px;
+      padding:9px 12px;
+      cursor:pointer;
+      font-weight:900;
+      font-family:'Playfair Display', serif;
+    }
+    .tbtn:hover{filter:brightness(1.05)}
+    .tbtn.on{
+      background:rgba(42,174,106,.12);
+      border-color:rgba(42,174,106,.45);
+      color:rgba(205,255,229,.95);
+    }
+    .tbtn.off{
+      background:rgba(209,96,96,.10);
+      border-color:rgba(209,96,96,.35);
+      color:rgba(255,210,210,.92);
+    }
+
+    .dropwrap{position:relative}
+    .drop{
+      position:absolute;
+      top:44px;
+      left:0;
+      min-width:320px;
+      max-width:520px;
+      z-index:20;
+      display:none;
+      padding:12px;
+      border-radius:12px;
+      border:1px solid rgba(29,51,74,.85);
+      background:linear-gradient(180deg, rgba(14,32,50,.96), rgba(11,22,34,.96));
+      box-shadow:var(--shadow);
+    }
+    .drop.open{display:block}
+    .drop h4{margin:0 0 8px 0;font-size:14px}
+    .drop p{margin:6px 0;color:rgba(233,238,244,.92);font-size:12.5px;line-height:1.5}
+    .drop ul{margin:8px 0 0 0;padding-left:18px}
+    .drop li{margin:6px 0;color:rgba(233,238,244,.92);font-size:12.5px}
+
+    /* Tiny ? tooltip */
+    .qmark{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      width:16px;height:16px;
+      border-radius:999px;
+      border:1px solid rgba(176,139,46,.45);
+      color:rgba(255,244,214,.95);
+      font-size:11px;
+      font-weight:900;
+      margin-left:6px;
+      cursor:help;
+      background:rgba(176,139,46,.10);
+      position:relative;
+      top:-1px;
+    }
+    .qmark[data-tip]:hover::after{
+      content: attr(data-tip);
+      position:absolute;
+      left:0;
+      top:22px;
+      width:max-content;
+      max-width:320px;
+      padding:8px 10px;
+      border-radius:10px;
+      border:1px solid rgba(29,51,74,.85);
+      background:rgba(7,16,25,.98);
+      color:rgba(233,238,244,.95);
+      box-shadow:var(--shadow2);
+      font-size:12px;
+      line-height:1.35;
+      white-space:normal;
+      z-index:30;
+    }
+
+    .beginnerOnly{display:none}
+    .beginnerOn .beginnerOnly{display:block}
 
     .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
     @media (max-width: 980px){.grid{grid-template-columns:1fr}}
@@ -261,38 +338,6 @@
       white-space:pre-wrap;
     }
 
-    /* Explain dropdowns */
-    details.explain{
-      margin-top:12px;
-      border:1px solid rgba(29,51,74,.85);
-      border-radius:12px;
-      background:linear-gradient(180deg, rgba(14,32,50,.6), rgba(11,22,34,.45));
-      padding:10px 12px;
-    }
-    details.explain summary{
-      cursor:pointer;
-      font-weight:900;
-      color:rgba(233,238,244,.92);
-      user-select:none;
-    }
-    details.explain .inside{
-      margin-top:10px;
-      color:rgba(233,238,244,.92);
-      font-size:12.5px;
-      line-height:1.55;
-    }
-    .kbd{
-      font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
-      background:rgba(176,139,46,.14);
-      border:1px solid rgba(176,139,46,.35);
-      border-radius:8px;
-      padding:2px 6px;
-      color:rgba(255,244,214,.95);
-    }
-    .bullet{margin:8px 0 0 0;padding-left:16px}
-    .bullet li{margin:6px 0;color:rgba(233,238,244,.90)}
-    .goldDot{color:rgba(255,232,170,.95);font-weight:900}
-
     /* Notebook */
     .notehead{
       display:flex;
@@ -352,7 +397,6 @@
     }
     canvas{display:block;width:100%;height:70px}
 
-    /* Notebook actions row */
     .noteActions{
       display:flex;
       gap:10px;
@@ -382,17 +426,14 @@
     <!-- Header -->
     <div class="brand">
       <div class="brandLeft">
-        <!-- Simple Orion vs Bull constellation logo, with rising belt stars -->
         <div class="logo" aria-label="Orion vs Bull logo">
           <svg width="46" height="46" viewBox="0 0 46 46" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <!-- background starfield -->
             <circle cx="10" cy="10" r="1" fill="rgba(255,244,214,.55)"/>
             <circle cx="34" cy="9" r="1" fill="rgba(233,238,244,.40)"/>
             <circle cx="40" cy="18" r="1" fill="rgba(255,244,214,.35)"/>
             <circle cx="7" cy="30" r="1" fill="rgba(233,238,244,.30)"/>
             <circle cx="18" cy="40" r="1" fill="rgba(255,244,214,.30)"/>
 
-            <!-- Bull constellation (simple) -->
             <path d="M28 14 L36 10 L40 16 L34 22 L28 20 L24 16 Z"
                   stroke="rgba(233,238,244,.35)" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
             <circle cx="36" cy="10" r="1.4" fill="rgba(233,238,244,.55)"/>
@@ -400,21 +441,18 @@
             <circle cx="34" cy="22" r="1.4" fill="rgba(233,238,244,.55)"/>
             <circle cx="28" cy="20" r="1.4" fill="rgba(233,238,244,.55)"/>
 
-            <!-- Orion body (simple) -->
             <path d="M10 30 L14 20 L20 18 L24 24 L18 32 Z"
                   stroke="rgba(176,139,46,.55)" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
             <circle cx="14" cy="20" r="1.5" fill="rgba(255,232,170,.95)"/>
             <circle cx="20" cy="18" r="1.5" fill="rgba(255,232,170,.85)"/>
             <circle cx="24" cy="24" r="1.5" fill="rgba(255,232,170,.80)"/>
 
-            <!-- Orion belt rising like a stock: 3 stars up-right -->
             <path d="M14 26 L19 24 L24 22"
                   stroke="rgba(176,139,46,.75)" stroke-width="1.4" stroke-linecap="round"/>
             <circle cx="14" cy="26" r="1.7" fill="rgba(255,232,170,.95)"/>
             <circle cx="19" cy="24" r="1.7" fill="rgba(255,232,170,.95)"/>
             <circle cx="24" cy="22" r="1.7" fill="rgba(255,232,170,.95)"/>
 
-            <!-- subtle upward arrow hint -->
             <path d="M24 22 L26.5 19.5" stroke="rgba(255,232,170,.65)" stroke-width="1.2" stroke-linecap="round"/>
             <path d="M26.5 19.5 L26.2 21.6" stroke="rgba(255,232,170,.65)" stroke-width="1.2" stroke-linecap="round"/>
             <path d="M26.5 19.5 L24.4 19.8" stroke="rgba(255,232,170,.65)" stroke-width="1.2" stroke-linecap="round"/>
@@ -433,62 +471,55 @@
       </div>
     </div>
 
-    <!-- Info dropdowns (clean by default) -->
-    <details class="explain">
-      <summary>How signals work</summary>
-      <div class="inside">
-        <div style="margin-bottom:8px">
-          <b>Fields:</b>
-          Conf = 1–10 setup rank • Move = % vs prior close • SFloat = shares estimate (larger often moves slower)
-        </div>
-        <div style="margin-bottom:8px">
-          <b>ORTEX (optional):</b> adds short-interest & borrow metrics (SI%, CTB, Avail) to help confirm squeezes.
-          Best during weekdays <b>7:00am–4:00pm CT</b> when it’s ON.
-        </div>
-        <div>
-          <b>Reading the plan:</b>
-          <span class="kbd">ENTRY</span> trigger •
-          <span class="kbd">STOP</span> “I’m wrong” •
-          <span class="kbd">TARGET</span> scale out
-        </div>
-      </div>
-    </details>
+    <!-- One toolbar -->
+    <div class="toolbar" id="toolbar">
+      <div class="toolgroup">
+        <button class="tbtn off" id="btnBeginner">Beginner: OFF</button>
 
-    <details class="explain">
-      <summary>Filters + what we’re hunting (click to expand)</summary>
-      <div class="inside">
-        <div style="margin-bottom:8px"><b>Baseline filters (your edge):</b></div>
-        <ul class="bullet">
-          <li><span class="goldDot">Market cap:</span> under <b>$2B</b></li>
-          <li><span class="goldDot">Float:</span> under <b>50M</b></li>
-          <li><span class="goldDot">Relative volume:</span> over <b>1.5</b></li>
-          <li><span class="goldDot">Daily volume:</span> over <b>5M</b></li>
-        </ul>
+        <div class="dropwrap">
+          <button class="tbtn" id="btnHelp">Help</button>
+          <div class="drop" id="dropHelp">
+            <h4>Quick help</h4>
+            <p><b>How to use:</b> Click <b>Scan</b> → click a row → follow <b>ENTRY / STOP / TARGET</b> → use <b>Notebook</b> to track.</p>
+            <p><b>Rule:</b> If STOP hits, exit. Don’t “hope”.</p>
+          </div>
+        </div>
 
-        <div style="margin:10px 0 8px 0"><b>Setup focus:</b> high <b>range</b> + high <b>volume</b></div>
-        <ul class="bullet">
-          <li><b>Break → Pullback</b>: We want the break, then a controlled pullback.</li>
-          <li><b>VWAP pullback</b>: Prefer entries when price pulls into VWAP and holds/reclaims.</li>
-          <li><b>Cleaner plans</b>: entry/stop/targets reflect break level + VWAP behavior.</li>
-        </ul>
-      </div>
-    </details>
+        <div class="dropwrap">
+          <button class="tbtn" id="btnGlossary">Glossary</button>
+          <div class="drop" id="dropGlossary">
+            <h4>Simple definitions</h4>
+            <ul>
+              <li><b>Conf:</b> setup quality score (higher is better, not guaranteed).</li>
+              <li><b>Move:</b> % change vs yesterday close.</li>
+              <li><b>SFloat:</b> shares that can trade (smaller can move faster).</li>
+              <li><b>ORTEX:</b> adds short interest + borrow cost to confirm squeezes.</li>
+            </ul>
+          </div>
+        </div>
 
-    <!-- Status + controls -->
-    <div class="bar">
-      <div class="pillbar">
         <div class="pill" id="pillApi">API: <b>checking…</b></div>
-        <div class="pill" id="pillMode">Mode: <b>auto</b></div>
         <div class="pill" id="pillWindow">Window: <b>—</b></div>
         <div class="pill" id="pillOrtex">ORTEX: <b>OFF</b></div>
         <div class="pill" id="pillLast">Last Scan: <b>—</b></div>
       </div>
 
-      <div class="btns">
+      <div class="spacer"></div>
+
+      <div class="toolgroup">
+        <select class="select" id="noteView">
+          <option value="all">notebook: all</option>
+          <option value="yesterday">notebook: yesterday</option>
+        </select>
+
         <button class="btn toggle off" id="btnOrtex" title="Turn ORTEX request ON/OFF">ORTEX: OFF</button>
-        <button class="btn" id="btnScan">Scan Stocks</button>
-        <button class="btn secondary" id="btnClear">Clear Log</button>
+        <button class="btn" id="btnScan">Scan</button>
+        <button class="btn secondary" id="btnClear">Clear</button>
       </div>
+    </div>
+
+    <div class="micro beginnerOnly" style="margin-top:10px">
+      Beginner tip: Only take trades where you understand the plan. If you can’t explain it, skip it.
     </div>
 
     <div class="grid">
@@ -512,11 +543,26 @@
             <thead>
               <tr>
                 <th>Ticker</th>
-                <th>Conf</th>
-                <th>Setup</th>
-                <th class="right">Price</th>
-                <th class="right">Move</th>
-                <th class="right">SFloat</th>
+                <th>
+                  Conf
+                  <span class="qmark" data-tip="Higher = better setup ranking (not guaranteed).">?</span>
+                </th>
+                <th>
+                  Setup
+                  <span class="qmark" data-tip="The pattern it resembles (VWAP pullback, breakout, etc.).">?</span>
+                </th>
+                <th class="right">
+                  Price
+                  <span class="qmark" data-tip="Last price from the scan.">?</span>
+                </th>
+                <th class="right">
+                  Move
+                  <span class="qmark" data-tip="% vs yesterday close.">?</span>
+                </th>
+                <th class="right">
+                  SFloat
+                  <span class="qmark" data-tip="Shares available to trade. Smaller float can move faster.">?</span>
+                </th>
                 <th class="right">Add</th>
               </tr>
             </thead>
@@ -549,17 +595,11 @@
             </div>
           </div>
 
-          <!-- Past trade entry + review (UI hooks; backend endpoints come next) -->
           <div class="noteActions">
             <button class="btn secondary" id="btnAddPast">Add Past Trade</button>
             <span class="pillMini">Tip: add old trades → get review/corrections</span>
           </div>
         </div>
-
-        <select class="select" id="noteView">
-          <option value="all">all</option>
-          <option value="yesterday">yesterday</option>
-        </select>
       </div>
 
       <div style="overflow:auto; border:1px solid rgba(29,51,74,.85); border-radius:12px; max-height:320px;">
@@ -584,13 +624,46 @@
     </div>
   </div>
 
-<!-- REPLACE YOUR ENTIRE <script> ... </script> BLOCK WITH THIS ONE -->
 <script>
   const el = (id) => document.getElementById(id);
 
   let selectedMode = "auto";
   let selectedOrtex = (localStorage.getItem("squeeze_ortex") || "off").toLowerCase();
   if (!["on","off"].includes(selectedOrtex)) selectedOrtex = "off";
+
+  // Beginner mode
+  let beginner = (localStorage.getItem("beginner_mode") || "off").toLowerCase();
+  if(!["on","off"].includes(beginner)) beginner = "off";
+
+  function paintBeginner(){
+    const b = el("btnBeginner");
+    if(!b) return;
+    b.classList.remove("on","off");
+    b.classList.add(beginner === "on" ? "on" : "off");
+    b.textContent = `Beginner: ${beginner.toUpperCase()}`;
+    document.body.classList.toggle("beginnerOn", beginner === "on");
+  }
+
+  el("btnBeginner").addEventListener("click", () => {
+    beginner = (beginner === "on") ? "off" : "on";
+    try{ localStorage.setItem("beginner_mode", beginner); }catch(e){}
+    paintBeginner();
+  });
+
+  // Dropdown behavior
+  function toggleDrop(id){
+    const d = el(id);
+    if(!d) return;
+    const open = d.classList.contains("open");
+    ["dropHelp","dropGlossary"].forEach(x => el(x)?.classList.remove("open"));
+    if(!open) d.classList.add("open");
+  }
+
+  el("btnHelp").addEventListener("click", (e)=>{ e.stopPropagation(); toggleDrop("dropHelp"); });
+  el("btnGlossary").addEventListener("click", (e)=>{ e.stopPropagation(); toggleDrop("dropGlossary"); });
+  document.addEventListener("click", () => {
+    ["dropHelp","dropGlossary"].forEach(x => el(x)?.classList.remove("open"));
+  });
 
   let showing = "SQUEEZE";
   let scanId = null;
@@ -615,21 +688,13 @@
     btn.classList.add(v === "on" ? "on" : "off");
   }
 
-  // ✅ FIXED: ONLY ONE setOrtex() FUNCTION (your old file had two glued together)
   function setOrtex(v){
     selectedOrtex = (v || "off").toLowerCase();
     if (!["on","off"].includes(selectedOrtex)) selectedOrtex = "off";
-
-    try{
-      localStorage.setItem("squeeze_ortex", selectedOrtex);
-    }catch(e){
-      // ignore storage errors
-    }
-
+    try{ localStorage.setItem("squeeze_ortex", selectedOrtex); }catch(e){}
     paintOrtexUI(selectedOrtex);
   }
 
-  // ✅ FIXED: click handler still works + updates pill instantly
   el("btnOrtex").addEventListener("click", () => {
     setOrtex(selectedOrtex === "on" ? "off" : "on");
     el("pillOrtex").innerHTML = `ORTEX: <b>${selectedOrtex.toUpperCase()}</b>`;
@@ -717,14 +782,21 @@
 
         const planBox = el("planBox");
         planBox.style.display = "block";
+
+        const entry = fmtNum(r.trigger, 4);
+        const stop  = fmtNum(r.stop, 4);
+        const riskLine = (r.trigger != null && r.stop != null)
+          ? `Risk: ${(Number(r.trigger)-Number(r.stop)).toFixed(4)} per share`
+          : "";
+
+        const isBeginner = document.body.classList.contains("beginnerOn");
+
         planBox.textContent =
           `${r.ticker} — ${r.subtype}\n\n` +
-          (r.plan || "(no plan)") + "\n\n" +
-          `Quick stats:\n` +
-          `• Trigger: ${fmtNum(r.trigger,4)} | Stop: ${fmtNum(r.stop,4)}\n` +
-          `• Range: ${fmtPct(r.range_pct)} | Hold: ${fmtPct(r.hold_pct)} | RelVol: ${fmtNum(r.rel_vol,2)}\n` +
-          `• SI%: ${fmtNum(r.si_pct_ff,1)} | CTB: ${fmtNum(r.ctb,1)} | Avail: ${fmtInt(r.avail)}\n` +
-          `• $Vol: ${fmtInt(r.dollar_vol)}`;
+          `ENTRY: ${entry}\n` +
+          `STOP:  ${stop}\n` +
+          `TARGET: Use 2R (about 2× your risk)\n` +
+          (isBeginner ? `\nBeginner rule: If STOP hits, you exit. No exceptions.\n${riskLine}` : "");
       });
 
       body.appendChild(tr);
@@ -829,7 +901,6 @@
 
     scanId = data.scan_id;
 
-    el("pillMode").innerHTML = `Mode: <b>${(data.mode || mode)}</b>`;
     el("pillWindow").innerHTML = `Window: <b>${(data.window || "—")}</b>`;
     el("pillOrtex").innerHTML = `ORTEX: <b>${(data.ortex_effective || "OFF")}</b>`;
 
@@ -847,7 +918,6 @@
     es.addEventListener("meta", (ev) => {
       let m = {};
       try{ m = JSON.parse(ev.data); }catch(e){ return; }
-      if(m.mode) el("pillMode").innerHTML = `Mode: <b>${m.mode}</b>`;
       if(m.window) el("pillWindow").innerHTML = `Window: <b>${m.window}</b>`;
       if(m.ortex_effective) el("pillOrtex").innerHTML = `ORTEX: <b>${m.ortex_effective}</b>`;
       if(typeof m.scanned_count === "number"){
@@ -894,7 +964,7 @@
     el("logStatus").textContent = "Cleared.";
   });
 
-  /* ---------- Notebook: Past trades + summary + chart ---------- */
+  /* ---------- Notebook ---------- */
   function setText(id, txt){ const n = el(id); if(n) n.textContent = txt; }
 
   function drawEquityCurve(points){
@@ -987,7 +1057,7 @@
   }
 
   async function loadNotebook(){
-    const view = el("noteView").value;
+    const view = el("noteView") ? el("noteView").value : (el("noteView")?.value || "all");
 
     let resp, data;
     try{
@@ -1175,6 +1245,7 @@
 
   // Boot
   setOrtex(selectedOrtex);
+  paintBeginner();
   updateMetaLines();
   checkApi().catch(()=>{});
   loadNotebook().catch(()=>{});
