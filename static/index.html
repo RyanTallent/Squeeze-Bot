@@ -217,7 +217,7 @@
     .drop ul{margin:8px 0 0 0;padding-left:18px}
     .drop li{margin:6px 0;color:rgba(233,238,244,.92);font-size:12.5px}
 
-    /* Tiny ? tooltip */
+    /* ? icon */
     .qmark{
       display:inline-flex;
       align-items:center;
@@ -234,12 +234,16 @@
       position:relative;
       top:-1px;
     }
-    .qmark[data-tip]:hover::after{
-      content: attr(data-tip);
-      position:absolute;
-      left:0;
-      top:22px;
-      width:max-content;
+
+    /* Beginner-only blocks */
+    .beginnerOnly{display:none}
+    .beginnerOn .beginnerOnly{display:block}
+
+    /* JS tooltip (won’t get clipped by overflow containers) */
+    #tip{
+      position:fixed;
+      z-index:9999;
+      display:none;
       max-width:320px;
       padding:8px 10px;
       border-radius:10px;
@@ -249,12 +253,8 @@
       box-shadow:var(--shadow2);
       font-size:12px;
       line-height:1.35;
-      white-space:normal;
-      z-index:30;
+      pointer-events:none;
     }
-
-    .beginnerOnly{display:none}
-    .beginnerOn .beginnerOnly{display:block}
 
     .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
     @media (max-width: 980px){.grid{grid-template-columns:1fr}}
@@ -482,18 +482,33 @@
             <h4>Quick help</h4>
             <p><b>How to use:</b> Click <b>Scan</b> → click a row → follow <b>ENTRY / STOP / TARGET</b> → use <b>Notebook</b> to track.</p>
             <p><b>Rule:</b> If STOP hits, exit. Don’t “hope”.</p>
+
+            <div class="beginnerOnly">
+              <p><b>Beginner checklist:</b></p>
+              <ul>
+                <li>Start with Conf 7+ only.</li>
+                <li>Never average down.</li>
+                <li>Size small so a STOP loss is “small”.</li>
+              </ul>
+            </div>
           </div>
         </div>
 
         <div class="dropwrap">
           <button class="tbtn" id="btnGlossary">Glossary</button>
           <div class="drop" id="dropGlossary">
-            <h4>Simple definitions</h4>
+            <h4>Signals</h4>
             <ul>
-              <li><b>Conf:</b> setup quality score (higher is better, not guaranteed).</li>
-              <li><b>Move:</b> % change vs yesterday close.</li>
-              <li><b>SFloat:</b> shares that can trade (smaller can move faster).</li>
-              <li><b>ORTEX:</b> adds short interest + borrow cost to confirm squeezes.</li>
+              <li><b>Confidence (Conf):</b> Setup quality score. Higher is better, not guaranteed.</li>
+              <li><b>Move (%):</b> Percent change vs yesterday close.</li>
+              <li><b>Share Float (SFloat):</b> Shares available to trade. Smaller float can move faster.</li>
+              <li><b>VWAP:</b> Volume-Weighted Average Price. A line traders watch for support/resistance.</li>
+            </ul>
+
+            <h4 style="margin-top:12px">Data sources</h4>
+            <ul>
+              <li><b>Polygon:</b> Live market data (price/volume/candles). Powers the scan results.</li>
+              <li><b>ORTEX:</b> Short interest + borrow data (SI%, borrow cost, availability). Helps confirm squeeze pressure.</li>
             </ul>
           </div>
         </div>
@@ -624,8 +639,45 @@
     </div>
   </div>
 
+  <!-- Global tooltip -->
+  <div id="tip"></div>
+
 <script>
   const el = (id) => document.getElementById(id);
+
+  // JS tooltip (not clipped by overflow)
+  const tip = el("tip");
+
+  function showTip(text, x, y){
+    if(!tip) return;
+    tip.textContent = text;
+    tip.style.display = "block";
+    const pad = 12;
+    const maxX = window.innerWidth - 340;
+    const maxY = window.innerHeight - 120;
+    tip.style.left = Math.min(x + pad, maxX) + "px";
+    tip.style.top  = Math.min(y + pad, maxY) + "px";
+  }
+  function hideTip(){
+    if(!tip) return;
+    tip.style.display = "none";
+  }
+
+  function bindQMarks(){
+    document.querySelectorAll(".qmark[data-tip]").forEach(q => {
+      q.addEventListener("mouseenter", (e) => showTip(q.getAttribute("data-tip") || "", e.clientX, e.clientY));
+      q.addEventListener("mouseleave", hideTip);
+      q.addEventListener("click", (e) => { e.stopPropagation(); showTip(q.getAttribute("data-tip") || "", e.clientX, e.clientY); });
+    });
+  }
+
+  document.addEventListener("mousemove", (e) => {
+    if(tip && tip.style.display === "block"){
+      showTip(tip.textContent, e.clientX, e.clientY);
+    }
+  });
+  document.addEventListener("scroll", hideTip, true);
+  window.addEventListener("blur", hideTip);
 
   let selectedMode = "auto";
   let selectedOrtex = (localStorage.getItem("squeeze_ortex") || "off").toLowerCase();
@@ -663,6 +715,7 @@
   el("btnGlossary").addEventListener("click", (e)=>{ e.stopPropagation(); toggleDrop("dropGlossary"); });
   document.addEventListener("click", () => {
     ["dropHelp","dropGlossary"].forEach(x => el(x)?.classList.remove("open"));
+    hideTip();
   });
 
   let showing = "SQUEEZE";
@@ -783,20 +836,23 @@
         const planBox = el("planBox");
         planBox.style.display = "block";
 
+        const isBeginner = document.body.classList.contains("beginnerOn");
         const entry = fmtNum(r.trigger, 4);
         const stop  = fmtNum(r.stop, 4);
-        const riskLine = (r.trigger != null && r.stop != null)
-          ? `Risk: ${(Number(r.trigger)-Number(r.stop)).toFixed(4)} per share`
-          : "";
-
-        const isBeginner = document.body.classList.contains("beginnerOn");
+        const risk = (r.trigger != null && r.stop != null) ? (Number(r.trigger) - Number(r.stop)) : null;
 
         planBox.textContent =
           `${r.ticker} — ${r.subtype}\n\n` +
-          `ENTRY: ${entry}\n` +
-          `STOP:  ${stop}\n` +
-          `TARGET: Use 2R (about 2× your risk)\n` +
-          (isBeginner ? `\nBeginner rule: If STOP hits, you exit. No exceptions.\n${riskLine}` : "");
+          (isBeginner
+            ? `ENTRY (buy trigger): ${entry}\n` +
+              `STOP (exit if wrong): ${stop}\n` +
+              `TARGET (take profit): 2R (about 2× your risk)\n` +
+              `\nRules:\n` +
+              `• If price hits STOP → sell. No exceptions.\n` +
+              `• Don’t buy if you don’t understand the setup.\n` +
+              `• Never average down.\n` +
+              (risk != null ? `• Your risk is about ${risk.toFixed(4)} per share.\n` : "")
+            : `ENTRY: ${entry}\nSTOP:  ${stop}\nTARGET: Use 2R (about 2× your risk)`);
       });
 
       body.appendChild(tr);
@@ -1057,7 +1113,7 @@
   }
 
   async function loadNotebook(){
-    const view = el("noteView") ? el("noteView").value : (el("noteView")?.value || "all");
+    const view = el("noteView") ? el("noteView").value : "all";
 
     let resp, data;
     try{
@@ -1246,6 +1302,7 @@
   // Boot
   setOrtex(selectedOrtex);
   paintBeginner();
+  bindQMarks();
   updateMetaLines();
   checkApi().catch(()=>{});
   loadNotebook().catch(()=>{});
