@@ -183,6 +183,7 @@
       cursor:pointer;
       font-weight:900;
       font-family:'Playfair Display', serif;
+      white-space:nowrap;
     }
     .tbtn:hover{filter:brightness(1.05)}
     .tbtn.on{
@@ -202,7 +203,7 @@
       top:44px;
       left:0;
       min-width:320px;
-      max-width:520px;
+      max-width:560px;
       z-index:20;
       display:none;
       padding:12px;
@@ -216,6 +217,28 @@
     .drop p{margin:6px 0;color:rgba(233,238,244,.92);font-size:12.5px;line-height:1.5}
     .drop ul{margin:8px 0 0 0;padding-left:18px}
     .drop li{margin:6px 0;color:rgba(233,238,244,.92);font-size:12.5px}
+
+    /* setups cards */
+    .setupCard{
+      border:1px solid rgba(29,51,74,.75);
+      background:rgba(14,32,50,.45);
+      border-radius:12px;
+      padding:10px;
+      margin-top:10px;
+      display:flex;
+      gap:10px;
+      align-items:flex-start;
+    }
+    .setupSvg{
+      width:110px;
+      min-width:110px;
+      border:1px solid rgba(29,51,74,.75);
+      background:rgba(7,16,25,.55);
+      border-radius:10px;
+      padding:6px;
+    }
+    .setupText b{color:rgba(255,244,214,.95)}
+    .setupText{font-size:12.5px;line-height:1.45;color:rgba(233,238,244,.92)}
 
     /* ? icon */
     .qmark{
@@ -239,7 +262,7 @@
     .beginnerOnly{display:none}
     .beginnerOn .beginnerOnly{display:block}
 
-    /* JS tooltip (won’t get clipped by overflow containers) */
+    /* JS tooltip */
     #tip{
       position:fixed;
       z-index:9999;
@@ -254,6 +277,43 @@
       font-size:12px;
       line-height:1.35;
       pointer-events:none;
+    }
+
+    /* Guided banner (beginner) */
+    .guide{
+      margin-top:10px;
+      padding:10px 12px;
+      border-radius:12px;
+      border:1px solid rgba(176,139,46,.35);
+      background:rgba(176,139,46,.08);
+      color:rgba(255,244,214,.92);
+      font-size:12.5px;
+      font-weight:900;
+    }
+
+    /* badges */
+    .badge{
+      display:inline-block;
+      margin-left:8px;
+      padding:2px 8px;
+      border-radius:999px;
+      font-size:11px;
+      font-weight:900;
+      border:1px solid rgba(29,51,74,.85);
+      background:rgba(14,32,50,.55);
+      color:rgba(233,238,244,.92);
+      vertical-align:middle;
+      white-space:nowrap;
+    }
+    .badge.ok{
+      border-color:rgba(42,174,106,.45);
+      background:rgba(42,174,106,.10);
+      color:rgba(205,255,229,.95);
+    }
+    .badge.adv{
+      border-color:rgba(209,96,96,.35);
+      background:rgba(209,96,96,.08);
+      color:rgba(255,210,210,.92);
     }
 
     .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
@@ -476,6 +536,8 @@
       <div class="toolgroup">
         <button class="tbtn off" id="btnBeginner">Beginner: OFF</button>
 
+        <button class="tbtn off beginnerOnly" id="btnShowAll">Show all: OFF</button>
+
         <div class="dropwrap">
           <button class="tbtn" id="btnHelp">Help</button>
           <div class="drop" id="dropHelp">
@@ -490,6 +552,67 @@
                 <li>Never average down.</li>
                 <li>Size small so a STOP loss is “small”.</li>
               </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="dropwrap">
+          <button class="tbtn" id="btnSetups">Setups</button>
+          <div class="drop" id="dropSetups">
+            <h4>Setups (easy)</h4>
+
+            <div class="setupCard">
+              <div class="setupSvg">
+                <svg viewBox="0 0 120 70" width="100%" height="70" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M10 50 L35 30 L55 18 L72 26 L88 38 L110 22" fill="none" stroke="rgba(255,244,214,.85)" stroke-width="2" stroke-linecap="round"/>
+                  <line x1="10" y1="34" x2="110" y2="34" stroke="rgba(42,174,106,.55)" stroke-width="2" stroke-dasharray="4 4"/>
+                  <circle cx="88" cy="38" r="3" fill="rgba(255,232,170,.95)"/>
+                </svg>
+              </div>
+              <div class="setupText">
+                <b>VWAP Pullback</b><br/>
+                Price runs up, then pulls back near VWAP (the dotted line) and holds. Entry is when it starts going back up.
+              </div>
+            </div>
+
+            <div class="setupCard">
+              <div class="setupSvg">
+                <svg viewBox="0 0 120 70" width="100%" height="70" xmlns="http://www.w3.org/2000/svg">
+                  <line x1="10" y1="35" x2="110" y2="35" stroke="rgba(255,232,170,.55)" stroke-width="2"/>
+                  <path d="M10 50 L35 40 L55 35 L75 20 L92 26 L110 22" fill="none" stroke="rgba(255,244,214,.85)" stroke-width="2" stroke-linecap="round"/>
+                  <circle cx="55" cy="35" r="3" fill="rgba(255,232,170,.95)"/>
+                </svg>
+              </div>
+              <div class="setupText">
+                <b>Break → Pullback (Retest)</b><br/>
+                Price breaks above a key level, then comes back to “retest” it. Entry is when the retest holds and it turns up.
+              </div>
+            </div>
+
+            <div class="setupCard">
+              <div class="setupSvg">
+                <svg viewBox="0 0 120 70" width="100%" height="70" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M10 52 L30 44 L50 38 L70 28 L90 18 L110 10" fill="none" stroke="rgba(255,244,214,.85)" stroke-width="2" stroke-linecap="round"/>
+                  <path d="M102 12 L110 10 L108 18" fill="none" stroke="rgba(42,174,106,.85)" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+              </div>
+              <div class="setupText">
+                <b>Momentum Breakout</b><br/>
+                Strong uptrend making new highs. Entry is on the break above the recent high (with volume).
+              </div>
+            </div>
+
+            <div class="setupCard">
+              <div class="setupSvg">
+                <svg viewBox="0 0 120 70" width="100%" height="70" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M10 48 L32 28 L52 16 L70 22 L88 30 L110 18" fill="none" stroke="rgba(255,244,214,.85)" stroke-width="2" stroke-linecap="round"/>
+                  <circle cx="70" cy="22" r="3" fill="rgba(255,232,170,.95)"/>
+                </svg>
+              </div>
+              <div class="setupText">
+                <b>Momentum Pullback</b><br/>
+                Price is trending up, then cools off (small pullback). Entry is when the pullback stops and price turns up again.
+              </div>
             </div>
           </div>
         </div>
@@ -533,6 +656,10 @@
       </div>
     </div>
 
+    <div class="guide beginnerOnly">
+      1) Scan → 2) Click a row → 3) Set Risk $ → 4) Follow STOP → 5) Log trade
+    </div>
+
     <div class="micro beginnerOnly" style="margin-top:10px">
       Beginner tip: Only take trades where you understand the plan. If you can’t explain it, skip it.
     </div>
@@ -557,28 +684,28 @@
           <table>
             <thead>
               <tr>
-                <th>Ticker</th>
+                <th><span id="thTicker">Ticker</span></th>
                 <th>
-                  Conf
+                  <span id="thConf">Conf</span>
                   <span class="qmark" data-tip="Higher = better setup ranking (not guaranteed).">?</span>
                 </th>
                 <th>
-                  Setup
+                  <span id="thSetup">Setup</span>
                   <span class="qmark" data-tip="The pattern it resembles (VWAP pullback, breakout, etc.).">?</span>
                 </th>
                 <th class="right">
-                  Price
+                  <span id="thPrice">Price</span>
                   <span class="qmark" data-tip="Last price from the scan.">?</span>
                 </th>
                 <th class="right">
-                  Move
+                  <span id="thMove">Move</span>
                   <span class="qmark" data-tip="% vs yesterday close.">?</span>
                 </th>
                 <th class="right">
-                  SFloat
+                  <span id="thFloat">SFloat</span>
                   <span class="qmark" data-tip="Shares available to trade. Smaller float can move faster.">?</span>
                 </th>
-                <th class="right">Add</th>
+                <th class="right"><span id="thAdd">Add</span></th>
               </tr>
             </thead>
             <tbody id="resultsBody"></tbody>
@@ -645,9 +772,8 @@
 <script>
   const el = (id) => document.getElementById(id);
 
-  // JS tooltip (not clipped by overflow)
+  // Tooltip (not clipped by overflow)
   const tip = el("tip");
-
   function showTip(text, x, y){
     if(!tip) return;
     tip.textContent = text;
@@ -658,11 +784,7 @@
     tip.style.left = Math.min(x + pad, maxX) + "px";
     tip.style.top  = Math.min(y + pad, maxY) + "px";
   }
-  function hideTip(){
-    if(!tip) return;
-    tip.style.display = "none";
-  }
-
+  function hideTip(){ if(tip) tip.style.display = "none"; }
   function bindQMarks(){
     document.querySelectorAll(".qmark[data-tip]").forEach(q => {
       q.addEventListener("mouseenter", (e) => showTip(q.getAttribute("data-tip") || "", e.clientX, e.clientY));
@@ -670,11 +792,8 @@
       q.addEventListener("click", (e) => { e.stopPropagation(); showTip(q.getAttribute("data-tip") || "", e.clientX, e.clientY); });
     });
   }
-
   document.addEventListener("mousemove", (e) => {
-    if(tip && tip.style.display === "block"){
-      showTip(tip.textContent, e.clientX, e.clientY);
-    }
+    if(tip && tip.style.display === "block"){ showTip(tip.textContent, e.clientX, e.clientY); }
   });
   document.addEventListener("scroll", hideTip, true);
   window.addEventListener("blur", hideTip);
@@ -687,36 +806,76 @@
   let beginner = (localStorage.getItem("beginner_mode") || "off").toLowerCase();
   if(!["on","off"].includes(beginner)) beginner = "off";
 
+  // Beginner: show all toggle (only matters when beginner is ON)
+  let showAll = (localStorage.getItem("beginner_show_all") || "off").toLowerCase();
+  if(!["on","off"].includes(showAll)) showAll = "off";
+
+  function isBeginnerOn(){
+    return document.body.classList.contains("beginnerOn");
+  }
+
   function paintBeginner(){
     const b = el("btnBeginner");
-    if(!b) return;
-    b.classList.remove("on","off");
-    b.classList.add(beginner === "on" ? "on" : "off");
-    b.textContent = `Beginner: ${beginner.toUpperCase()}`;
+    if(b){
+      b.classList.remove("on","off");
+      b.classList.add(beginner === "on" ? "on" : "off");
+      b.textContent = `Beginner: ${beginner.toUpperCase()}`;
+    }
     document.body.classList.toggle("beginnerOn", beginner === "on");
+
+    // if beginner off, force showAll off UI (but keep saved value)
+    paintShowAll();
+    paintHeaders();
+  }
+
+  function paintShowAll(){
+    const s = el("btnShowAll");
+    if(!s) return;
+    s.classList.remove("on","off");
+    s.classList.add(showAll === "on" ? "on" : "off");
+    s.textContent = `Show all: ${showAll.toUpperCase()}`;
+  }
+
+  function paintHeaders(){
+    const on = isBeginnerOn();
+    el("thConf").textContent  = on ? "Conf (1–10)" : "Conf";
+    el("thSetup").textContent = on ? "Setup (pattern)" : "Setup";
+    el("thMove").textContent  = on ? "Move (% today)" : "Move";
+    el("thFloat").textContent = on ? "Float (shares)" : "SFloat";
+    el("thAdd").textContent   = on ? "Trade" : "Add";
   }
 
   el("btnBeginner").addEventListener("click", () => {
     beginner = (beginner === "on") ? "off" : "on";
     try{ localStorage.setItem("beginner_mode", beginner); }catch(e){}
     paintBeginner();
+    renderResults();
+  });
+
+  el("btnShowAll").addEventListener("click", (e) => {
+    e.stopPropagation();
+    showAll = (showAll === "on") ? "off" : "on";
+    try{ localStorage.setItem("beginner_show_all", showAll); }catch(_e){}
+    paintShowAll();
+    renderResults();
   });
 
   // Dropdown behavior
+  function closeAllDrops(){
+    ["dropHelp","dropGlossary","dropSetups"].forEach(x => el(x)?.classList.remove("open"));
+  }
   function toggleDrop(id){
     const d = el(id);
     if(!d) return;
     const open = d.classList.contains("open");
-    ["dropHelp","dropGlossary"].forEach(x => el(x)?.classList.remove("open"));
+    closeAllDrops();
     if(!open) d.classList.add("open");
   }
 
   el("btnHelp").addEventListener("click", (e)=>{ e.stopPropagation(); toggleDrop("dropHelp"); });
   el("btnGlossary").addEventListener("click", (e)=>{ e.stopPropagation(); toggleDrop("dropGlossary"); });
-  document.addEventListener("click", () => {
-    ["dropHelp","dropGlossary"].forEach(x => el(x)?.classList.remove("open"));
-    hideTip();
-  });
+  el("btnSetups").addEventListener("click", (e)=>{ e.stopPropagation(); toggleDrop("dropSetups"); });
+  document.addEventListener("click", () => { closeAllDrops(); hideTip(); });
 
   let showing = "SQUEEZE";
   let scanId = null;
@@ -809,10 +968,22 @@
     return "";
   }
 
+  function beginnerOk(r){
+    return Number(r.confidence || 0) >= 7;
+  }
+
   function renderResults(){
     const body = el("resultsBody");
     body.innerHTML = "";
-    const list = (results[showing] || []).slice(0,5);
+
+    const on = isBeginnerOn();
+
+    // Apply beginner filter (Conf >= 7) unless "Show all" is ON
+    let list = (results[showing] || []).slice();
+    if(on && showAll !== "on"){
+      list = list.filter(beginnerOk);
+    }
+    list = list.slice(0,5);
 
     for(const r of list){
       const tr = document.createElement("tr");
@@ -820,14 +991,23 @@
       const goldClass = isGoldPick(r) ? "gold" : "";
       const mvClass = moveClass(r.move_pct);
 
+      const badge = (() => {
+        if(!on) return "";
+        if(beginnerOk(r)) return `<span class="badge ok">Beginner OK</span>`;
+        return `<span class="badge adv">Advanced</span>`;
+      })();
+
       tr.innerHTML = `
-        <td class="tickerCell"><b class="${goldClass}">${r.ticker || ""}</b></td>
+        <td class="tickerCell">
+          <b class="${goldClass}">${r.ticker || ""}</b>
+          ${badge}
+        </td>
         <td class="${goldClass}">${r.confidence ?? ""}</td>
         <td>${r.subtype || ""}</td>
         <td class="right">${fmtNum(r.close,2)}</td>
         <td class="right ${mvClass}">${fmtPct(r.move_pct)}</td>
         <td class="right">${fmtInt(r.float_shares)}</td>
-        <td class="right"><button class="addbtn" data-t="${r.ticker}">Add</button></td>
+        <td class="right"><button class="addbtn" data-t="${r.ticker}">${on ? "Trade" : "Add"}</button></td>
       `;
 
       tr.addEventListener("click", (e) => {
@@ -836,22 +1016,22 @@
         const planBox = el("planBox");
         planBox.style.display = "block";
 
-        const isBeginner = document.body.classList.contains("beginnerOn");
         const entry = fmtNum(r.trigger, 4);
         const stop  = fmtNum(r.stop, 4);
         const risk = (r.trigger != null && r.stop != null) ? (Number(r.trigger) - Number(r.stop)) : null;
 
         planBox.textContent =
           `${r.ticker} — ${r.subtype}\n\n` +
-          (isBeginner
+          (on
             ? `ENTRY (buy trigger): ${entry}\n` +
               `STOP (exit if wrong): ${stop}\n` +
               `TARGET (take profit): 2R (about 2× your risk)\n` +
               `\nRules:\n` +
               `• If price hits STOP → sell. No exceptions.\n` +
-              `• Don’t buy if you don’t understand the setup.\n` +
               `• Never average down.\n` +
-              (risk != null ? `• Your risk is about ${risk.toFixed(4)} per share.\n` : "")
+              `• Don’t buy if you don’t understand the setup.\n` +
+              (risk != null ? `• Your risk is about ${risk.toFixed(4)} per share.\n` : "") +
+              `\nNext: set Risk $ → we auto-calc shares → then Trade.\n`
             : `ENTRY: ${entry}\nSTOP:  ${stop}\nTARGET: Use 2R (about 2× your risk)`);
       });
 
@@ -865,12 +1045,95 @@
         const row = (results.SQUEEZE.concat(results.MOMENTUM)).find(x => x.ticker === tkr);
         if(!row) return;
 
-        const entry = prompt(`Entry price for ${tkr}?`, row.close ? String(row.close) : "");
-        if(entry === null) return;
-        const shares = prompt(`Shares for ${tkr}?`, "100");
-        if(shares === null) return;
+        const on = isBeginnerOn();
 
-        await createTradeFromRow(row, entry, shares);
+        // Default entry: trigger if available else close
+        const defEntry = (row.trigger != null) ? String(row.trigger) : (row.close != null ? String(row.close) : "");
+
+        const entryStr = prompt(`Entry price for ${tkr}?`, defEntry);
+        if(entryStr === null) return;
+
+        const entryPx = Number(entryStr);
+        if(!Number.isFinite(entryPx) || entryPx <= 0){
+          alert("Entry must be a valid number.");
+          return;
+        }
+
+        // Beginner: risk-based sizing
+        if(on){
+          const stopPx = Number(row.stop);
+          if(!Number.isFinite(stopPx)){
+            alert("This trade has no STOP value. Skip it or turn Beginner off.");
+            return;
+          }
+
+          const riskPerShare = entryPx - stopPx;
+
+          // Guardrail: stop must be below entry for longs
+          if(!(riskPerShare > 0)){
+            alert("Beginner rule: STOP must be below ENTRY (for long trades). Skip this one or adjust entry.");
+            return;
+          }
+
+          const riskStr = prompt("Risk $ (max you’re okay losing) — example: 25", "25");
+          if(riskStr === null) return;
+          const riskDollars = Number(riskStr);
+
+          // Guardrail: risk$ must be dollars and > 0
+          if(!Number.isFinite(riskDollars) || riskDollars <= 0){
+            alert("Risk $ must be a positive dollar amount (example: 25).");
+            return;
+          }
+
+          let sharesCalc = Math.floor(riskDollars / riskPerShare);
+
+          // Guardrail: crazy shares
+          if(sharesCalc > 10000){
+            const ok = confirm(`This suggests ${sharesCalc.toLocaleString()} shares (oversized). Lower Risk $ or Cancel to stop.`);
+            if(!ok) return;
+          }
+
+          if(sharesCalc < 1){
+            alert("Risk $ is too small for this stop distance. Either raise Risk $ or skip this trade.");
+            return;
+          }
+
+          const ok = confirm(
+            `Beginner sizing:\n` +
+            `ENTRY: ${entryPx}\nSTOP: ${stopPx}\nRisk/share: ${riskPerShare.toFixed(4)}\n` +
+            `Risk $: ${riskDollars}\n\n` +
+            `Auto shares: ${sharesCalc.toLocaleString()}\n\n` +
+            `Press OK to add, Cancel to edit shares manually.`
+          );
+
+          let sharesFinal = sharesCalc;
+
+          if(!ok){
+            const manual = prompt("Shares (manual override)?", String(sharesCalc));
+            if(manual === null) return;
+            sharesFinal = Number(manual);
+            if(!Number.isFinite(sharesFinal) || sharesFinal <= 0){
+              alert("Shares must be a positive number.");
+              return;
+            }
+          }
+
+          await createTradeFromRow(row, entryPx, sharesFinal);
+          await loadNotebook();
+          return;
+        }
+
+        // Non-beginner: ask shares normally
+        const sharesStr = prompt(`Shares for ${tkr}?`, "100");
+        if(sharesStr === null) return;
+
+        const shares = Number(sharesStr);
+        if(!Number.isFinite(shares) || shares <= 0){
+          alert("Shares must be a positive number.");
+          return;
+        }
+
+        await createTradeFromRow(row, entryPx, shares);
         await loadNotebook();
       });
     });
@@ -1303,7 +1566,9 @@
   setOrtex(selectedOrtex);
   paintBeginner();
   bindQMarks();
+  paintHeaders();
   updateMetaLines();
+  paintShowAll();
   checkApi().catch(()=>{});
   loadNotebook().catch(()=>{});
 </script>
