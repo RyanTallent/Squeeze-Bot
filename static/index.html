@@ -856,6 +856,37 @@
   document.addEventListener("scroll", hideTip, true);
   window.addEventListener("blur", hideTip);
 
+
+function fmtMoney(x){
+  if(x === null || x === undefined) return "—";
+  const n = Number(x);
+  if(!Number.isFinite(n)) return "—";
+  const sign = n >= 0 ? "+" : "";
+  return sign + n.toFixed(2);
+}
+
+function paintNotebookScore(rows){
+  // "rows" is the trades list from /api/trades
+  const trades = rows || [];
+  const closed = trades.filter(t => t.exit_price != null && t.pnl_dollars != null);
+
+  // Trades count
+  el("nbTrades").innerHTML = `Trades: <b>${trades.length.toLocaleString()}</b>`;
+
+  if(closed.length === 0){
+    el("nbWR").innerHTML = `Win: <b>—</b>`;
+    el("nbPL").innerHTML = `P/L: <b>—</b>`;
+    return;
+  }
+
+  const wins = closed.filter(t => Number(t.pnl_dollars) > 0).length;
+  const wr = (wins / closed.length) * 100;
+  const total = closed.reduce((a,t)=>a+Number(t.pnl_dollars),0);
+
+  el("nbWR").innerHTML = `Win: <b>${wr.toFixed(0)}%</b>`;
+  el("nbPL").innerHTML = `P/L: <b>${fmtMoney(total)}</b>`;
+}
+  
   // ===== NEW: Scoreboard fetch + paint =====
   function fmtPct2(x){
     if(x === null || x === undefined) return "—";
@@ -1569,6 +1600,7 @@
     });
 
     renderNotebookSummary(rows);
+    paintNotebookScore(rows);
   }
 
   async function createTradeFromRow(row, entryPrice, shares){
