@@ -1,3 +1,4 @@
+<!-- ===== FILE: static/index.html (FULL REPLACEMENT) ===== -->
 <!doctype html>
 <html>
 <head>
@@ -173,6 +174,39 @@
     }
     .toolgroup{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
     .spacer{flex:1}
+
+    /* NEW: scoreboard */
+    .scoreboard{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      flex-wrap:wrap;
+      padding:6px 8px;
+      border-radius:12px;
+      border:1px solid rgba(29,51,74,.85);
+      background:rgba(14,32,50,.35);
+    }
+    .scoreTitle{
+      font-size:12px;
+      color:rgba(233,238,244,.75);
+      font-weight:900;
+      margin-right:4px;
+      letter-spacing:.2px;
+    }
+    .sbPill{
+      padding:6px 10px;
+      border-radius:999px;
+      border:1px solid rgba(29,51,74,.85);
+      background:rgba(14,32,50,.55);
+      color:rgba(233,238,244,.92);
+      font-size:12.5px;
+      font-weight:900;
+      white-space:nowrap;
+    }
+    .sbPill b{color:rgba(233,238,244,.95)}
+    .sbPill.win b{color:rgba(255,232,170,.95)} /* gold wins */
+    .sbPill.loss b{color:rgba(255,150,150,.92)}
+    .sbPill.muted{color:rgba(233,238,244,.70)}
 
     .tbtn{
       border:1px solid rgba(29,51,74,.85);
@@ -645,6 +679,16 @@
       <div class="spacer"></div>
 
       <div class="toolgroup">
+
+        <!-- NEW Scoreboard (top-right) -->
+        <div class="scoreboard" id="scoreboard">
+          <div class="scoreTitle">Scoreboard</div>
+          <div class="sbPill" id="sbHit">Hit: <b>—</b></div>
+          <div class="sbPill win" id="sbW">W: <b>—</b></div>
+          <div class="sbPill loss" id="sbL">L: <b>—</b></div>
+          <div class="sbPill muted" id="sbAvg">Avg Max Gain: <b>—</b></div>
+        </div>
+
         <select class="select" id="noteView">
           <option value="all">notebook: all</option>
           <option value="yesterday">notebook: yesterday</option>
@@ -798,6 +842,40 @@
   document.addEventListener("scroll", hideTip, true);
   window.addEventListener("blur", hideTip);
 
+  // ===== NEW: Scoreboard fetch + paint =====
+  function fmtPct2(x){
+    if(x === null || x === undefined) return "—";
+    const n = Number(x);
+    if(!Number.isFinite(n)) return "—";
+    return (n*100).toFixed(1) + "%";
+  }
+
+  async function loadScoreboard(){
+    try{
+      const r = await fetch("/api/scoreboard");
+      const j = await r.json();
+      if(!j || !j.ok){
+        el("sbHit").innerHTML = `Hit: <b>—</b>`;
+        el("sbW").innerHTML = `W: <b>—</b>`;
+        el("sbL").innerHTML = `L: <b>—</b>`;
+        el("sbAvg").innerHTML = `Avg Max Gain: <b>—</b>`;
+        return;
+      }
+
+      const wins = Number(j.wins || 0);
+      const losses = Number(j.losses || 0);
+      const wr = j.win_rate_triggered;
+      const avg = j.avg_max_gain_pct_triggered;
+
+      el("sbHit").innerHTML = `Hit: <b>${wr == null ? "—" : fmtPct2(wr)}</b>`;
+      el("sbW").innerHTML = `W: <b>${wins.toLocaleString()}</b>`;
+      el("sbL").innerHTML = `L: <b>${losses.toLocaleString()}</b>`;
+      el("sbAvg").innerHTML = `Avg Max Gain: <b>${avg == null ? "—" : fmtPct2(avg)}</b>`;
+    }catch(e){
+      // silent
+    }
+  }
+
   let selectedMode = "auto";
   let selectedOrtex = (localStorage.getItem("squeeze_ortex") || "off").toLowerCase();
   if (!["on","off"].includes(selectedOrtex)) selectedOrtex = "off";
@@ -823,7 +901,6 @@
     }
     document.body.classList.toggle("beginnerOn", beginner === "on");
 
-    // if beginner off, force showAll off UI (but keep saved value)
     paintShowAll();
     paintHeaders();
   }
@@ -1079,7 +1156,6 @@
           if(riskStr === null) return;
           const riskDollars = Number(riskStr);
 
-          // Guardrail: risk$ must be dollars and > 0
           if(!Number.isFinite(riskDollars) || riskDollars <= 0){
             alert("Risk $ must be a positive dollar amount (example: 25).");
             return;
@@ -1087,7 +1163,6 @@
 
           let sharesCalc = Math.floor(riskDollars / riskPerShare);
 
-          // Guardrail: crazy shares
           if(sharesCalc > 10000){
             const ok = confirm(`This suggests ${sharesCalc.toLocaleString()} shares (oversized). Lower Risk $ or Cancel to stop.`);
             if(!ok) return;
@@ -1266,11 +1341,15 @@
       renderResults();
     });
 
-    es.addEventListener("done", (ev) => {
+    es.addEventListener("done", async (ev) => {
       let j = {};
       try{ j = JSON.parse(ev.data); }catch(e){}
       el("logStatus").textContent = j.ok ? "Done." : "Done (error).";
       el("btnScan").disabled = false;
+
+      // NEW: refresh scoreboard after scan finishes (may have graded yesterday)
+      await loadScoreboard();
+
       setTimeout(() => { if(es){ try{ es.close(); }catch(e){} es=null; } }, 1200);
     });
   }
@@ -1571,6 +1650,7 @@
   paintShowAll();
   checkApi().catch(()=>{});
   loadNotebook().catch(()=>{});
+  loadScoreboard().catch(()=>{});
 </script>
 </body>
 </html>
