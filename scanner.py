@@ -11,9 +11,7 @@ from typing import Optional, Dict, Any, List, Tuple
 
 # ============================================================
 # ENGINE V2.4+ — RYAN FILTERS + VWAP PULLBACK LOGIC
-# Python 3.9-safe typing + REAL error logging (no silent fails)
-# Keeps: ORTEX toggle, market windows, tiered snapshot, deep analysis,
-# streams only final top 5, writes HTML report.
+# Python 3.9-safe typing + REAL error logging + reject breakdown
 # ============================================================
 
 TOP_N_PER_BUCKET = 5
@@ -40,7 +38,8 @@ REG_END_CT = (15, 0)
 AH_START_CT = (15, 0)
 AH_END_CT = (19, 0)
 
-MIN_ANALYSIS_MINUTES = 15
+# Longer window so filters make sense intraday
+MIN_ANALYSIS_MINUTES = 30  # was 15
 
 POLYGON_KEY = os.getenv("POLYGON_API_KEY")
 ORTEX_KEY = os.getenv("ORTEX_API_KEY")
@@ -52,14 +51,24 @@ OUT_DIR = Path("outputs")
 OUT_DIR.mkdir(exist_ok=True)
 
 # ============================================================
-# RYAN FILTERS (your rules)
+# RYAN FILTERS (tuned to actually produce candidates in 30-min windows)
 # ============================================================
-MAX_MARKET_CAP = 2_000_000_000  # 2B
-MAX_FLOAT_SHARES = 50_000_000   # 50M
-MIN_REL_VOL = 1.5
-MIN_WINDOW_VOL = 5_000_000     # 5M volume
-MIN_RANGE_PCT = 0.03           # hard floor 3%
-VWAP_NEAR_PCT = 0.02           # within 2% of VWAP
+MAX_MARKET_CAP = 2_000_000_000      # 2B
+MAX_FLOAT_SHARES = 100_000_000      # was 50M (too tight using shares-outstanding proxy)
+MIN_REL_VOL = 1.2                   # was 1.5
+MIN_WINDOW_VOL = 800_000            # was 5,000,000 (too high for short windows)
+MIN_RANGE_PCT = 0.015               # was 0.03 (3% in 15 min is too strict)
+VWAP_NEAR_PCT = 0.02
+
+# ============================================================
+# Reject stats (so you can see WHY stuff fails)
+# ============================================================
+REJECT_STATS: Dict[str, int] = {}
+
+
+def reject(reason: str) -> None:
+    REJECT_STATS[reason] = REJECT_STATS.get(reason, 0) + 1
+
 
 try:
     from zoneinfo import ZoneInfo  # py3.9+
@@ -123,7 +132,6 @@ def score_to_prob(score: float) -> float:
 # Market Window
 # ============================================================
 def current_market_window(dt: datetime) -> Tuple[str, datetime, datetime]:
-    # Weekends: use last weekday afterhours window
     if dt.weekday() >= 5:
         back = 1 if dt.weekday() == 5 else 2
         y = dt - timedelta(days=back)
@@ -147,28 +155,23 @@ def current_market_window(dt: datetime) -> Tuple[str, datetime, datetime]:
         candidate = now - timedelta(minutes=MIN_ANALYSIS_MINUTES)
         return candidate if candidate > session_start else session_start
 
-    # PREMARKET: last 15 minutes (clamped to 3:00 CT)
     if pm_start <= dt <= pm_end:
         w_start = last_n_minutes(pm_start, dt)
         return ("PREMARKET", w_start, dt)
 
-    # REGULAR: borrow last 15 minutes including PREMARKET for early scans
     if reg_start <= dt <= reg_end:
         w_start = dt - timedelta(minutes=MIN_ANALYSIS_MINUTES)
         if w_start < pm_start:
             w_start = pm_start
         return ("REGULAR", w_start, dt)
 
-    # AFTERHOURS: last 15 minutes (clamped to 3:00pm CT)
     if ah_start <= dt <= ah_end:
         w_start = last_n_minutes(ah_start, dt)
         return ("AFTERHOURS", w_start, dt)
 
-    # After afterhours close, return full AH window
     if dt > ah_end:
         return ("AFTERHOURS (LAST)", ah_start, ah_end)
 
-    # Before premarket: use last weekday afterhours window
     y = dt - timedelta(days=1)
     while y.weekday() >= 5:
         y -= timedelta(days=1)
@@ -179,10 +182,6 @@ def current_market_window(dt: datetime) -> Tuple[str, datetime, datetime]:
 
 
 def resolve_ortex_on(mode: str, ortex_request: str, dt: datetime) -> Tuple[bool, str]:
-    """
-    ORTEX is user-controlled.
-    If ORTEX_API_KEY exists and user requests ON -> ON.
-    """
     if not ORTEX_KEY:
         return (False, "OFF (no key)")
 
@@ -365,12 +364,6 @@ def calc_vwap(minute_bars: List[Dict[str, Any]]) -> Optional[float]:
 
 
 def vwap_pullback_score(close: float, vwap: Optional[float], high: float, low: float) -> float:
-    """
-    Approximate 'break then pullback to VWAP':
-    - price still strong (close in upper half of range)
-    - close near vwap (within ~2%)
-    - close above vwap (optional bonus)
-    """
     if vwap is None or close <= 0:
         return 0.0
 
@@ -440,7 +433,7 @@ def compute_rel_vol(window_vol: float, avg_daily_vol: Optional[float], window_mi
 
 
 # ============================================================
-# Deep analysis per ticker (Ryan filters)
+# Deep analysis per ticker (Ryan filters + reject stats)
 # ============================================================
 def analyze_ticker_window(
     ticker: str,
@@ -452,22 +445,33 @@ def analyze_ticker_window(
 ) -> Optional[Dict[str, Any]]:
     bars = get_minute_aggs(ticker, date_str, log_fn=log_fn)
     if not bars:
+        reject("no_minute_bars")
         return None
 
     start_utc = w_start.astimezone(timezone.utc)
     end_utc = w_end.astimezone(timezone.utc)
 
-    window = [b for b in bars if start_utc <= ms_to_utc(b["t"]) <= end_utc]
-    if len(window) < 10:
+    try:
+        window = [b for b in bars if start_utc <= ms_to_utc(b["t"]) <= end_utc]
+    except Exception:
+        reject("bad_minute_bar_shape")
         return None
 
-    o = float(window[0]["o"])
-    h = float(max(b["h"] for b in window))
-    l = float(min(b["l"] for b in window))
-    c = float(window[-1]["c"])
-    v = float(sum(b["v"] for b in window))
-    dollar_vol = v * c
+    if len(window) < 10:
+        reject("too_few_bars")
+        return None
 
+    try:
+        o = float(window[0]["o"])
+        h = float(max(b["h"] for b in window))
+        l = float(min(b["l"] for b in window))
+        c = float(window[-1]["c"])
+        v = float(sum(b["v"] for b in window))
+    except Exception:
+        reject("missing_ohlcv")
+        return None
+
+    dollar_vol = v * c
     rng = h - l
     range_pct = rng / max(l, 1e-9)
     hold_pct = (c - l) / max(rng, 1e-9)
@@ -477,10 +481,11 @@ def analyze_ticker_window(
     if prev_close and prev_close > 0:
         move_pct = (c - prev_close) / prev_close
 
-    # ---- Ryan hard filters ----
     if v < MIN_WINDOW_VOL:
+        reject("window_vol")
         return None
     if range_pct < MIN_RANGE_PCT:
+        reject("range_pct")
         return None
 
     daily = get_daily_aggs_20d(ticker, date_str, log_fn=log_fn)
@@ -491,12 +496,17 @@ def analyze_ticker_window(
     window_minutes = max(1, int((w_end - w_start).total_seconds() // 60))
     relv = compute_rel_vol(v, adv10, window_minutes)
 
-    if relv is None or relv < MIN_REL_VOL:
+    if relv is None:
+        reject("no_rel_vol")
+        return None
+    if relv < MIN_REL_VOL:
+        reject("rel_vol")
         return None
 
     ref = polygon_reference(ticker, log_fn=log_fn) or {}
     is_cs = (ref.get("type") == "CS" and ref.get("active") is True)
     if not is_cs:
+        reject("not_common_stock")
         return None
 
     float_shares = None
@@ -506,16 +516,22 @@ def analyze_ticker_window(
             float_shares = vv
             break
 
-    if float_shares is None or float_shares > MAX_FLOAT_SHARES:
+    if float_shares is None:
+        reject("no_float_proxy")
+        return None
+    if float_shares > MAX_FLOAT_SHARES:
+        reject("float_too_big")
         return None
 
     last_price = snap_meta.get("last_price") or c
     try:
         market_cap = float(last_price) * float(float_shares)
     except Exception:
-        market_cap = None
+        reject("no_market_cap")
+        return None
 
-    if market_cap is None or market_cap > MAX_MARKET_CAP:
+    if market_cap > MAX_MARKET_CAP:
+        reject("mktcap_too_big")
         return None
 
     vwap = calc_vwap(window)
@@ -741,7 +757,7 @@ th {{ text-align:left; color:#93a4bd; font-weight:700; }}
 <div class="card">
   <h1>Precipice Analytica</h1>
   <div class="muted">by Ryan Tallent • {meta.get("date")} • Window: {meta.get("window")} • Mode: {meta.get("mode")} • ORTEX: {meta.get("ortex")}</div>
-  <div class="muted">Filters: MktCap&lt;2B • Float&lt;50M • Vol&gt;5M • RelVol&gt;1.5 • Range&gt;3% • VWAP pullback bonus</div>
+  <div class="muted">Filters: MktCap&lt;2B • Float&lt;100M • Vol&gt;800K • RelVol&gt;1.2 • Range&gt;1.5% • VWAP pullback bonus</div>
 </div>
 <div class="card">
   <h2>SQUEEZE</h2>
@@ -763,6 +779,9 @@ th {{ text-align:left; color:#93a4bd; font-weight:700; }}
 # Main run_scan
 # ============================================================
 def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "off") -> Optional[str]:
+    # reset reject stats each run
+    REJECT_STATS.clear()
+
     mode2 = (mode or "day").lower().strip()
     if mode2 not in ("day", "night"):
         mode2 = "day"
@@ -783,7 +802,7 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "off") ->
         log_fn(f"Date: {date_str}")
         log_fn(f"Market window: {window} ({w_start.strftime('%H:%M')}–{w_end.strftime('%H:%M')} CT)")
         log_fn(f"ORTEX request: {str(ortex).upper()} | ORTEX mode: {ortex_label}")
-        log_fn("Ryan filters → MktCap<2B | Float<50M | Vol>5M | RelVol>1.5 | Range>3% | VWAP pullback bonus")
+        log_fn("Ryan filters → MktCap<2B | Float<100M | Vol>800K | RelVol>1.2 | Range>1.5% | VWAP pullback bonus")
 
     snap = get_snapshot_all_tickers(log_fn=log_fn)
     if log_fn:
@@ -860,6 +879,7 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "off") ->
     if not analyzed:
         if log_fn:
             log_fn("No tickers passed deep analysis.")
+            log_fn(f"Reject breakdown: {REJECT_STATS}")
         return None
 
     finalists: List[Dict[str, Any]] = []
