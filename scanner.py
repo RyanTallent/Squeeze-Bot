@@ -112,6 +112,7 @@ def score_to_prob(score: float) -> float:
 # Market Window
 # ============================================================
 def current_market_window(dt: datetime) -> tuple[str, datetime, datetime]:
+    # Weekends: use last weekday afterhours window (unchanged behavior)
     if dt.weekday() >= 5:
         back = 1 if dt.weekday() == 5 else 2
         y = dt - timedelta(days=back)
@@ -121,24 +122,44 @@ def current_market_window(dt: datetime) -> tuple[str, datetime, datetime]:
         return ("AFTERHOURS (LAST)", y_ah_start, y_ah_end)
 
     date_str = ct_date_str(dt)
+
     pm_start = ct_dt(date_str, PM_START_CT)
-    pm_end = ct_dt(date_str, PM_END_CT) + timedelta(seconds=59)
+    pm_end   = ct_dt(date_str, PM_END_CT) + timedelta(seconds=59)
 
     reg_start = ct_dt(date_str, REG_START_CT)
-    reg_end = ct_dt(date_str, REG_END_CT)
+    reg_end   = ct_dt(date_str, REG_END_CT)
 
     ah_start = ct_dt(date_str, AH_START_CT)
-    ah_end = ct_dt(date_str, AH_END_CT)
+    ah_end   = ct_dt(date_str, AH_END_CT)
 
+    # Helper: last N minutes, clamped to session start
+    def last_n_minutes(session_start: datetime, now: datetime) -> datetime:
+        candidate = now - timedelta(minutes=MIN_ANALYSIS_MINUTES)
+        return candidate if candidate > session_start else session_start
+
+    # PREMARKET: last 15 minutes (clamped to 3:00 CT)
     if pm_start <= dt <= pm_end:
-        return ("PREMARKET", pm_start, dt)
+        w_start = last_n_minutes(pm_start, dt)
+        return ("PREMARKET", w_start, dt)
+
+    # REGULAR: for first 15 minutes, borrow last 15 minutes including PREMARKET
+    # so 8:30 scans work. Clamp only to pm_start (3:00 CT), not reg_start.
     if reg_start <= dt <= reg_end:
-        return ("REGULAR", reg_start, dt)
+        w_start = dt - timedelta(minutes=MIN_ANALYSIS_MINUTES)
+        if w_start < pm_start:
+            w_start = pm_start
+        return ("REGULAR", w_start, dt)
+
+    # AFTERHOURS: last 15 minutes (clamped to 3:00pm CT)
     if ah_start <= dt <= ah_end:
-        return ("AFTERHOURS", ah_start, dt)
+        w_start = last_n_minutes(ah_start, dt)
+        return ("AFTERHOURS", w_start, dt)
+
+    # If we're after afterhours close, return full AH window
     if dt > ah_end:
         return ("AFTERHOURS (LAST)", ah_start, ah_end)
 
+    # If we're before premarket, use last weekday afterhours window
     y = dt - timedelta(days=1)
     while y.weekday() >= 5:
         y -= timedelta(days=1)
@@ -146,14 +167,6 @@ def current_market_window(dt: datetime) -> tuple[str, datetime, datetime]:
     y_ah_start = ct_dt(y_str, AH_START_CT)
     y_ah_end = ct_dt(y_str, AH_END_CT)
     return ("AFTERHOURS (LAST)", y_ah_start, y_ah_end)
-
-def ortex_allowed_now(dt: datetime) -> bool:
-    if dt.weekday() >= 5:
-        return False
-    d = ct_date_str(dt)
-    start = ct_dt(d, ORTEX_ON_START_CT)
-    end = ct_dt(d, ORTEX_ON_END_CT)
-    return start <= dt <= end
 
 def resolve_ortex_on(mode: str, ortex_request: str, dt: datetime) -> tuple[bool, str]:
     """
