@@ -1,13 +1,17 @@
+# scanner.py
 import os
 import json
 import math
 import time
+import traceback
 import requests
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
+from typing import Optional, Dict, Any, List, Tuple
 
 # ============================================================
 # ENGINE V2.4+ — RYAN FILTERS + VWAP PULLBACK LOGIC
+# Python 3.9-safe typing + REAL error logging (no silent fails)
 # Keeps: ORTEX toggle, market windows, tiered snapshot, deep analysis,
 # streams only final top 5, writes HTML report.
 # ============================================================
@@ -28,16 +32,14 @@ MAX_CANDIDATES_PER_TIER_SNAPSHOT = 600
 
 # ---- Market windows (CT) ----
 PM_START_CT = (3, 0)
-PM_END_CT   = (8, 29)
+PM_END_CT = (8, 29)
 
 REG_START_CT = (8, 30)
-REG_END_CT   = (15, 0)
+REG_END_CT = (15, 0)
 
 AH_START_CT = (15, 0)
-AH_END_CT   = (19, 0)
+AH_END_CT = (19, 0)
 
-ORTEX_ON_START_CT = (7, 0)
-ORTEX_ON_END_CT   = (16, 0)
 MIN_ANALYSIS_MINUTES = 15
 
 POLYGON_KEY = os.getenv("POLYGON_API_KEY")
@@ -52,51 +54,58 @@ OUT_DIR.mkdir(exist_ok=True)
 # ============================================================
 # RYAN FILTERS (your rules)
 # ============================================================
-MAX_MARKET_CAP = 2_000_000_000      # 2B
-MAX_FLOAT_SHARES = 50_000_000       # 50M
+MAX_MARKET_CAP = 2_000_000_000  # 2B
+MAX_FLOAT_SHARES = 50_000_000   # 50M
 MIN_REL_VOL = 1.5
-MIN_WINDOW_VOL = 5_000_000          # 5M volume
-MIN_RANGE_PCT = 0.03                # want range; hard floor 3%
-# "near VWAP" threshold (2% from vwap)
-VWAP_NEAR_PCT = 0.02
+MIN_WINDOW_VOL = 5_000_000     # 5M volume
+MIN_RANGE_PCT = 0.03           # hard floor 3%
+VWAP_NEAR_PCT = 0.02           # within 2% of VWAP
 
 try:
-    from zoneinfo import ZoneInfo
+    from zoneinfo import ZoneInfo  # py3.9+
     CT_TZ = ZoneInfo("America/Chicago")
 except Exception:
     CT_TZ = timezone(timedelta(hours=-6))
 
 
-def json_dumps(obj) -> str:
+def json_dumps(obj: Any) -> str:
     return json.dumps(obj, separators=(",", ":"), ensure_ascii=False)
+
 
 def now_ct() -> datetime:
     return datetime.now(tz=CT_TZ)
 
+
 def ct_date_str(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%d")
 
-def ct_dt(date_str: str, hm: tuple[int, int]) -> datetime:
+
+def ct_dt(date_str: str, hm: Tuple[int, int]) -> datetime:
     y, m, d = map(int, date_str.split("-"))
     return datetime(y, m, d, hm[0], hm[1], tzinfo=CT_TZ)
+
 
 def clamp(x: float, lo: float = 0.0, hi: float = 1.0) -> float:
     return max(lo, min(hi, x))
 
-def safe_float(x):
+
+def safe_float(x: Any) -> Optional[float]:
     try:
         return None if x is None else float(x)
     except Exception:
         return None
 
-def safe_int(x):
+
+def safe_int(x: Any) -> Optional[int]:
     try:
         return None if x is None else int(float(x))
     except Exception:
         return None
 
+
 def ms_to_utc(ms: int) -> datetime:
-    return datetime.fromtimestamp(ms / 1000, tz=timezone.utc)
+    return datetime.fromtimestamp(ms / 1000.0, tz=timezone.utc)
+
 
 def sigmoid(x: float) -> float:
     if x >= 0:
@@ -105,6 +114,7 @@ def sigmoid(x: float) -> float:
     z = math.exp(x)
     return z / (1.0 + z)
 
+
 def score_to_prob(score: float) -> float:
     return sigmoid((score - 55.0) / 12.0)
 
@@ -112,8 +122,8 @@ def score_to_prob(score: float) -> float:
 # ============================================================
 # Market Window
 # ============================================================
-def current_market_window(dt: datetime) -> tuple[str, datetime, datetime]:
-    # Weekends: use last weekday afterhours window (unchanged behavior)
+def current_market_window(dt: datetime) -> Tuple[str, datetime, datetime]:
+    # Weekends: use last weekday afterhours window
     if dt.weekday() >= 5:
         back = 1 if dt.weekday() == 5 else 2
         y = dt - timedelta(days=back)
@@ -125,15 +135,14 @@ def current_market_window(dt: datetime) -> tuple[str, datetime, datetime]:
     date_str = ct_date_str(dt)
 
     pm_start = ct_dt(date_str, PM_START_CT)
-    pm_end   = ct_dt(date_str, PM_END_CT) + timedelta(seconds=59)
+    pm_end = ct_dt(date_str, PM_END_CT) + timedelta(seconds=59)
 
     reg_start = ct_dt(date_str, REG_START_CT)
-    reg_end   = ct_dt(date_str, REG_END_CT)
+    reg_end = ct_dt(date_str, REG_END_CT)
 
     ah_start = ct_dt(date_str, AH_START_CT)
-    ah_end   = ct_dt(date_str, AH_END_CT)
+    ah_end = ct_dt(date_str, AH_END_CT)
 
-    # Helper: last N minutes, clamped to session start
     def last_n_minutes(session_start: datetime, now: datetime) -> datetime:
         candidate = now - timedelta(minutes=MIN_ANALYSIS_MINUTES)
         return candidate if candidate > session_start else session_start
@@ -143,8 +152,7 @@ def current_market_window(dt: datetime) -> tuple[str, datetime, datetime]:
         w_start = last_n_minutes(pm_start, dt)
         return ("PREMARKET", w_start, dt)
 
-    # REGULAR: for first 15 minutes, borrow last 15 minutes including PREMARKET
-    # so 8:30 scans work. Clamp only to pm_start (3:00 CT), not reg_start.
+    # REGULAR: borrow last 15 minutes including PREMARKET for early scans
     if reg_start <= dt <= reg_end:
         w_start = dt - timedelta(minutes=MIN_ANALYSIS_MINUTES)
         if w_start < pm_start:
@@ -156,11 +164,11 @@ def current_market_window(dt: datetime) -> tuple[str, datetime, datetime]:
         w_start = last_n_minutes(ah_start, dt)
         return ("AFTERHOURS", w_start, dt)
 
-    # If we're after afterhours close, return full AH window
+    # After afterhours close, return full AH window
     if dt > ah_end:
         return ("AFTERHOURS (LAST)", ah_start, ah_end)
 
-    # If we're before premarket, use last weekday afterhours window
+    # Before premarket: use last weekday afterhours window
     y = dt - timedelta(days=1)
     while y.weekday() >= 5:
         y -= timedelta(days=1)
@@ -169,9 +177,10 @@ def current_market_window(dt: datetime) -> tuple[str, datetime, datetime]:
     y_ah_end = ct_dt(y_str, AH_END_CT)
     return ("AFTERHOURS (LAST)", y_ah_start, y_ah_end)
 
-def resolve_ortex_on(mode: str, ortex_request: str, dt: datetime) -> tuple[bool, str]:
+
+def resolve_ortex_on(mode: str, ortex_request: str, dt: datetime) -> Tuple[bool, str]:
     """
-    ORTEX is user-controlled (no time window).
+    ORTEX is user-controlled.
     If ORTEX_API_KEY exists and user requests ON -> ON.
     """
     if not ORTEX_KEY:
@@ -189,16 +198,16 @@ def resolve_ortex_on(mode: str, ortex_request: str, dt: datetime) -> tuple[bool,
 # ============================================================
 # Polygon / Ortex fetchers
 # ============================================================
-def polygon_get(url: str, params: dict | None = None, log_fn=None, retries: int = 3) -> dict:
+def polygon_get(url: str, params: Optional[Dict[str, Any]] = None, log_fn=None, retries: int = 3) -> Dict[str, Any]:
     if not POLYGON_KEY:
         raise RuntimeError("POLYGON_API_KEY environment variable is not set")
 
-    params = dict(params or {})
-    params["apiKey"] = POLYGON_KEY
+    params2 = dict(params or {})
+    params2["apiKey"] = POLYGON_KEY
 
     for attempt in range(retries + 1):
         try:
-            r = SESSION.get(url, params=params, timeout=30)
+            r = SESSION.get(url, params=params2, timeout=30)
 
             if r.status_code == 429:
                 wait = 1.5 * (2 ** attempt)
@@ -222,20 +231,23 @@ def polygon_get(url: str, params: dict | None = None, log_fn=None, retries: int 
 
     raise RuntimeError(f"Polygon failed after retries: {url}")
 
-def get_snapshot_all_tickers(log_fn=None) -> list[dict]:
+
+def get_snapshot_all_tickers(log_fn=None) -> List[Dict[str, Any]]:
     data = polygon_get(
         "https://api.polygon.io/v2/snapshot/locale/us/markets/stocks/tickers",
         {},
-        log_fn=log_fn
+        log_fn=log_fn,
     )
     return data.get("tickers", []) or []
 
-def get_minute_aggs(ticker: str, date_str: str, log_fn=None) -> list[dict]:
+
+def get_minute_aggs(ticker: str, date_str: str, log_fn=None) -> List[Dict[str, Any]]:
     url = f"https://api.polygon.io/v2/aggs/ticker/{ticker}/range/1/minute/{date_str}/{date_str}"
     data = polygon_get(url, {"adjusted": "true", "sort": "asc", "limit": 50000}, log_fn=log_fn)
     return data.get("results", []) or []
 
-def get_daily_aggs_20d(ticker: str, end_date_str: str, log_fn=None) -> list[dict]:
+
+def get_daily_aggs_20d(ticker: str, end_date_str: str, log_fn=None) -> List[Dict[str, Any]]:
     end_dt = datetime.fromisoformat(end_date_str)
     start_dt = end_dt - timedelta(days=25)
     start_str = start_dt.strftime("%Y-%m-%d")
@@ -243,7 +255,8 @@ def get_daily_aggs_20d(ticker: str, end_date_str: str, log_fn=None) -> list[dict
     data = polygon_get(url, {"adjusted": "true", "sort": "asc", "limit": 50000}, log_fn=log_fn)
     return data.get("results", []) or []
 
-def polygon_reference(ticker: str, log_fn=None) -> dict | None:
+
+def polygon_reference(ticker: str, log_fn=None) -> Optional[Dict[str, Any]]:
     url = f"https://api.polygon.io/v3/reference/tickers/{ticker}"
     try:
         data = polygon_get(url, {}, log_fn=log_fn)
@@ -251,7 +264,8 @@ def polygon_reference(ticker: str, log_fn=None) -> dict | None:
     except Exception:
         return None
 
-def ortex_get(url: str, log_fn=None) -> dict | None:
+
+def ortex_get(url: str, log_fn=None) -> Optional[Dict[str, Any]]:
     if not ORTEX_KEY:
         return None
 
@@ -273,7 +287,8 @@ def ortex_get(url: str, log_fn=None) -> dict | None:
     except Exception:
         return None
 
-def ortex_short_interest_features(ticker: str, log_fn=None) -> dict | None:
+
+def ortex_short_interest_features(ticker: str, log_fn=None) -> Optional[Dict[str, Any]]:
     data = ortex_get(f"https://api.ortex.com/api/v1/stock/US/{ticker}/short_interest", log_fn=log_fn)
     if not data:
         return None
@@ -295,7 +310,8 @@ def ortex_short_interest_features(ticker: str, log_fn=None) -> dict | None:
 
     return {"si_pct_ff": si_pct, "si_pct_chg": si_pct_chg, "si_shares": si_shares}
 
-def ortex_ctb_latest(ticker: str, log_fn=None) -> float | None:
+
+def ortex_ctb_latest(ticker: str, log_fn=None) -> Optional[float]:
     for url in [
         f"https://api.ortex.com/api/v1/stock/US/{ticker}/ctb/all",
         f"https://api.ortex.com/api/v1/stock/US/{ticker}/ctb/new",
@@ -313,7 +329,8 @@ def ortex_ctb_latest(ticker: str, log_fn=None) -> float | None:
                 return v
     return None
 
-def ortex_availability_latest(ticker: str, log_fn=None) -> float | None:
+
+def ortex_availability_latest(ticker: str, log_fn=None) -> Optional[float]:
     data = ortex_get(f"https://api.ortex.com/api/v1/stock/US/{ticker}/availability", log_fn=log_fn)
     if not data:
         return None
@@ -331,7 +348,7 @@ def ortex_availability_latest(ticker: str, log_fn=None) -> float | None:
 # ============================================================
 # VWAP + Pullback helpers
 # ============================================================
-def calc_vwap(minute_bars: list[dict]) -> float | None:
+def calc_vwap(minute_bars: List[Dict[str, Any]]) -> Optional[float]:
     pv = 0.0
     vv = 0.0
     for b in minute_bars:
@@ -346,7 +363,8 @@ def calc_vwap(minute_bars: list[dict]) -> float | None:
         return None
     return pv / vv
 
-def vwap_pullback_score(close: float, vwap: float | None, high: float, low: float) -> float:
+
+def vwap_pullback_score(close: float, vwap: Optional[float], high: float, low: float) -> float:
     """
     Approximate 'break then pullback to VWAP':
     - price still strong (close in upper half of range)
@@ -357,8 +375,8 @@ def vwap_pullback_score(close: float, vwap: float | None, high: float, low: floa
         return 0.0
 
     rng = max(high - low, 1e-9)
-    hold = (close - low) / rng  # 0..1 (upper range strength)
-    near = abs(close - vwap) / close  # fraction
+    hold = (close - low) / rng
+    near = abs(close - vwap) / close
 
     score = 0.0
     if hold >= 0.55:
@@ -371,10 +389,14 @@ def vwap_pullback_score(close: float, vwap: float | None, high: float, low: floa
 
 
 # ============================================================
-# Snapshot candidate selection (same as you had)
+# Snapshot candidate selection
 # ============================================================
-def pick_snapshot_candidates(snap: list[dict], price_min: float, price_max: float) -> list[tuple[float, str, dict]]:
-    out: list[tuple[float, str, dict]] = []
+def pick_snapshot_candidates(
+    snap: List[Dict[str, Any]],
+    price_min: float,
+    price_max: float
+) -> List[Tuple[float, str, Dict[str, Any]]]:
+    out: List[Tuple[float, str, Dict[str, Any]]] = []
 
     for item in snap:
         t = item.get("ticker")
@@ -408,7 +430,7 @@ def pick_snapshot_candidates(snap: list[dict], price_min: float, price_max: floa
     return out[:MAX_CANDIDATES_PER_TIER_SNAPSHOT]
 
 
-def compute_rel_vol(window_vol: float, avg_daily_vol: float | None, window_minutes: int) -> float | None:
+def compute_rel_vol(window_vol: float, avg_daily_vol: Optional[float], window_minutes: int) -> Optional[float]:
     if avg_daily_vol is None or avg_daily_vol <= 0:
         return None
     expected = avg_daily_vol * (window_minutes / 390.0)
@@ -418,16 +440,16 @@ def compute_rel_vol(window_vol: float, avg_daily_vol: float | None, window_minut
 
 
 # ============================================================
-# Deep analysis per ticker (THIS is where your new filters go)
+# Deep analysis per ticker (Ryan filters)
 # ============================================================
 def analyze_ticker_window(
     ticker: str,
     date_str: str,
     w_start: datetime,
     w_end: datetime,
-    snap_meta: dict,
+    snap_meta: Dict[str, Any],
     log_fn=None
-) -> dict | None:
+) -> Optional[Dict[str, Any]]:
     bars = get_minute_aggs(ticker, date_str, log_fn=log_fn)
     if not bars:
         return None
@@ -455,7 +477,7 @@ def analyze_ticker_window(
     if prev_close and prev_close > 0:
         move_pct = (c - prev_close) / prev_close
 
-    # ---- Ryan hard filters: volume + range ----
+    # ---- Ryan hard filters ----
     if v < MIN_WINDOW_VOL:
         return None
     if range_pct < MIN_RANGE_PCT:
@@ -469,7 +491,6 @@ def analyze_ticker_window(
     window_minutes = max(1, int((w_end - w_start).total_seconds() // 60))
     relv = compute_rel_vol(v, adv10, window_minutes)
 
-    # Ryan hard filter: rel vol
     if relv is None or relv < MIN_REL_VOL:
         return None
 
@@ -478,7 +499,6 @@ def analyze_ticker_window(
     if not is_cs:
         return None
 
-    # Float shares proxy
     float_shares = None
     for k in ("share_class_shares_outstanding", "weighted_shares_outstanding", "shares_outstanding"):
         vv = safe_int(ref.get(k))
@@ -486,11 +506,9 @@ def analyze_ticker_window(
             float_shares = vv
             break
 
-    # Ryan hard filter: float
     if float_shares is None or float_shares > MAX_FLOAT_SHARES:
         return None
 
-    # Market cap estimate = last price * shares_outstanding proxy
     last_price = snap_meta.get("last_price") or c
     try:
         market_cap = float(last_price) * float(float_shares)
@@ -500,11 +518,7 @@ def analyze_ticker_window(
     if market_cap is None or market_cap > MAX_MARKET_CAP:
         return None
 
-    # VWAP from window bars
     vwap = calc_vwap(window)
-
-    trigger = h
-    stop = l
 
     return {
         "ticker": ticker,
@@ -517,15 +531,15 @@ def analyze_ticker_window(
         "float_shares": float_shares,
         "market_cap": market_cap,
         "vwap": vwap,
-        "trigger": trigger,
-        "stop": stop,
+        "trigger": h,
+        "stop": l,
     }
 
 
 # ============================================================
-# Scoring (keeps yours, adds your pullback preferences)
+# Scoring
 # ============================================================
-def compute_scores(feat: dict) -> tuple[float, float, float]:
+def compute_scores(feat: Dict[str, Any]) -> Tuple[float, float, float]:
     si = feat.get("si_pct_ff") or 0.0
     si_chg = feat.get("si_pct_chg") or 0.0
     ctb = feat.get("ctb") or 0.0
@@ -533,7 +547,7 @@ def compute_scores(feat: dict) -> tuple[float, float, float]:
 
     avail_term = 0.0
     if avail is not None:
-        avail_term = max(0.0, 6.0 - math.log10(max(avail, 1.0)))
+        avail_term = max(0.0, 6.0 - math.log10(max(float(avail), 1.0)))
 
     pressure = (si * 2.0) + (si_chg * 8.0) + (min(ctb, 200.0) * 0.10) + (avail_term * 2.0)
 
@@ -542,16 +556,11 @@ def compute_scores(feat: dict) -> tuple[float, float, float]:
     relv = feat.get("rel_vol") or 0.0
     dv = (feat.get("dollar_vol") or 0.0) / 1_000_000.0
 
-    # Base opportunity (yours)
     opportunity = (rng * 120.0) + (move * 35.0) + (min(relv, 6.0) * 10.0) + (min(dv, 15.0) * 4.0)
 
-    # Ryan preference: "lots of volume and lots of range" => extra boost
-    # - range bonus scales after MIN_RANGE_PCT
-    # - volume bonus scales after MIN_WINDOW_VOL
     range_bonus = max(0.0, (rng - MIN_RANGE_PCT)) * 220.0
     vol_bonus = max(0.0, ((feat.get("vol") or 0.0) - MIN_WINDOW_VOL) / 1_000_000.0) * 1.6
 
-    # Pullback to VWAP boost
     vwap_bonus = vwap_pullback_score(
         close=float(feat.get("close") or 0.0),
         vwap=feat.get("vwap"),
@@ -566,13 +575,9 @@ def compute_scores(feat: dict) -> tuple[float, float, float]:
 
     window = feat.get("window")
     if window == "PREMARKET":
-        pressure_weight = 0.38
-        opportunity_weight = 0.30
-        structure_weight = 0.32
+        pressure_weight, opportunity_weight, structure_weight = 0.38, 0.30, 0.32
     else:
-        pressure_weight = 0.34
-        opportunity_weight = 0.33
-        structure_weight = 0.33
+        pressure_weight, opportunity_weight, structure_weight = 0.34, 0.33, 0.33
 
     base_score = (
         pressure_weight * pressure +
@@ -598,7 +603,7 @@ def confidence_1_to_10(prob: float, ortex_on: bool, has_borrow: bool) -> int:
     return max(1, min(9, c))
 
 
-def is_true_squeeze(feat: dict, ortex_on: bool) -> bool:
+def is_true_squeeze(feat: Dict[str, Any], ortex_on: bool) -> bool:
     if not ortex_on:
         return False
 
@@ -624,8 +629,7 @@ def is_true_squeeze(feat: dict, ortex_on: bool) -> bool:
     return True
 
 
-def setup_subtype(feat: dict, label: str) -> str:
-    # Minor tweak: if close near VWAP, call it pullback
+def setup_subtype(feat: Dict[str, Any], label: str) -> str:
     c = feat.get("close") or 0.0
     vwap = feat.get("vwap")
     near_vwap = False
@@ -645,7 +649,7 @@ def setup_subtype(feat: dict, label: str) -> str:
     return "momentum pullback"
 
 
-def trade_plan(feat: dict) -> str:
+def trade_plan(feat: Dict[str, Any]) -> str:
     trig = feat.get("trigger") or 0.0
     stop = feat.get("stop") or 0.0
     vwap = feat.get("vwap")
@@ -669,12 +673,12 @@ def trade_plan(feat: dict) -> str:
     )
 
 
-def write_html_report(meta: dict, squeeze_rows: list[dict], momentum_rows: list[dict]) -> str:
+def write_html_report(meta: Dict[str, Any], squeeze_rows: List[Dict[str, Any]], momentum_rows: List[Dict[str, Any]]) -> str:
     ts = now_ct().strftime("%Y-%m-%d_%H-%M-%S")
     base = f"scan_{meta['date']}_{ts}"
     html_path = OUT_DIR / f"{base}.html"
 
-    def fmt(x, nd=2):
+    def fmt(x: Any, nd: int = 2) -> str:
         if x is None:
             return "NA"
         try:
@@ -682,10 +686,10 @@ def write_html_report(meta: dict, squeeze_rows: list[dict], momentum_rows: list[
         except Exception:
             return "NA"
 
-    def pct(x, nd=1):
+    def pct(x: Any, nd: int = 1) -> str:
         return fmt((x or 0) * 100.0, nd) + "%"
 
-    def row_tr(r):
+    def row_tr(r: Dict[str, Any]) -> str:
         return f"""
         <tr>
           <td><b>{r["ticker"]}</b></td>
@@ -705,7 +709,7 @@ def write_html_report(meta: dict, squeeze_rows: list[dict], momentum_rows: list[
         </tr>
         """
 
-    def table(rows):
+    def table(rows: List[Dict[str, Any]]) -> str:
         if not rows:
             return "<div class='muted'>None</div>"
         body = "".join(row_tr(r) for r in rows)
@@ -756,34 +760,36 @@ th {{ text-align:left; color:#93a4bd; font-weight:700; }}
 
 
 # ============================================================
-# Main run_scan (keeps your pipeline)
+# Main run_scan
 # ============================================================
-def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "off") -> str | None:
-    mode = (mode or "day").lower().strip()
-    if mode not in ("day", "night"):
-        mode = "day"
+def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "off") -> Optional[str]:
+    mode2 = (mode or "day").lower().strip()
+    if mode2 not in ("day", "night"):
+        mode2 = "day"
 
     dt = now_ct()
     window, w_start, w_end = current_market_window(dt)
     date_str = ct_date_str(w_start)
 
-    ortex_on, ortex_label = resolve_ortex_on(mode, ortex, dt)
+    ortex_on, ortex_label = resolve_ortex_on(mode2, ortex, dt)
 
-    deep_top = DEEP_ANALYZE_TOP_DAY if mode == "day" else DEEP_ANALYZE_TOP_NIGHT
-    ortex_finalists = ORTEX_FINALISTS_DAY if ortex_on else 0
+    deep_top = DEEP_ANALYZE_TOP_DAY if mode2 == "day" else DEEP_ANALYZE_TOP_NIGHT
+    ortex_finalists = ORTEX_FINALISTS_DAY if (mode2 == "day") else ORTEX_FINALISTS_NIGHT
+    if not ortex_on:
+        ortex_finalists = 0
 
     if log_fn:
-        log_fn(f"Mode: {mode.upper()} ({'Polygon + ORTEX' if ortex_on else 'Polygon only'})")
+        log_fn(f"Mode: {mode2.upper()} ({'Polygon + ORTEX' if ortex_on else 'Polygon only'})")
         log_fn(f"Date: {date_str}")
         log_fn(f"Market window: {window} ({w_start.strftime('%H:%M')}–{w_end.strftime('%H:%M')} CT)")
         log_fn(f"ORTEX request: {str(ortex).upper()} | ORTEX mode: {ortex_label}")
-        log_fn(f"Ryan filters → MktCap<2B | Float<50M | Vol>5M | RelVol>1.5 | Range>3% | VWAP pullback bonus")
+        log_fn("Ryan filters → MktCap<2B | Float<50M | Vol>5M | RelVol>1.5 | Range>3% | VWAP pullback bonus")
 
     snap = get_snapshot_all_tickers(log_fn=log_fn)
     if log_fn:
         log_fn(f"Snapshot tickers received: {len(snap)}")
 
-    candidates: list[tuple[float, str, dict]] = []
+    candidates: List[Tuple[float, str, Dict[str, Any]]] = []
     for pmin, pmax in PRICE_TIERS:
         candidates.extend(pick_snapshot_candidates(snap, pmin, pmax))
     candidates.sort(reverse=True, key=lambda x: x[0])
@@ -792,7 +798,7 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "off") ->
     if log_fn:
         log_fn(f"Deep-analyze list: {len(deep_list)} tickers (Top {deep_top})")
 
-    analyzed: list[dict] = []
+    analyzed: List[Dict[str, Any]] = []
 
     for idx, (_proxy_score, ticker, snap_meta) in enumerate(deep_list, start=1):
         if log_fn and idx % 10 == 0:
@@ -834,6 +840,7 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "off") ->
                 "vol": feat.get("vol"),
 
                 "si_pct_ff": None,
+                "si_pct_chg": None,
                 "ctb": None,
                 "avail": None,
 
@@ -844,7 +851,10 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "off") ->
 
             analyzed.append(row)
 
-        except Exception:
+        except Exception as e:
+            if log_fn:
+                log_fn(f"[ERROR] Polygon analyze failed for {ticker}: {type(e).__name__}: {e}")
+                log_fn(traceback.format_exc())
             continue
 
     if not analyzed:
@@ -852,7 +862,7 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "off") ->
             log_fn("No tickers passed deep analysis.")
         return None
 
-    finalists = []
+    finalists: List[Dict[str, Any]] = []
     if ortex_on and ortex_finalists > 0:
         finalists = sorted(
             analyzed,
@@ -879,8 +889,10 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "off") ->
 
             feat = dict(r)
             feat["window"] = window
+
             base_score, prob, pressure = compute_scores(feat)
             has_borrow = (r.get("ctb") is not None and r.get("avail") is not None)
+
             r["base_score"] = round(base_score, 2)
             r["prob"] = round(prob, 4)
             r["pressure_score"] = round(pressure, 2)
@@ -895,7 +907,10 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "off") ->
 
             r["plan"] = trade_plan(feat)
 
-        except Exception:
+        except Exception as e:
+            if log_fn:
+                log_fn(f"[ERROR] ORTEX enrich failed for {t}: {type(e).__name__}: {e}")
+                log_fn(traceback.format_exc())
             continue
 
     squeezes_true = [r for r in analyzed if r.get("bucket") == "SQUEEZE"]
@@ -942,7 +957,7 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "off") ->
     meta = {
         "date": date_str,
         "window": window,
-        "mode": mode.upper(),
+        "mode": mode2.upper(),
         "ortex": "ON" if ortex_on else "OFF",
     }
 
