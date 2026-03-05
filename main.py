@@ -71,6 +71,9 @@ OUT_DIR.mkdir(exist_ok=True)
 
 SQLITE_PATH = OUT_DIR / "trades.sqlite3"
 
+# ✅ REVISION: serialize SQLite writes (fixes intermittent "won't save")
+DB_LOCK = threading.Lock()
+
 
 def using_postgres() -> bool:
     return bool(DATABASE_URL) and psycopg is not None
@@ -83,9 +86,16 @@ def pg_conn():
     return psycopg.connect(url, row_factory=dict_row, connect_timeout=8)
 
 
+# ✅ REVISION: WAL + busy_timeout + connection timeout (fixes "database is locked" + missed inserts)
 def sqlite_conn():
-    conn = sqlite3.connect(str(SQLITE_PATH), check_same_thread=False)
+    conn = sqlite3.connect(str(SQLITE_PATH), check_same_thread=False, timeout=30)
     conn.row_factory = sqlite3.Row
+    try:
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute("PRAGMA synchronous=NORMAL;")
+        conn.execute("PRAGMA busy_timeout=30000;")
+    except Exception:
+        pass
     return conn
 
 
@@ -115,17 +125,18 @@ def _ensure_schema_migrations():
         except Exception:
             pass
     else:
-        conn = sqlite_conn()
-        try:
-            if not _table_has_column_sqlite(conn, "trades", "review_text"):
-                conn.execute("ALTER TABLE trades ADD COLUMN review_text TEXT;")
-            if not _table_has_column_sqlite(conn, "trades", "reviewed_at_utc"):
-                conn.execute("ALTER TABLE trades ADD COLUMN reviewed_at_utc TEXT;")
-            conn.commit()
-        except Exception:
-            pass
-        finally:
-            conn.close()
+        with DB_LOCK:
+            conn = sqlite_conn()
+            try:
+                if not _table_has_column_sqlite(conn, "trades", "review_text"):
+                    conn.execute("ALTER TABLE trades ADD COLUMN review_text TEXT;")
+                if not _table_has_column_sqlite(conn, "trades", "reviewed_at_utc"):
+                    conn.execute("ALTER TABLE trades ADD COLUMN reviewed_at_utc TEXT;")
+                conn.commit()
+            except Exception:
+                pass
+            finally:
+                conn.close()
 
 
 def db_init():
@@ -172,12 +183,13 @@ def db_init():
                 cur.execute(schema_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ"))
             conn.commit()
     else:
-        conn = sqlite_conn()
-        try:
-            conn.execute(schema_sql)
-            conn.commit()
-        finally:
-            conn.close()
+        with DB_LOCK:
+            conn = sqlite_conn()
+            try:
+                conn.execute(schema_sql)
+                conn.commit()
+            finally:
+                conn.close()
 
     _ensure_schema_migrations()
 
@@ -221,13 +233,14 @@ def db_init():
                 cur.execute(kv_sql)
             conn.commit()
     else:
-        conn = sqlite_conn()
-        try:
-            conn.execute(signals_sql)
-            conn.execute(kv_sql)
-            conn.commit()
-        finally:
-            conn.close()
+        with DB_LOCK:
+            conn = sqlite_conn()
+            try:
+                conn.execute(signals_sql)
+                conn.execute(kv_sql)
+                conn.commit()
+            finally:
+                conn.close()
 
 
 # -------------------- Signals KV helpers --------------------
@@ -259,12 +272,13 @@ def kv_set(key: str, val: str):
                 )
             conn.commit()
     else:
-        conn = sqlite_conn()
-        try:
-            conn.execute("INSERT OR REPLACE INTO kv (k,v) VALUES (?,?)", (key, val))
-            conn.commit()
-        finally:
-            conn.close()
+        with DB_LOCK:
+            conn = sqlite_conn()
+            try:
+                conn.execute("INSERT OR REPLACE INTO kv (k,v) VALUES (?,?)", (key, val))
+                conn.commit()
+            finally:
+                conn.close()
 
 
 def signals_insert_many(rows: list[dict]):
@@ -299,31 +313,32 @@ def signals_insert_many(rows: list[dict]):
                     )
             conn.commit()
     else:
-        conn = sqlite_conn()
-        try:
-            cur = conn.cursor()
-            for r in rows:
-                cur.execute(
-                    """
-                    INSERT OR IGNORE INTO signals (
-                      id, created_at_utc,
-                      scan_id, scan_date_ct,
-                      ticker, confidence,
-                      entry, win_px, loss_px,
-                      status
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-                    """,
-                    (
-                        r["id"], datetime.utcnow().isoformat(),
-                        r.get("scan_id"), r["scan_date_ct"],
-                        r["ticker"], r.get("confidence"),
-                        r["entry"], r["win_px"], r["loss_px"],
-                        r["status"],
-                    ),
-                )
-            conn.commit()
-        finally:
-            conn.close()
+        with DB_LOCK:
+            conn = sqlite_conn()
+            try:
+                cur = conn.cursor()
+                for r in rows:
+                    cur.execute(
+                        """
+                        INSERT OR IGNORE INTO signals (
+                          id, created_at_utc,
+                          scan_id, scan_date_ct,
+                          ticker, confidence,
+                          entry, win_px, loss_px,
+                          status
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                        """,
+                        (
+                            r["id"], datetime.utcnow().isoformat(),
+                            r.get("scan_id"), r["scan_date_ct"],
+                            r["ticker"], r.get("confidence"),
+                            r["entry"], r["win_px"], r["loss_px"],
+                            r["status"],
+                        ),
+                    )
+                conn.commit()
+            finally:
+                conn.close()
 
 
 def _ct_date_from_utc_ms(ms: int) -> str:
@@ -445,25 +460,26 @@ def grade_yesterday_if_needed(log_fn=None):
                     )
             conn.commit()
     else:
-        conn = sqlite_conn()
-        try:
-            cur = conn.cursor()
-            for (ticker, status, trig_at, res_at, mx, mn) in updates:
-                cur.execute(
-                    """
-                    UPDATE signals
-                    SET status=?,
-                        triggered_at_utc=?,
-                        resolved_at_utc=?,
-                        max_after_trigger=?,
-                        min_after_trigger=?
-                    WHERE scan_date_ct=? AND ticker=? AND status='PENDING'
-                    """,
-                    (status, trig_at, res_at, mx, mn, yday, ticker),
-                )
-            conn.commit()
-        finally:
-            conn.close()
+        with DB_LOCK:
+            conn = sqlite_conn()
+            try:
+                cur = conn.cursor()
+                for (ticker, status, trig_at, res_at, mx, mn) in updates:
+                    cur.execute(
+                        """
+                        UPDATE signals
+                        SET status=?,
+                            triggered_at_utc=?,
+                            resolved_at_utc=?,
+                            max_after_trigger=?,
+                            min_after_trigger=?
+                        WHERE scan_date_ct=? AND ticker=? AND status='PENDING'
+                        """,
+                        (status, trig_at, res_at, mx, mn, yday, ticker),
+                    )
+                conn.commit()
+            finally:
+                conn.close()
 
     kv_set("last_graded_date_ct", today)
     if log_fn:
@@ -634,38 +650,39 @@ def trade_insert(row: dict):
                 )
                 conn.commit()
     else:
-        conn = sqlite_conn()
-        try:
-            cur = conn.cursor()
-            cur.execute(
-                """
-                INSERT INTO trades (
-                  id, user_id, created_at_utc,
-                  scan_id, scan_date_ct,
-                  ticker, bucket, subtype, confidence, plan,
-                  trigger, stop, scan_close, move_pct, dollar_vol, range_pct, hold_pct, rel_vol, si_pct_ff, ctb, avail,
-                  entry_price, entry_time_ct, exit_price, exit_time_ct, shares, review_flags
-                ) VALUES (
-                  ?, ?, ?,
-                  ?, ?,
-                  ?, ?, ?, ?, ?,
-                  ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                  ?, ?, ?, ?, ?, ?
-                );
-                """,
-                (
-                    row["id"], row["user_id"], row["created_at_utc"],
-                    row.get("scan_id"), row.get("scan_date_ct"),
-                    row.get("ticker"), row.get("bucket"), row.get("subtype"), row.get("confidence"), row.get("plan"),
-                    row.get("trigger"), row.get("stop"), row.get("scan_close"), row.get("move_pct"), row.get("dollar_vol"),
-                    row.get("range_pct"), row.get("hold_pct"), row.get("rel_vol"), row.get("si_pct_ff"), row.get("ctb"), row.get("avail"),
-                    row.get("entry_price"), row.get("entry_time_ct"), row.get("exit_price"), row.get("exit_time_ct"),
-                    row.get("shares"), row.get("review_flags"),
-                ),
-            )
-            conn.commit()
-        finally:
-            conn.close()
+        with DB_LOCK:
+            conn = sqlite_conn()
+            try:
+                cur = conn.cursor()
+                cur.execute(
+                    """
+                    INSERT INTO trades (
+                      id, user_id, created_at_utc,
+                      scan_id, scan_date_ct,
+                      ticker, bucket, subtype, confidence, plan,
+                      trigger, stop, scan_close, move_pct, dollar_vol, range_pct, hold_pct, rel_vol, si_pct_ff, ctb, avail,
+                      entry_price, entry_time_ct, exit_price, exit_time_ct, shares, review_flags
+                    ) VALUES (
+                      ?, ?, ?,
+                      ?, ?,
+                      ?, ?, ?, ?, ?,
+                      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                      ?, ?, ?, ?, ?, ?
+                    );
+                    """,
+                    (
+                        row["id"], row["user_id"], row["created_at_utc"],
+                        row.get("scan_id"), row.get("scan_date_ct"),
+                        row.get("ticker"), row.get("bucket"), row.get("subtype"), row.get("confidence"), row.get("plan"),
+                        row.get("trigger"), row.get("stop"), row.get("scan_close"), row.get("move_pct"), row.get("dollar_vol"),
+                        row.get("range_pct"), row.get("hold_pct"), row.get("rel_vol"), row.get("si_pct_ff"), row.get("ctb"), row.get("avail"),
+                        row.get("entry_price"), row.get("entry_time_ct"), row.get("exit_price"), row.get("exit_time_ct"),
+                        row.get("shares"), row.get("review_flags"),
+                    ),
+                )
+                conn.commit()
+            finally:
+                conn.close()
 
 
 def trade_close(trade_id: str, exit_price: float, exit_time_ct: str, user_id: str | None = None):
@@ -684,22 +701,23 @@ def trade_close(trade_id: str, exit_price: float, exit_time_ct: str, user_id: st
                     )
                 conn.commit()
     else:
-        conn = sqlite_conn()
-        try:
-            cur = conn.cursor()
-            if user_id:
-                cur.execute(
-                    "UPDATE trades SET exit_price=?, exit_time_ct=? WHERE id=? AND user_id=?",
-                    (exit_price, exit_time_ct, trade_id, user_id),
-                )
-            else:
-                cur.execute(
-                    "UPDATE trades SET exit_price=?, exit_time_ct=? WHERE id=?",
-                    (exit_price, exit_time_ct, trade_id),
-                )
-            conn.commit()
-        finally:
-            conn.close()
+        with DB_LOCK:
+            conn = sqlite_conn()
+            try:
+                cur = conn.cursor()
+                if user_id:
+                    cur.execute(
+                        "UPDATE trades SET exit_price=?, exit_time_ct=? WHERE id=? AND user_id=?",
+                        (exit_price, exit_time_ct, trade_id, user_id),
+                    )
+                else:
+                    cur.execute(
+                        "UPDATE trades SET exit_price=?, exit_time_ct=? WHERE id=?",
+                        (exit_price, exit_time_ct, trade_id),
+                    )
+                conn.commit()
+            finally:
+                conn.close()
 
 
 def trade_save_review(trade_id: str, review_text: str, user_id: str | None = None):
@@ -719,22 +737,23 @@ def trade_save_review(trade_id: str, review_text: str, user_id: str | None = Non
                     )
                 conn.commit()
     else:
-        conn = sqlite_conn()
-        try:
-            cur = conn.cursor()
-            if user_id:
-                cur.execute(
-                    "UPDATE trades SET review_text=?, reviewed_at_utc=? WHERE id=? AND user_id=?",
-                    (review_text, reviewed_at_utc, trade_id, user_id),
-                )
-            else:
-                cur.execute(
-                    "UPDATE trades SET review_text=?, reviewed_at_utc=? WHERE id=?",
-                    (review_text, reviewed_at_utc, trade_id),
-                )
-            conn.commit()
-        finally:
-            conn.close()
+        with DB_LOCK:
+            conn = sqlite_conn()
+            try:
+                cur = conn.cursor()
+                if user_id:
+                    cur.execute(
+                        "UPDATE trades SET review_text=?, reviewed_at_utc=? WHERE id=? AND user_id=?",
+                        (review_text, reviewed_at_utc, trade_id, user_id),
+                    )
+                else:
+                    cur.execute(
+                        "UPDATE trades SET review_text=?, reviewed_at_utc=? WHERE id=?",
+                        (review_text, reviewed_at_utc, trade_id),
+                    )
+                conn.commit()
+            finally:
+                conn.close()
 
 
 def trade_save_flags(trade_id: str, review_flags: list[dict], user_id: str | None = None):
@@ -757,22 +776,23 @@ def trade_save_flags(trade_id: str, review_flags: list[dict], user_id: str | Non
                     )
             conn.commit()
     else:
-        conn = sqlite_conn()
-        try:
-            cur = conn.cursor()
-            if user_id:
-                cur.execute(
-                    "UPDATE trades SET review_flags=? WHERE id=? AND user_id=?",
-                    (flags_json, trade_id, user_id),
-                )
-            else:
-                cur.execute(
-                    "UPDATE trades SET review_flags=? WHERE id=?",
-                    (flags_json, trade_id),
-                )
-            conn.commit()
-        finally:
-            conn.close()
+        with DB_LOCK:
+            conn = sqlite_conn()
+            try:
+                cur = conn.cursor()
+                if user_id:
+                    cur.execute(
+                        "UPDATE trades SET review_flags=? WHERE id=? AND user_id=?",
+                        (flags_json, trade_id, user_id),
+                    )
+                else:
+                    cur.execute(
+                        "UPDATE trades SET review_flags=? WHERE id=?",
+                        (flags_json, trade_id),
+                    )
+                conn.commit()
+            finally:
+                conn.close()
 
 
 # -------------------- FastAPI app --------------------
