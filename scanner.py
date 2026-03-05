@@ -9,15 +9,7 @@ from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any, List, Tuple
 
-# ============================================================
-# ENGINE V2.4+ — RYAN FILTERS + VWAP PULLBACK LOGIC
-# Python 3.9-safe typing + REAL error logging + reject breakdown
-#
-# REVISIONS ADDED:
-#  1) Window-aware thresholds (Premarket/Regular/Afterhours)
-#  2) Slightly stronger snapshot gate (reduces dead candidates)
-#  3) Optional reject debug (guarded to avoid log spam)
-# ============================================================
+
 
 TOP_N_PER_BUCKET = 5
 
