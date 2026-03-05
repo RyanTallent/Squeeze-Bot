@@ -12,6 +12,11 @@ from typing import Optional, Dict, Any, List, Tuple
 # ============================================================
 # ENGINE V2.4+ — RYAN FILTERS + VWAP PULLBACK LOGIC
 # Python 3.9-safe typing + REAL error logging + reject breakdown
+#
+# REVISIONS ADDED:
+#  1) Window-aware thresholds (Premarket/Regular/Afterhours)
+#  2) Slightly stronger snapshot gate (reduces dead candidates)
+#  3) Optional reject debug (guarded to avoid log spam)
 # ============================================================
 
 TOP_N_PER_BUCKET = 5
@@ -22,8 +27,9 @@ ORTEX_FINALISTS_DAY = 25
 DEEP_ANALYZE_TOP_NIGHT = 35
 ORTEX_FINALISTS_NIGHT = 0
 
-MIN_DOLLAR_VOL_PROXY = 250_000
-MIN_MOVE_PROXY_PCT = 0.01
+# Snapshot gate (proxy) — revised slightly to avoid wasting deep slots
+MIN_DOLLAR_VOL_PROXY = 350_000   # was 250_000
+MIN_MOVE_PROXY_PCT = 0.015       # was 0.01
 
 PRICE_TIERS = [(0.01, 2.50), (2.50, 5.00), (5.00, 10.00)]
 MAX_CANDIDATES_PER_TIER_SNAPSHOT = 600
@@ -51,14 +57,30 @@ OUT_DIR = Path("outputs")
 OUT_DIR.mkdir(exist_ok=True)
 
 # ============================================================
-# RYAN FILTERS (tuned to actually produce candidates in 30-min windows)
+# RYAN FILTERS
 # ============================================================
 MAX_MARKET_CAP = 2_000_000_000      # 2B
-MAX_FLOAT_SHARES = 100_000_000      # was 50M (too tight using shares-outstanding proxy)
-MIN_REL_VOL = 1.2                   # was 1.5
-MIN_WINDOW_VOL = 800_000            # was 5,000,000 (too high for short windows)
-MIN_RANGE_PCT = 0.015               # was 0.03 (3% in 15 min is too strict)
+MAX_FLOAT_SHARES = 100_000_000      # shares-outstanding proxy
 VWAP_NEAR_PCT = 0.02
+
+# --- Window-aware thresholds (NEW) ---
+# Why: afterhours/premarket volume + relvol are structurally lower.
+MIN_WINDOW_VOL_REG = 800_000
+MIN_WINDOW_VOL_PM = 450_000
+MIN_WINDOW_VOL_AH = 200_000
+
+MIN_REL_VOL_REG = 1.2
+MIN_REL_VOL_PM = 1.0
+MIN_REL_VOL_AH = 0.75
+
+MIN_RANGE_PCT_REG = 0.015
+MIN_RANGE_PCT_PM = 0.012
+MIN_RANGE_PCT_AH = 0.010
+
+# Optional reject logging (guarded)
+REJECT_DEBUG = False          # set True if you want per-ticker reject logs
+REJECT_DEBUG_MAX = 30         # cap to avoid spam
+_REJECT_DEBUG_COUNT = 0
 
 # ============================================================
 # Reject stats (so you can see WHY stuff fails)
@@ -126,6 +148,32 @@ def sigmoid(x: float) -> float:
 
 def score_to_prob(score: float) -> float:
     return sigmoid((score - 55.0) / 12.0)
+
+
+def _thresholds_for_window(window_name: str) -> Tuple[float, float, float]:
+    """
+    Returns (min_window_vol, min_rel_vol, min_range_pct) based on the session window.
+    """
+    w = (window_name or "").upper()
+    if "AFTERHOURS" in w:
+        return (MIN_WINDOW_VOL_AH, MIN_REL_VOL_AH, MIN_RANGE_PCT_AH)
+    if "PREMARKET" in w:
+        return (MIN_WINDOW_VOL_PM, MIN_REL_VOL_PM, MIN_RANGE_PCT_PM)
+    # REGULAR default
+    return (MIN_WINDOW_VOL_REG, MIN_REL_VOL_REG, MIN_RANGE_PCT_REG)
+
+
+def _maybe_log_reject(log_fn, ticker: str, reason: str, extra: str = "") -> None:
+    global _REJECT_DEBUG_COUNT
+    if not REJECT_DEBUG or log_fn is None:
+        return
+    if _REJECT_DEBUG_COUNT >= REJECT_DEBUG_MAX:
+        return
+    _REJECT_DEBUG_COUNT += 1
+    msg = f"[REJECT] {ticker} → {reason}"
+    if extra:
+        msg += f" | {extra}"
+    log_fn(msg)
 
 
 # ============================================================
@@ -413,6 +461,7 @@ def pick_snapshot_candidates(
 
         dollar_vol_proxy = day_vol * p
 
+        # Revised gate (still lenient, but stops ultra-dead names)
         if dollar_vol_proxy < MIN_DOLLAR_VOL_PROXY and abs(move_pct) < MIN_MOVE_PROXY_PCT:
             continue
 
@@ -440,12 +489,16 @@ def analyze_ticker_window(
     date_str: str,
     w_start: datetime,
     w_end: datetime,
+    window_name: str,
     snap_meta: Dict[str, Any],
     log_fn=None
 ) -> Optional[Dict[str, Any]]:
+    min_window_vol, min_rel_vol, min_range_pct = _thresholds_for_window(window_name)
+
     bars = get_minute_aggs(ticker, date_str, log_fn=log_fn)
     if not bars:
         reject("no_minute_bars")
+        _maybe_log_reject(log_fn, ticker, "no_minute_bars")
         return None
 
     start_utc = w_start.astimezone(timezone.utc)
@@ -455,10 +508,12 @@ def analyze_ticker_window(
         window = [b for b in bars if start_utc <= ms_to_utc(b["t"]) <= end_utc]
     except Exception:
         reject("bad_minute_bar_shape")
+        _maybe_log_reject(log_fn, ticker, "bad_minute_bar_shape")
         return None
 
     if len(window) < 10:
         reject("too_few_bars")
+        _maybe_log_reject(log_fn, ticker, "too_few_bars", extra=f"bars={len(window)}")
         return None
 
     try:
@@ -469,6 +524,7 @@ def analyze_ticker_window(
         v = float(sum(b["v"] for b in window))
     except Exception:
         reject("missing_ohlcv")
+        _maybe_log_reject(log_fn, ticker, "missing_ohlcv")
         return None
 
     dollar_vol = v * c
@@ -481,11 +537,13 @@ def analyze_ticker_window(
     if prev_close and prev_close > 0:
         move_pct = (c - prev_close) / prev_close
 
-    if v < MIN_WINDOW_VOL:
+    if v < min_window_vol:
         reject("window_vol")
+        _maybe_log_reject(log_fn, ticker, "window_vol", extra=f"v={int(v)} < {int(min_window_vol)}")
         return None
-    if range_pct < MIN_RANGE_PCT:
+    if range_pct < min_range_pct:
         reject("range_pct")
+        _maybe_log_reject(log_fn, ticker, "range_pct", extra=f"rng%={range_pct:.4f} < {min_range_pct:.4f}")
         return None
 
     daily = get_daily_aggs_20d(ticker, date_str, log_fn=log_fn)
@@ -498,15 +556,18 @@ def analyze_ticker_window(
 
     if relv is None:
         reject("no_rel_vol")
+        _maybe_log_reject(log_fn, ticker, "no_rel_vol")
         return None
-    if relv < MIN_REL_VOL:
+    if relv < min_rel_vol:
         reject("rel_vol")
+        _maybe_log_reject(log_fn, ticker, "rel_vol", extra=f"relv={relv:.2f} < {min_rel_vol:.2f}")
         return None
 
     ref = polygon_reference(ticker, log_fn=log_fn) or {}
     is_cs = (ref.get("type") == "CS" and ref.get("active") is True)
     if not is_cs:
         reject("not_common_stock")
+        _maybe_log_reject(log_fn, ticker, "not_common_stock")
         return None
 
     float_shares = None
@@ -518,9 +579,11 @@ def analyze_ticker_window(
 
     if float_shares is None:
         reject("no_float_proxy")
+        _maybe_log_reject(log_fn, ticker, "no_float_proxy")
         return None
     if float_shares > MAX_FLOAT_SHARES:
         reject("float_too_big")
+        _maybe_log_reject(log_fn, ticker, "float_too_big", extra=f"float={float_shares}")
         return None
 
     last_price = snap_meta.get("last_price") or c
@@ -528,10 +591,12 @@ def analyze_ticker_window(
         market_cap = float(last_price) * float(float_shares)
     except Exception:
         reject("no_market_cap")
+        _maybe_log_reject(log_fn, ticker, "no_market_cap")
         return None
 
     if market_cap > MAX_MARKET_CAP:
         reject("mktcap_too_big")
+        _maybe_log_reject(log_fn, ticker, "mktcap_too_big", extra=f"mktcap={market_cap:.0f}")
         return None
 
     vwap = calc_vwap(window)
@@ -549,6 +614,11 @@ def analyze_ticker_window(
         "vwap": vwap,
         "trigger": h,
         "stop": l,
+
+        # include thresholds used (handy for debugging / scoring bonuses)
+        "min_window_vol": min_window_vol,
+        "min_rel_vol": min_rel_vol,
+        "min_range_pct": min_range_pct,
     }
 
 
@@ -574,8 +644,11 @@ def compute_scores(feat: Dict[str, Any]) -> Tuple[float, float, float]:
 
     opportunity = (rng * 120.0) + (move * 35.0) + (min(relv, 6.0) * 10.0) + (min(dv, 15.0) * 4.0)
 
-    range_bonus = max(0.0, (rng - MIN_RANGE_PCT)) * 220.0
-    vol_bonus = max(0.0, ((feat.get("vol") or 0.0) - MIN_WINDOW_VOL) / 1_000_000.0) * 1.6
+    min_range_pct = float(feat.get("min_range_pct") or MIN_RANGE_PCT_REG)
+    min_window_vol = float(feat.get("min_window_vol") or MIN_WINDOW_VOL_REG)
+
+    range_bonus = max(0.0, (rng - min_range_pct)) * 220.0
+    vol_bonus = max(0.0, ((feat.get("vol") or 0.0) - min_window_vol) / 1_000_000.0) * 1.6
 
     vwap_bonus = vwap_pullback_score(
         close=float(feat.get("close") or 0.0),
@@ -757,7 +830,7 @@ th {{ text-align:left; color:#93a4bd; font-weight:700; }}
 <div class="card">
   <h1>Precipice Analytica</h1>
   <div class="muted">by Ryan Tallent • {meta.get("date")} • Window: {meta.get("window")} • Mode: {meta.get("mode")} • ORTEX: {meta.get("ortex")}</div>
-  <div class="muted">Filters: MktCap&lt;2B • Float&lt;100M • Vol&gt;800K • RelVol&gt;1.2 • Range&gt;1.5% • VWAP pullback bonus</div>
+  <div class="muted">Filters: MktCap&lt;2B • Float&lt;100M • Window-aware Vol/RelVol/Range • VWAP pullback bonus</div>
 </div>
 <div class="card">
   <h2>SQUEEZE</h2>
@@ -779,7 +852,8 @@ th {{ text-align:left; color:#93a4bd; font-weight:700; }}
 # Main run_scan
 # ============================================================
 def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "off") -> Optional[str]:
-    # reset reject stats each run
+    global _REJECT_DEBUG_COUNT
+    _REJECT_DEBUG_COUNT = 0
     REJECT_STATS.clear()
 
     mode2 = (mode or "day").lower().strip()
@@ -797,12 +871,18 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "off") ->
     if not ortex_on:
         ortex_finalists = 0
 
+    min_window_vol, min_rel_vol, min_range_pct = _thresholds_for_window(window)
+
     if log_fn:
         log_fn(f"Mode: {mode2.upper()} ({'Polygon + ORTEX' if ortex_on else 'Polygon only'})")
         log_fn(f"Date: {date_str}")
         log_fn(f"Market window: {window} ({w_start.strftime('%H:%M')}–{w_end.strftime('%H:%M')} CT)")
         log_fn(f"ORTEX request: {str(ortex).upper()} | ORTEX mode: {ortex_label}")
-        log_fn("Ryan filters → MktCap<2B | Float<100M | Vol>800K | RelVol>1.2 | Range>1.5% | VWAP pullback bonus")
+        log_fn(
+            "Ryan filters → "
+            f"MktCap<2B | Float<100M | WindowVol>{int(min_window_vol)} | "
+            f"RelVol>{min_rel_vol:.2f} | Range>{min_range_pct*100:.1f}% | VWAP pullback bonus"
+        )
 
     snap = get_snapshot_all_tickers(log_fn=log_fn)
     if log_fn:
@@ -824,7 +904,7 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "off") ->
             log_fn(f"Analyzing (Polygon) {idx}/{len(deep_list)}...")
 
         try:
-            feat = analyze_ticker_window(ticker, date_str, w_start, w_end, snap_meta, log_fn=log_fn)
+            feat = analyze_ticker_window(ticker, date_str, w_start, w_end, window, snap_meta, log_fn=log_fn)
             if not feat:
                 continue
 
