@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Precipice Analytica</title>
 
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
 
   <style>
     :root{
@@ -17,10 +17,7 @@
       --text:#E9EEF4;
       --muted:#9AA7B6;
 
-      --navy:#0A1420;
       --gold:#B08B2E;
-      --gold2:#8F6F1F;
-      --brown:#2B1E12;
       --green:#2AAE6A;
       --red:#D16060;
 
@@ -34,9 +31,10 @@
     }
 
     *{box-sizing:border-box}
+    html,body{height:100%}
     body{
       margin:0;
-      font-family:'Playfair Display', serif;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Apple Color Emoji","Segoe UI Emoji";
       background:
         radial-gradient(1200px 700px at 20% 0%, rgba(176,139,46,.10), transparent 55%),
         radial-gradient(900px 600px at 85% 10%, rgba(42,174,106,.07), transparent 55%),
@@ -44,69 +42,76 @@
       color:var(--text);
     }
 
-    .wrap{max-width:1180px;margin:0 auto;padding:26px 18px}
-
-    /* Top header */
-    .brand{
-      display:flex;
-      align-items:flex-start;
-      justify-content:space-between;
-      gap:18px;
-      flex-wrap:wrap;
+    /* App shell */
+    .appbar{
+      position:sticky;
+      top:0;
+      z-index:60;
+      backdrop-filter: blur(10px);
+      background: linear-gradient(180deg, rgba(7,16,25,.92), rgba(7,16,25,.70));
+      border-bottom:1px solid rgba(29,51,74,.55);
     }
-    .brandLeft{
+    .appbarInner{
+      max-width:1180px;
+      margin:0 auto;
+      padding:12px 18px;
       display:flex;
       align-items:center;
-      gap:14px;
-      min-width:260px;
-      flex:1 1 420px;
+      justify-content:space-between;
+      gap:12px;
     }
-    .brandRight{
-      flex:0 0 auto;
-      min-width:360px;
-      max-width:100%;
+    .appBrand{
       display:flex;
+      align-items:center;
+      gap:10px;
+      min-width:220px;
+    }
+    .appName{
+      font-family:'Playfair Display', serif;
+      font-weight:700;
+      letter-spacing:.2px;
+      font-size:18px;
+      line-height:1;
+    }
+    .appName em{ color: var(--gold); font-style:italic; }
+    .appSub{
+      font-size:12px;
+      color:rgba(233,238,244,.70);
+      margin-top:2px;
+      font-weight:700;
+    }
+    .nav{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+      justify-content:flex-end;
+      align-items:center;
+    }
+    .navBtn{
+      border:1px solid rgba(29,51,74,.85);
+      background: rgba(14,32,50,.60);
+      color: rgba(233,238,244,.92);
+      padding:8px 10px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 800;
+      cursor:pointer;
+      white-space:nowrap;
+    }
+    .navBtn:hover{filter:brightness(1.05)}
+    .navBtn.active{
+      border-color: rgba(176,139,46,.55);
+      background: rgba(176,139,46,.12);
+      color: var(--text);
+    }
+
+    .statusPills{
+      display:flex;
+      gap:8px;
+      align-items:center;
+      flex-wrap:wrap;
       justify-content:flex-end;
     }
-    .logo{
-      width:54px;height:54px;
-      border-radius:14px;
-      border:1px solid rgba(176,139,46,.35);
-      background:linear-gradient(180deg, rgba(176,139,46,.10), rgba(15,36,56,.10));
-      box-shadow:0 10px 24px rgba(0,0,0,.35);
-      display:grid;
-      place-items:center;
-      overflow:hidden;
-    }
-    .logo svg{display:block}
-    .h1{font-size:44px;font-weight:700;margin:0;color:var(--text);letter-spacing:.2px}
-    .h1 em{font-style:italic;font-weight:700;color:var(--gold)}
-    .h2{color:rgba(233,238,244,.85);font-size:15px;margin:6px 0 0 0;font-weight:600}
-    .byline{
-      margin-top:4px;
-      font-size:13px;
-      color:var(--muted);
-    }
-    .byline b{color:var(--gold);font-weight:800}
-    .micro{
-      margin-top:10px;
-      color:var(--muted);
-      font-size:13px;
-      line-height:1.55;
-      max-width:980px;
-    }
-
-    .card{
-      background:linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,.01));
-      border:1px solid rgba(29,51,74,.85);
-      border-radius:var(--radius);
-      padding:16px;
-      box-shadow:var(--shadow);
-      margin-top:16px;
-      backdrop-filter: blur(6px);
-    }
-
-    /* Pills */
     .pill{
       display:flex;
       gap:8px;
@@ -119,7 +124,19 @@
       background:rgba(14,32,50,.75);
       white-space:nowrap;
     }
-    .pill b{color:var(--text);font-weight:800}
+    .pill b{color:var(--text);font-weight:900}
+
+    .wrap{max-width:1180px;margin:0 auto;padding:18px 18px 26px 18px}
+
+    .card{
+      background:linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,.01));
+      border:1px solid rgba(29,51,74,.85);
+      border-radius:var(--radius);
+      padding:16px;
+      box-shadow:var(--shadow);
+      margin-top:16px;
+      backdrop-filter: blur(6px);
+    }
 
     /* Buttons */
     .btn{
@@ -131,15 +148,13 @@
       font-weight:900;
       cursor:pointer;
       box-shadow:var(--shadow2);
-      font-family:'Playfair Display', serif;
-      letter-spacing:.35px;
+      letter-spacing:.2px;
       transition:transform .10s ease, opacity .10s ease, filter .10s ease;
       border:1px solid rgba(29,51,74,.85);
     }
     .btn:hover{transform:translateY(-1px);filter:brightness(1.03)}
     .btn:active{transform:translateY(0px);opacity:.96}
     .btn:disabled{opacity:.55;cursor:not-allowed;transform:none}
-
     .btn.secondary{
       background:rgba(14,32,50,.65);
       color:var(--text);
@@ -148,7 +163,6 @@
       letter-spacing:0;
       font-weight:800;
     }
-
     .btn.toggle{
       background:rgba(14,32,50,.65);
       color:var(--text);
@@ -168,7 +182,7 @@
       color:rgba(255,210,210,.92);
     }
 
-    /* One toolbar */
+    /* Toolbar */
     .toolbar{
       margin-top:16px;
       display:flex;
@@ -183,89 +197,7 @@
     .toolgroup{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
     .spacer{flex:1}
 
-    /* ===== HEADER SCOREBOARD ===== */
-    .headerScoreboard{
-      width:min(500px, 100%);
-      padding:12px 12px;
-      border-radius:16px;
-      border:1.5px solid rgba(176,139,46,.25);
-      background:linear-gradient(180deg, rgba(14,32,50,.60), rgba(11,22,34,.40));
-      box-shadow:0 14px 26px rgba(0,0,0,.35);
-    }
-    .scoreTop{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:10px;
-      flex-wrap:wrap;
-      margin-bottom:10px;
-    }
-    .scoreHead{
-      display:flex;
-      align-items:center;
-      gap:8px;
-      flex-wrap:wrap;
-    }
-    .scoreMainTitle{
-      font-size:16px;
-      color:rgba(255,244,214,.92);
-      font-weight:900;
-      letter-spacing:.25px;
-    }
-    .scoreSubTitle{
-      font-size:11px;
-      color:rgba(233,238,244,.62);
-      font-weight:900;
-      letter-spacing:.16px;
-    }
-    .scoreHelp{
-      display:inline-flex;
-      align-items:center;
-      justify-content:center;
-      width:18px;height:18px;
-      border-radius:999px;
-      border:1px solid rgba(176,139,46,.45);
-      color:rgba(255,244,214,.95);
-      font-size:11px;
-      font-weight:900;
-      cursor:help;
-      background:rgba(176,139,46,.10);
-      position:relative;
-      top:-1px;
-    }
-    .scoreGrid{
-      display:grid;
-      grid-template-columns:repeat(4, minmax(0,1fr));
-      gap:8px;
-    }
-    .scoreCard{
-      padding:10px 10px;
-      border-radius:12px;
-      border:1px solid rgba(29,51,74,.95);
-      background:rgba(7,16,25,.35);
-      min-width:0;
-    }
-    .scoreCardLabel{
-      font-size:10.5px;
-      line-height:1.2;
-      color:rgba(233,238,244,.68);
-      font-weight:900;
-      letter-spacing:.18px;
-      text-transform:uppercase;
-      margin-bottom:5px;
-    }
-    .scoreCardValue{
-      font-size:18px;
-      line-height:1.15;
-      font-weight:900;
-      color:rgba(233,238,244,.98);
-      white-space:nowrap;
-    }
-    .scoreCardValue.gold{color:rgba(255,232,170,.98);}
-    .scoreCardValue.green{color:rgba(205,255,229,.95);}
-    .scoreCardValue.red{color:rgba(255,170,170,.95);}
-    .scoreCardValue.muted{color:rgba(233,238,244,.85);}
-
+    /* Toggle buttons */
     .tbtn{
       border:1px solid rgba(29,51,74,.85);
       background:rgba(14,32,50,.55);
@@ -274,7 +206,6 @@
       padding:9px 12px;
       cursor:pointer;
       font-weight:900;
-      font-family:'Playfair Display', serif;
       white-space:nowrap;
     }
     .tbtn:hover{filter:brightness(1.05)}
@@ -310,29 +241,6 @@
     .drop ul{margin:8px 0 0 0;padding-left:18px}
     .drop li{margin:6px 0;color:rgba(233,238,244,.92);font-size:12.5px}
 
-    /* setups cards */
-    .setupCard{
-      border:1px solid rgba(29,51,74,.75);
-      background:rgba(14,32,50,.45);
-      border-radius:12px;
-      padding:10px;
-      margin-top:10px;
-      display:flex;
-      gap:10px;
-      align-items:flex-start;
-    }
-    .setupSvg{
-      width:110px;
-      min-width:110px;
-      border:1px solid rgba(29,51,74,.75);
-      background:rgba(7,16,25,.55);
-      border-radius:10px;
-      padding:6px;
-    }
-    .setupText b{color:rgba(255,244,214,.95)}
-    .setupText{font-size:12.5px;line-height:1.45;color:rgba(233,238,244,.92)}
-
-    /* ? icon */
     .qmark{
       display:inline-flex;
       align-items:center;
@@ -350,11 +258,9 @@
       top:-1px;
     }
 
-    /* Beginner-only blocks */
     .beginnerOnly{display:none}
     .beginnerOn .beginnerOnly{display:block}
 
-    /* JS tooltip */
     #tip{
       position:fixed;
       z-index:9999;
@@ -372,7 +278,6 @@
       white-space:pre-wrap;
     }
 
-    /* Guided banner (beginner) */
     .guide{
       margin-top:10px;
       padding:10px 12px;
@@ -384,7 +289,6 @@
       font-weight:900;
     }
 
-    /* badges */
     .badge{
       display:inline-block;
       margin-left:8px;
@@ -411,10 +315,8 @@
 
     .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
     @media (max-width: 980px){.grid{grid-template-columns:1fr}}
-    @media (max-width: 820px){
-      .brandRight{width:100%;justify-content:stretch}
-      .headerScoreboard{width:100%}
-      .scoreGrid{grid-template-columns:repeat(2, minmax(0,1fr))}
+    @media (max-width: 900px){
+      .statusPills{display:none}
     }
 
     .title{font-weight:900;font-size:18px;margin:0 0 6px 0;color:var(--text)}
@@ -444,7 +346,7 @@
       cursor:pointer;
       font-weight:900;
       font-size:12px;
-      font-family:'Playfair Display', serif;
+      white-space:nowrap;
     }
     .tab.active{
       background:rgba(176,139,46,.16);
@@ -480,7 +382,7 @@
       color:rgba(233,238,244,.95);
       cursor:pointer;
       font-weight:900;
-      font-family:'Playfair Display', serif;
+      white-space:nowrap;
     }
     .addbtn:hover{filter:brightness(1.05)}
 
@@ -512,7 +414,6 @@
       background:rgba(14,32,50,.55);
       color:rgba(233,238,244,.95);
       font-weight:900;
-      font-family:'Playfair Display', serif;
     }
 
     .summaryRow{
@@ -575,369 +476,374 @@
       font-weight:900;
       white-space:nowrap;
     }
+
+    /* Pages */
+    .page{display:none}
+    .page.active{display:block}
+
+    /* Simple placeholder panels */
+    .emptyState{
+      border:1px dashed rgba(29,51,74,.85);
+      background:rgba(14,32,50,.35);
+      border-radius:12px;
+      padding:14px;
+      color:rgba(233,238,244,.88);
+      font-size:13px;
+      line-height:1.55;
+    }
+
+    /* Setup cards preserved (from your old UI) */
+    .setupCard{
+      border:1px solid rgba(29,51,74,.75);
+      background:rgba(14,32,50,.45);
+      border-radius:12px;
+      padding:10px;
+      margin-top:10px;
+      display:flex;
+      gap:10px;
+      align-items:flex-start;
+    }
+    .setupSvg{
+      width:110px;
+      min-width:110px;
+      border:1px solid rgba(29,51,74,.75);
+      background:rgba(7,16,25,.55);
+      border-radius:10px;
+      padding:6px;
+    }
+    .setupText b{color:rgba(255,244,214,.95)}
+    .setupText{font-size:12.5px;line-height:1.45;color:rgba(233,238,244,.92)}
   </style>
 </head>
 
 <body>
-  <div class="wrap">
-
-    <!-- Header -->
-    <div class="brand">
-      <div class="brandLeft">
-        <div class="logo" aria-label="Orion vs Bull logo">
-          <svg width="46" height="46" viewBox="0 0 46 46" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="10" cy="10" r="1" fill="rgba(255,244,214,.55)"/>
-            <circle cx="34" cy="9" r="1" fill="rgba(233,238,244,.40)"/>
-            <circle cx="40" cy="18" r="1" fill="rgba(255,244,214,.35)"/>
-            <circle cx="7" cy="30" r="1" fill="rgba(233,238,244,.30)"/>
-            <circle cx="18" cy="40" r="1" fill="rgba(255,244,214,.30)"/>
-
-            <path d="M28 14 L36 10 L40 16 L34 22 L28 20 L24 16 Z"
-                  stroke="rgba(233,238,244,.35)" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
-            <circle cx="36" cy="10" r="1.4" fill="rgba(233,238,244,.55)"/>
-            <circle cx="40" cy="16" r="1.4" fill="rgba(233,238,244,.55)"/>
-            <circle cx="34" cy="22" r="1.4" fill="rgba(233,238,244,.55)"/>
-            <circle cx="28" cy="20" r="1.4" fill="rgba(233,238,244,.55)"/>
-
-            <path d="M10 30 L14 20 L20 18 L24 24 L18 32 Z"
-                  stroke="rgba(176,139,46,.55)" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
-            <circle cx="14" cy="20" r="1.5" fill="rgba(255,232,170,.95)"/>
-            <circle cx="20" cy="18" r="1.5" fill="rgba(255,232,170,.85)"/>
-            <circle cx="24" cy="24" r="1.5" fill="rgba(255,232,170,.80)"/>
-
-            <path d="M14 26 L19 24 L24 22"
-                  stroke="rgba(176,139,46,.75)" stroke-width="1.4" stroke-linecap="round"/>
-            <circle cx="14" cy="26" r="1.7" fill="rgba(255,232,170,.95)"/>
-            <circle cx="19" cy="24" r="1.7" fill="rgba(255,232,170,.95)"/>
-            <circle cx="24" cy="22" r="1.7" fill="rgba(255,232,170,.95)"/>
-
-            <path d="M24 22 L26.5 19.5" stroke="rgba(255,232,170,.65)" stroke-width="1.2" stroke-linecap="round"/>
-            <path d="M26.5 19.5 L26.2 21.6" stroke="rgba(255,232,170,.65)" stroke-width="1.2" stroke-linecap="round"/>
-            <path d="M26.5 19.5 L24.4 19.8" stroke="rgba(255,232,170,.65)" stroke-width="1.2" stroke-linecap="round"/>
-          </svg>
-        </div>
-
+  <!-- Sticky app bar -->
+  <div class="appbar">
+    <div class="appbarInner">
+      <div class="appBrand">
         <div>
-          <div class="h1">Precipice <em>Analytica</em></div>
-          <div class="h2">Stock Scanner • Squeeze + Momentum</div>
-          <div class="byline">by <b>Ryan Tallent</b></div>
+          <div class="appName">Precipice <em>Analytica</em></div>
+          <div class="appSub">Squeeze + Momentum Scanner</div>
         </div>
       </div>
 
-      <div class="brandRight">
-        <div class="headerScoreboard" id="scoreboard">
-          <div class="scoreTop">
-            <div class="scoreHead">
-              <div class="scoreMainTitle">Performance Scoreboard</div>
-              <div
-                class="scoreHelp"
-                data-tip="Performance Scoreboard
-
-Hit Rate = triggered signals only: wins divided by wins + losses.
-Wins = signals that triggered and reached the win target.
-Losses = signals that triggered and hit the loss level.
-Avg Max Gain = average best move after trigger, even if it did not finish as a win.
-
-Notebook Win = your personal closed-trade win rate from the Notebook.
-Notebook Trades = total trades saved in the Notebook.
-Notebook P/L = total closed-trade profit/loss in dollars."
-              >?</div>
-            </div>
-            <div class="scoreSubTitle">SYSTEM + NOTEBOOK STATS</div>
-          </div>
-
-          <div class="scoreGrid">
-            <div class="scoreCard">
-              <div class="scoreCardLabel">Hit Rate</div>
-              <div class="scoreCardValue gold" id="sbHit">—</div>
-            </div>
-            <div class="scoreCard">
-              <div class="scoreCardLabel">Wins</div>
-              <div class="scoreCardValue green" id="sbW">—</div>
-            </div>
-            <div class="scoreCard">
-              <div class="scoreCardLabel">Losses</div>
-              <div class="scoreCardValue red" id="sbL">—</div>
-            </div>
-            <div class="scoreCard">
-              <div class="scoreCardLabel">Avg Max Gain</div>
-              <div class="scoreCardValue muted" id="sbAvg">—</div>
-            </div>
-
-            <div class="scoreCard">
-              <div class="scoreCardLabel">Notebook Win</div>
-              <div class="scoreCardValue" id="nbWR">—</div>
-            </div>
-            <div class="scoreCard">
-              <div class="scoreCardLabel">Notebook Trades</div>
-              <div class="scoreCardValue muted" id="nbTrades">—</div>
-            </div>
-            <div class="scoreCard">
-              <div class="scoreCardLabel">Notebook P/L</div>
-              <div class="scoreCardValue" id="nbPL">—</div>
-            </div>
-            <div class="scoreCard">
-              <div class="scoreCardLabel">Status</div>
-              <div class="scoreCardValue muted">Live</div>
-            </div>
-          </div>
-        </div>
+      <div class="nav" aria-label="Primary navigation">
+        <button class="navBtn active" id="navScan" type="button">Scan</button>
+        <button class="navBtn" id="navSignals" type="button">Signals</button>
+        <button class="navBtn" id="navJournal" type="button">Journal</button>
+        <button class="navBtn" id="navScoreboard" type="button">Scoreboard</button>
+        <button class="navBtn" id="navSettings" type="button">Settings</button>
       </div>
-    </div>
 
-    <!-- One toolbar -->
-    <div class="toolbar" id="toolbar">
-      <div class="toolgroup">
-        <button class="tbtn off" id="btnBeginner">Beginner: OFF</button>
-
-        <button class="tbtn off beginnerOnly" id="btnShowAll">Show all: OFF</button>
-
-        <!-- NEW: Advanced toggle -->
-        <button class="tbtn off" id="btnAdvanced">Advanced: OFF</button>
-
-        <div class="dropwrap">
-          <button class="tbtn" id="btnHelp">Help</button>
-          <div class="drop" id="dropHelp">
-            <h4>Quick help</h4>
-            <p><b>How to use:</b> Click <b>Scan</b> → click a row → follow <b>ENTRY / STOP / TARGET</b> → use <b>Notebook</b> to track.</p>
-            <p><b>Rule:</b> If STOP hits, exit. Don’t “hope”.</p>
-
-            <div class="beginnerOnly">
-              <p><b>Beginner checklist:</b></p>
-              <ul>
-                <li>Start with Conf 7+ only.</li>
-                <li>Never average down.</li>
-                <li>Size small so a STOP loss is “small”.</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-
-        <div class="dropwrap">
-          <button class="tbtn" id="btnSetups">Setups</button>
-          <div class="drop" id="dropSetups">
-            <h4>Setups (easy)</h4>
-
-            <div class="setupCard">
-              <div class="setupSvg">
-                <svg viewBox="0 0 120 70" width="100%" height="70" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M10 50 L35 30 L55 18 L72 26 L88 38 L110 22" fill="none" stroke="rgba(255,244,214,.85)" stroke-width="2" stroke-linecap="round"/>
-                  <line x1="10" y1="34" x2="110" y2="34" stroke="rgba(42,174,106,.55)" stroke-width="2" stroke-dasharray="4 4"/>
-                  <circle cx="88" cy="38" r="3" fill="rgba(255,232,170,.95)"/>
-                </svg>
-              </div>
-              <div class="setupText">
-                <b>VWAP Pullback</b><br/>
-                Price runs up, then pulls back near VWAP (the dotted line) and holds. Entry is when it starts going back up.
-              </div>
-            </div>
-
-            <div class="setupCard">
-              <div class="setupSvg">
-                <svg viewBox="0 0 120 70" width="100%" height="70" xmlns="http://www.w3.org/2000/svg">
-                  <line x1="10" y1="35" x2="110" y2="35" stroke="rgba(255,232,170,.55)" stroke-width="2"/>
-                  <path d="M10 50 L35 40 L55 35 L75 20 L92 26 L110 22" fill="none" stroke="rgba(255,244,214,.85)" stroke-width="2" stroke-linecap="round"/>
-                  <circle cx="55" cy="35" r="3" fill="rgba(255,232,170,.95)"/>
-                </svg>
-              </div>
-              <div class="setupText">
-                <b>Break → Pullback (Retest)</b><br/>
-                Price breaks above a key level, then comes back to “retest” it. Entry is when the retest holds and it turns up.
-              </div>
-            </div>
-
-            <div class="setupCard">
-              <div class="setupSvg">
-                <svg viewBox="0 0 120 70" width="100%" height="70" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M10 52 L30 44 L50 38 L70 28 L90 18 L110 10" fill="none" stroke="rgba(255,244,214,.85)" stroke-width="2" stroke-linecap="round"/>
-                  <path d="M102 12 L110 10 L108 18" fill="none" stroke="rgba(42,174,106,.85)" stroke-width="2" stroke-linecap="round"/>
-                </svg>
-              </div>
-              <div class="setupText">
-                <b>Momentum Breakout</b><br/>
-                Strong uptrend making new highs. Entry is on the break above the recent high (with volume).
-              </div>
-            </div>
-
-            <div class="setupCard">
-              <div class="setupSvg">
-                <svg viewBox="0 0 120 70" width="100%" height="70" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M10 48 L32 28 L52 16 L70 22 L88 30 L110 18" fill="none" stroke="rgba(255,244,214,.85)" stroke-width="2" stroke-linecap="round"/>
-                  <circle cx="70" cy="22" r="3" fill="rgba(255,232,170,.95)"/>
-                </svg>
-              </div>
-              <div class="setupText">
-                <b>Momentum Pullback</b><br/>
-                Price is trending up, then cools off (small pullback). Entry is when the pullback stops and price turns up again.
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="dropwrap">
-          <button class="tbtn" id="btnGlossary">Glossary</button>
-          <div class="drop" id="dropGlossary">
-            <h4>Signals</h4>
-            <ul>
-              <li><b>Confidence (Conf):</b> Setup quality score. Higher is better, not guaranteed.</li>
-              <li><b>Move (%):</b> Percent change vs yesterday close.</li>
-              <li><b>Share Float (SFloat):</b> Shares available to trade. Smaller float can move faster.</li>
-              <li><b>VWAP:</b> Volume-Weighted Average Price. A line traders watch for support/resistance.</li>
-            </ul>
-
-            <h4 style="margin-top:12px">Data sources</h4>
-            <ul>
-              <li><b>Polygon:</b> Live market data (price/volume/candles). Powers the scan results.</li>
-              <li><b>ORTEX:</b> Short interest + borrow data (SI%, borrow cost, availability). Helps confirm squeeze pressure.</li>
-            </ul>
-          </div>
-        </div>
-
+      <div class="statusPills">
         <div class="pill" id="pillApi">API: <b>checking…</b></div>
         <div class="pill" id="pillWindow">Window: <b>—</b></div>
         <div class="pill" id="pillOrtex">ORTEX: <b>OFF</b></div>
         <div class="pill" id="pillLast">Last Scan: <b>—</b></div>
       </div>
-
-      <div class="spacer"></div>
-
-      <div class="toolgroup">
-        <select class="select" id="noteView">
-          <option value="all">notebook: all</option>
-          <option value="yesterday">notebook: yesterday</option>
-        </select>
-
-        <button class="btn toggle off" id="btnOrtex" title="Turn ORTEX request ON/OFF">ORTEX: OFF</button>
-        <button class="btn" id="btnScan">Scan</button>
-        <button class="btn secondary" id="btnClear">Clear</button>
-      </div>
     </div>
+  </div>
 
-    <div class="guide beginnerOnly">
-      1) Scan → 2) Click a row → 3) Set Risk $ → 4) Follow STOP → 5) Log trade
-    </div>
+  <div class="wrap">
+    <!-- PAGES -->
+    <div class="page active" id="pageScan">
+      <!-- One toolbar -->
+      <div class="toolbar" id="toolbar">
+        <div class="toolgroup">
+          <button class="tbtn off" id="btnBeginner">Beginner: OFF</button>
+          <button class="tbtn off beginnerOnly" id="btnShowAll">Show all: OFF</button>
+          <button class="tbtn off" id="btnAdvanced">Advanced: OFF</button>
 
-    <div class="micro beginnerOnly" style="margin-top:10px">
-      Beginner tip: Only take trades where you understand the plan. If you can’t explain it, skip it.
-    </div>
+          <div class="dropwrap">
+            <button class="tbtn" id="btnHelp">Help</button>
+            <div class="drop" id="dropHelp">
+              <h4>Quick help</h4>
+              <p><b>How to use:</b> Click <b>Scan</b> → click a row → follow <b>ENTRY / STOP / TARGET</b> → use <b>Notebook</b> to track.</p>
+              <p><b>Rule:</b> If STOP hits, exit. Don’t “hope”.</p>
 
-    <div class="grid">
-      <div class="card">
-        <div class="title">Live Log</div>
-        <div class="smallline" id="logStatus">Idle.</div>
-        <div class="logbox" id="logBox"></div>
-      </div>
+              <div class="beginnerOnly">
+                <p><b>Beginner checklist:</b></p>
+                <ul>
+                  <li>Start with Conf 7+ only.</li>
+                  <li>Never average down.</li>
+                  <li>Size small so a STOP loss is “small”.</li>
+                </ul>
+              </div>
+            </div>
+          </div>
 
-      <div class="card">
-        <div class="title">Results</div>
-        <div class="smallline" id="resultsMeta">US Equities • Updated — • — scanned</div>
+          <div class="dropwrap">
+            <button class="tbtn" id="btnSetups">Setups</button>
+            <div class="drop" id="dropSetups">
+              <h4>Setups (easy)</h4>
 
-        <div class="tabs">
-          <button class="tab active" id="tabSqueeze">SQUEEZE</button>
-          <button class="tab" id="tabMomentum">MOMENTUM</button>
+              <div class="setupCard">
+                <div class="setupSvg">
+                  <svg viewBox="0 0 120 70" width="100%" height="70" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M10 50 L35 30 L55 18 L72 26 L88 38 L110 22" fill="none" stroke="rgba(255,244,214,.85)" stroke-width="2" stroke-linecap="round"/>
+                    <line x1="10" y1="34" x2="110" y2="34" stroke="rgba(42,174,106,.55)" stroke-width="2" stroke-dasharray="4 4"/>
+                    <circle cx="88" cy="38" r="3" fill="rgba(255,232,170,.95)"/>
+                  </svg>
+                </div>
+                <div class="setupText">
+                  <b>VWAP Pullback</b><br/>
+                  Price runs up, then pulls back near VWAP (the dotted line) and holds. Entry is when it starts going back up.
+                </div>
+              </div>
+
+              <div class="setupCard">
+                <div class="setupSvg">
+                  <svg viewBox="0 0 120 70" width="100%" height="70" xmlns="http://www.w3.org/2000/svg">
+                    <line x1="10" y1="35" x2="110" y2="35" stroke="rgba(255,232,170,.55)" stroke-width="2"/>
+                    <path d="M10 50 L35 40 L55 35 L75 20 L92 26 L110 22" fill="none" stroke="rgba(255,244,214,.85)" stroke-width="2" stroke-linecap="round"/>
+                    <circle cx="55" cy="35" r="3" fill="rgba(255,232,170,.95)"/>
+                  </svg>
+                </div>
+                <div class="setupText">
+                  <b>Break → Pullback (Retest)</b><br/>
+                  Price breaks above a key level, then comes back to “retest” it. Entry is when the retest holds and it turns up.
+                </div>
+              </div>
+
+              <div class="setupCard">
+                <div class="setupSvg">
+                  <svg viewBox="0 0 120 70" width="100%" height="70" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M10 52 L30 44 L50 38 L70 28 L90 18 L110 10" fill="none" stroke="rgba(255,244,214,.85)" stroke-width="2" stroke-linecap="round"/>
+                    <path d="M102 12 L110 10 L108 18" fill="none" stroke="rgba(42,174,106,.85)" stroke-width="2" stroke-linecap="round"/>
+                  </svg>
+                </div>
+                <div class="setupText">
+                  <b>Momentum Breakout</b><br/>
+                  Strong uptrend making new highs. Entry is on the break above the recent high (with volume).
+                </div>
+              </div>
+
+              <div class="setupCard">
+                <div class="setupSvg">
+                  <svg viewBox="0 0 120 70" width="100%" height="70" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M10 48 L32 28 L52 16 L70 22 L88 30 L110 18" fill="none" stroke="rgba(255,244,214,.85)" stroke-width="2" stroke-linecap="round"/>
+                    <circle cx="70" cy="22" r="3" fill="rgba(255,232,170,.95)"/>
+                  </svg>
+                </div>
+                <div class="setupText">
+                  <b>Momentum Pullback</b><br/>
+                  Price is trending up, then cools off (small pullback). Entry is when the pullback stops and price turns up again.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="dropwrap">
+            <button class="tbtn" id="btnGlossary">Glossary</button>
+            <div class="drop" id="dropGlossary">
+              <h4>Signals</h4>
+              <ul>
+                <li><b>Confidence (Conf):</b> Setup quality score. Higher is better, not guaranteed.</li>
+                <li><b>Move (%):</b> Percent change vs yesterday close.</li>
+                <li><b>Share Float (SFloat):</b> Shares available to trade. Smaller float can move faster.</li>
+                <li><b>VWAP:</b> Volume-Weighted Average Price. A line traders watch for support/resistance.</li>
+              </ul>
+
+              <h4 style="margin-top:12px">Data sources</h4>
+              <ul>
+                <li><b>Polygon:</b> Live market data (price/volume/candles). Powers the scan results.</li>
+                <li><b>ORTEX:</b> Short interest + borrow data (SI%, borrow cost, availability). Helps confirm squeeze pressure.</li>
+              </ul>
+            </div>
+          </div>
         </div>
 
-        <div style="overflow:auto; max-height:420px; border-radius:12px; border:1px solid rgba(29,51,74,.85);">
+        <div class="spacer"></div>
+
+        <div class="toolgroup">
+          <select class="select" id="noteView">
+            <option value="all">notebook: all</option>
+            <option value="yesterday">notebook: yesterday</option>
+          </select>
+
+          <button class="btn toggle off" id="btnOrtex" title="Turn ORTEX request ON/OFF">ORTEX: OFF</button>
+          <button class="btn" id="btnScan">Scan</button>
+          <button class="btn secondary" id="btnClear">Clear</button>
+        </div>
+      </div>
+
+      <div class="guide beginnerOnly">
+        1) Scan → 2) Click a row → 3) Set Risk $ → 4) Follow STOP → 5) Log trade
+      </div>
+
+      <div class="grid">
+        <div class="card">
+          <div class="title">Live Log</div>
+          <div class="smallline" id="logStatus">Idle.</div>
+          <div class="logbox" id="logBox"></div>
+        </div>
+
+        <div class="card">
+          <div class="title">Results</div>
+          <div class="smallline" id="resultsMeta">US Equities • Updated — • — scanned</div>
+
+          <div class="tabs">
+            <button class="tab active" id="tabSqueeze">SQUEEZE</button>
+            <button class="tab" id="tabMomentum">MOMENTUM</button>
+          </div>
+
+          <div style="overflow:auto; max-height:420px; border-radius:12px; border:1px solid rgba(29,51,74,.85);">
+            <table>
+              <thead>
+                <tr>
+                  <th><span id="thTicker">Ticker</span></th>
+                  <th>
+                    <span id="thConf">Conf</span>
+                    <span class="qmark" data-tip="Higher = better setup ranking (not guaranteed).">?</span>
+                  </th>
+                  <th>
+                    <span id="thSetup">Setup</span>
+                    <span class="qmark" data-tip="The pattern it resembles (VWAP pullback, breakout, etc.).">?</span>
+                  </th>
+                  <th class="right">
+                    <span id="thPrice">Price</span>
+                    <span class="qmark" data-tip="Last price from the scan.">?</span>
+                  </th>
+                  <th class="right">
+                    <span id="thMove">Move</span>
+                    <span class="qmark" data-tip="% vs yesterday close.">?</span>
+                  </th>
+                  <th class="right">
+                    <span id="thFloat">SFloat</span>
+                    <span class="qmark" data-tip="Shares available to trade. Smaller float can move faster.">?</span>
+                  </th>
+
+                  <th class="right advCol" style="display:none">
+                    $Vol
+                    <span class="qmark" data-tip="Dollar volume in the scan window (Volume × Price). Higher = more liquidity.">?</span>
+                  </th>
+                  <th class="right advCol" style="display:none">
+                    RelVol
+                    <span class="qmark" data-tip="Relative volume vs what’s ‘normal’ for this time slice. >1 means above expected.">?</span>
+                  </th>
+                  <th class="right advCol" style="display:none">
+                    Range
+                    <span class="qmark" data-tip="High–Low range in the scan window as a percent. Bigger range = more movement.">?</span>
+                  </th>
+                  <th class="right advCol" style="display:none">
+                    VWAP
+                    <span class="qmark" data-tip="Volume-Weighted Average Price for the scan window. Often acts like support/resistance.">?</span>
+                  </th>
+
+                  <th class="right"><span id="thAdd">Add</span></th>
+                </tr>
+              </thead>
+              <tbody id="resultsBody"></tbody>
+            </table>
+          </div>
+
+          <div class="rowexp" id="planBox"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="notehead">
+          <div style="width:100%">
+            <div class="title" style="margin-bottom:4px">Notebook</div>
+            <div class="smallline" id="noteMeta">Trades you add will appear here.</div>
+
+            <div class="summaryRow">
+              <div class="summaryPills">
+                <div class="sumPill">Trades: <b id="sumTrades">—</b></div>
+                <div class="sumPill">Win rate: <b id="sumWinrate">—</b></div>
+                <div class="sumPill">Avg win: <b id="sumAvgWin">—</b></div>
+                <div class="sumPill">Avg loss: <b id="sumAvgLoss">—</b></div>
+                <div class="sumPill">Total P/L: <b id="sumTotal">—</b></div>
+              </div>
+
+              <div class="chartBox">
+                <div class="chartTitle">Equity curve (Notebook)</div>
+                <canvas id="pnlChart" width="520" height="140"></canvas>
+              </div>
+            </div>
+
+            <div class="noteActions">
+              <button class="btn secondary" id="btnAddPast">Add Past Trade</button>
+              <span class="pillMini">Tip: add old trades → get review/corrections</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="overflow:auto; border:1px solid rgba(29,51,74,.85); border-radius:12px; max-height:320px;">
           <table>
             <thead>
               <tr>
-                <th><span id="thTicker">Ticker</span></th>
-                <th>
-                  <span id="thConf">Conf</span>
-                  <span class="qmark" data-tip="Higher = better setup ranking (not guaranteed).">?</span>
-                </th>
-                <th>
-                  <span id="thSetup">Setup</span>
-                  <span class="qmark" data-tip="The pattern it resembles (VWAP pullback, breakout, etc.).">?</span>
-                </th>
-                <th class="right">
-                  <span id="thPrice">Price</span>
-                  <span class="qmark" data-tip="Last price from the scan.">?</span>
-                </th>
-                <th class="right">
-                  <span id="thMove">Move</span>
-                  <span class="qmark" data-tip="% vs yesterday close.">?</span>
-                </th>
-                <th class="right">
-                  <span id="thFloat">SFloat</span>
-                  <span class="qmark" data-tip="Shares available to trade. Smaller float can move faster.">?</span>
-                </th>
-
-                <!-- ADVANCED (hidden unless Advanced ON + Beginner OFF) -->
-                <th class="right advCol" style="display:none">
-                  $Vol
-                  <span class="qmark" data-tip="Dollar volume in the scan window (Volume × Price). Higher = more liquidity.">?</span>
-                </th>
-                <th class="right advCol" style="display:none">
-                  RelVol
-                  <span class="qmark" data-tip="Relative volume vs what’s ‘normal’ for this time slice. >1 means above expected.">?</span>
-                </th>
-                <th class="right advCol" style="display:none">
-                  Range
-                  <span class="qmark" data-tip="High–Low range in the scan window as a percent. Bigger range = more movement.">?</span>
-                </th>
-                <th class="right advCol" style="display:none">
-                  VWAP
-                  <span class="qmark" data-tip="Volume-Weighted Average Price for the scan window. Often acts like support/resistance.">?</span>
-                </th>
-
-                <th class="right"><span id="thAdd">Add</span></th>
+                <th>Ticker</th>
+                <th>Setup</th>
+                <th>Conf</th>
+                <th class="right">Entry</th>
+                <th class="right">Exit</th>
+                <th class="right">Shares</th>
+                <th class="right">P/L $</th>
+                <th class="right">P/L %</th>
+                <th>Flags</th>
+                <th class="right">Actions</th>
               </tr>
             </thead>
-            <tbody id="resultsBody"></tbody>
+            <tbody id="noteBody"></tbody>
           </table>
         </div>
-
-        <div class="rowexp" id="planBox"></div>
       </div>
     </div>
 
-    <div class="card">
-      <div class="notehead">
-        <div>
-          <div class="title" style="margin-bottom:4px">Notebook</div>
-          <div class="smallline" id="noteMeta">Trades you add will appear here.</div>
+    <div class="page" id="pageSignals">
+      <div class="card">
+        <div class="title">Signals</div>
+        <div class="smallline">Saved squeeze signals and outcomes (coming next).</div>
+        <div class="emptyState">
+          This page will show your daily squeeze signals with status (PENDING/WIN/LOSS/NO_TRADE), trigger time, and max gain/drawdown.
+          <br/><br/>
+          Next build: signal table + filters + “why flagged”.
+        </div>
+      </div>
+    </div>
 
-          <div class="summaryRow">
-            <div class="summaryPills">
-              <div class="sumPill">Trades: <b id="sumTrades">—</b></div>
-              <div class="sumPill">Win rate: <b id="sumWinrate">—</b></div>
-              <div class="sumPill">Avg win: <b id="sumAvgWin">—</b></div>
-              <div class="sumPill">Avg loss: <b id="sumAvgLoss">—</b></div>
-              <div class="sumPill">Total P/L: <b id="sumTotal">—</b></div>
-            </div>
+    <div class="page" id="pageJournal">
+      <div class="card">
+        <div class="title">Journal</div>
+        <div class="smallline">Your process, mistakes, and execution rules.</div>
+        <div class="emptyState">
+          You already have the Notebook on the Scan page. This Journal page will become a higher-level view:
+          tags, screenshots/notes, and weekly review prompts.
+        </div>
+      </div>
+    </div>
 
-            <div class="chartBox">
-              <div class="chartTitle">Equity curve (Notebook)</div>
-              <canvas id="pnlChart" width="520" height="140"></canvas>
-            </div>
-          </div>
+    <div class="page" id="pageScoreboard">
+      <div class="card">
+        <div class="title">Scoreboard</div>
+        <div class="smallline">System performance + your Notebook performance.</div>
+        <div class="emptyState">
+          You can keep using the live scoreboard API. Next we’ll build a full scoreboard view here (charts + breakdown by setup/window).
+        </div>
+      </div>
+    </div>
 
-          <div class="noteActions">
-            <button class="btn secondary" id="btnAddPast">Add Past Trade</button>
-            <span class="pillMini">Tip: add old trades → get review/corrections</span>
-          </div>
+    <div class="page" id="pageSettings">
+      <div class="card">
+        <div class="title">Mission</div>
+        <div class="smallline">
+          Precipice Analytica delivers real-time, data-driven signals for high-probability setups at market inflection points.
         </div>
       </div>
 
-      <div style="overflow:auto; border:1px solid rgba(29,51,74,.85); border-radius:12px; max-height:320px;">
-        <table>
-          <thead>
-            <tr>
-              <th>Ticker</th>
-              <th>Setup</th>
-              <th>Conf</th>
-              <th class="right">Entry</th>
-              <th class="right">Exit</th>
-              <th class="right">Shares</th>
-              <th class="right">P/L $</th>
-              <th class="right">P/L %</th>
-              <th>Flags</th>
-              <th class="right">Actions</th>
-            </tr>
-          </thead>
-          <tbody id="noteBody"></tbody>
-        </table>
+      <div class="card">
+        <div class="title">About</div>
+        <div class="smallline" style="font-size:13px; line-height:1.6; color:rgba(233,238,244,.88)">
+          Precipice Analytica is built for traders who want clarity, not noise. We scan for squeeze and momentum conditions in real time and surface high‑probability setups with actionable levels. “Precipice” represents the critical moments when price pressure can turn into a breakout, and “Analytica” reflects our commitment to logical, data‑driven decision‑making—so every signal supports disciplined, risk‑first execution.
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="title">Disclaimer</div>
+        <div class="smallline" style="font-size:13px; line-height:1.6; color:rgba(233,238,244,.88)">
+          This platform is for educational and informational purposes only and is not financial advice. Trading involves risk and you can lose money.
+        </div>
       </div>
     </div>
   </div>
@@ -947,6 +853,40 @@ Notebook P/L = total closed-trade profit/loss in dollars."
 
 <script>
   const el = (id) => document.getElementById(id);
+
+  // ===== App navigation =====
+  const pages = {
+    Scan: el("pageScan"),
+    Signals: el("pageSignals"),
+    Journal: el("pageJournal"),
+    Scoreboard: el("pageScoreboard"),
+    Settings: el("pageSettings"),
+  };
+  const navButtons = {
+    Scan: el("navScan"),
+    Signals: el("navSignals"),
+    Journal: el("navJournal"),
+    Scoreboard: el("navScoreboard"),
+    Settings: el("navSettings"),
+  };
+
+  function setActivePage(name){
+    Object.keys(pages).forEach(k => pages[k]?.classList.remove("active"));
+    Object.keys(navButtons).forEach(k => navButtons[k]?.classList.remove("active"));
+
+    pages[name]?.classList.add("active");
+    navButtons[name]?.classList.add("active");
+
+    // Close dropdowns when navigating
+    try{ closeAllDrops(); }catch(e){}
+    try{ hideTip(); }catch(e){}
+  }
+
+  navButtons.Scan.addEventListener("click", () => setActivePage("Scan"));
+  navButtons.Signals.addEventListener("click", () => setActivePage("Signals"));
+  navButtons.Journal.addEventListener("click", () => setActivePage("Journal"));
+  navButtons.Scoreboard.addEventListener("click", () => setActivePage("Scoreboard"));
+  navButtons.Settings.addEventListener("click", () => setActivePage("Settings"));
 
   // Tooltip (not clipped by overflow)
   const tip = el("tip");
@@ -986,12 +926,13 @@ Notebook P/L = total closed-trade profit/loss in dollars."
     const trades = rows || [];
     const closed = trades.filter(t => t.exit_price != null && t.pnl_dollars != null);
 
-    el("nbTrades").textContent = trades.length.toLocaleString();
+    // These elements only exist in your old header scoreboard; safe-guard here
+    if(el("nbTrades")) el("nbTrades").textContent = trades.length.toLocaleString();
 
     if(closed.length === 0){
-      el("nbWR").textContent = "—";
-      el("nbPL").textContent = "—";
-      el("nbPL").classList.remove("green","red");
+      if(el("nbWR")) el("nbWR").textContent = "—";
+      if(el("nbPL")) el("nbPL").textContent = "—";
+      if(el("nbPL")) el("nbPL").classList.remove("green","red");
       return;
     }
 
@@ -999,10 +940,12 @@ Notebook P/L = total closed-trade profit/loss in dollars."
     const wr = (wins / closed.length) * 100;
     const total = closed.reduce((a,t)=>a+Number(t.pnl_dollars),0);
 
-    el("nbWR").textContent = `${wr.toFixed(0)}%`;
-    el("nbPL").textContent = fmtMoney(total);
-    el("nbPL").classList.remove("green","red");
-    el("nbPL").classList.add(total >= 0 ? "green" : "red");
+    if(el("nbWR")) el("nbWR").textContent = `${wr.toFixed(0)}%`;
+    if(el("nbPL")) {
+      el("nbPL").textContent = fmtMoney(total);
+      el("nbPL").classList.remove("green","red");
+      el("nbPL").classList.add(total >= 0 ? "green" : "red");
+    }
   }
 
   // ===== Scoreboard fetch + paint =====
@@ -1018,22 +961,9 @@ Notebook P/L = total closed-trade profit/loss in dollars."
       const r = await fetch("/api/scoreboard");
       const j = await r.json();
       if(!j || !j.ok){
-        el("sbHit").textContent = "—";
-        el("sbW").textContent = "—";
-        el("sbL").textContent = "—";
-        el("sbAvg").textContent = "—";
         return;
       }
-
-      const wins = Number(j.wins || 0);
-      const losses = Number(j.losses || 0);
-      const wr = j.win_rate_triggered;
-      const avg = j.avg_max_gain_pct_triggered;
-
-      el("sbHit").textContent = (wr == null ? "—" : fmtPct2(wr));
-      el("sbW").textContent = wins.toLocaleString();
-      el("sbL").textContent = losses.toLocaleString();
-      el("sbAvg").textContent = (avg == null ? "—" : fmtPct2(avg));
+      // Scoreboard page is placeholder for now; API remains used later.
     }catch(e){
       // silent
     }
@@ -1051,7 +981,7 @@ Notebook P/L = total closed-trade profit/loss in dollars."
   let showAll = (localStorage.getItem("beginner_show_all") || "off").toLowerCase();
   if(!["on","off"].includes(showAll)) showAll = "off";
 
-  // NEW: Advanced columns toggle (only matters when Beginner is OFF)
+  // Advanced columns toggle (only matters when Beginner is OFF)
   let advanced = (localStorage.getItem("ui_advanced") || "off").toLowerCase();
   if(!["on","off"].includes(advanced)) advanced = "off";
 
@@ -1125,7 +1055,6 @@ Notebook P/L = total closed-trade profit/loss in dollars."
     renderResults();
   });
 
-  // NEW: Advanced toggle
   el("btnAdvanced").addEventListener("click", (e) => {
     e.stopPropagation();
     advanced = (advanced === "on") ? "off" : "on";
@@ -1253,7 +1182,6 @@ Notebook P/L = total closed-trade profit/loss in dollars."
     const on = isBeginnerOn();
     const advOn = isAdvancedOn();
 
-    // Apply beginner filter (Conf >= 7) unless "Show all" is ON
     let list = (results[showing] || []).slice();
     if(on && showAll !== "on"){
       list = list.filter(beginnerOk);
@@ -1329,10 +1257,7 @@ Notebook P/L = total closed-trade profit/loss in dollars."
         if(!row) return;
 
         const on = isBeginnerOn();
-
-        // Default entry: trigger if available else close
         const defEntry = (row.trigger != null) ? String(row.trigger) : (row.close != null ? String(row.close) : "");
-
         const entryStr = prompt(`Entry price for ${tkr}?`, defEntry);
         if(entryStr === null) return;
 
@@ -1342,38 +1267,29 @@ Notebook P/L = total closed-trade profit/loss in dollars."
           return;
         }
 
-        // Beginner: risk-based sizing
         if(on){
           const stopPx = Number(row.stop);
           if(!Number.isFinite(stopPx)){
             alert("This trade has no STOP value. Skip it or turn Beginner off.");
             return;
           }
-
           const riskPerShare = entryPx - stopPx;
-
-          // Guardrail: stop must be below entry for longs
           if(!(riskPerShare > 0)){
             alert("Beginner rule: STOP must be below ENTRY (for long trades). Skip this one or adjust entry.");
             return;
           }
-
           const riskStr = prompt("Risk $ (max you’re okay losing) — example: 25", "25");
           if(riskStr === null) return;
           const riskDollars = Number(riskStr);
-
           if(!Number.isFinite(riskDollars) || riskDollars <= 0){
             alert("Risk $ must be a positive dollar amount (example: 25).");
             return;
           }
-
           let sharesCalc = Math.floor(riskDollars / riskPerShare);
-
           if(sharesCalc > 10000){
             const ok = confirm(`This suggests ${sharesCalc.toLocaleString()} shares (oversized). Lower Risk $ or Cancel to stop.`);
             if(!ok) return;
           }
-
           if(sharesCalc < 1){
             alert("Risk $ is too small for this stop distance. Either raise Risk $ or skip this trade.");
             return;
@@ -1388,7 +1304,6 @@ Notebook P/L = total closed-trade profit/loss in dollars."
           );
 
           let sharesFinal = sharesCalc;
-
           if(!ok){
             const manual = prompt("Shares (manual override)?", String(sharesCalc));
             if(manual === null) return;
@@ -1404,7 +1319,6 @@ Notebook P/L = total closed-trade profit/loss in dollars."
           return;
         }
 
-        // Non-beginner: ask shares normally
         const sharesStr = prompt(`Shares for ${tkr}?`, "100");
         if(sharesStr === null) return;
 
@@ -1456,6 +1370,9 @@ Notebook P/L = total closed-trade profit/loss in dollars."
   }
 
   async function runScan(){
+    // When scanning, force Scan page visible
+    setActivePage("Scan");
+
     el("btnScan").disabled = true;
     el("logStatus").textContent = "Running…";
     el("planBox").style.display = "none";
@@ -1552,10 +1469,6 @@ Notebook P/L = total closed-trade profit/loss in dollars."
       try{ j = JSON.parse(ev.data); }catch(e){}
       el("logStatus").textContent = j.ok ? "Done." : "Done (error).";
       el("btnScan").disabled = false;
-
-      // refresh scoreboard after scan finishes
-      await loadScoreboard();
-
       setTimeout(() => { if(es){ try{ es.close(); }catch(e){} es=null; } }, 1200);
     });
   }
