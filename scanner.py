@@ -5,6 +5,7 @@ import math
 import time
 import traceback
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any, List, Tuple
@@ -20,8 +21,9 @@ DEEP_ANALYZE_TOP_NIGHT = 35
 ORTEX_FINALISTS_NIGHT = 0
 
 # Snapshot gate (proxy) — revised slightly to avoid wasting deep slots
-MIN_DOLLAR_VOL_PROXY = 350_000   # was 250_000
-MIN_MOVE_PROXY_PCT = 0.015       # was 0.01
+MIN_DOLLAR_VOL_PROXY = 200_000
+MIN_MOVE_PROXY_PCT   = 0.012
+
 
 PRICE_TIERS = [(0.01, 2.50), (2.50, 5.00), (5.00, 10.00)]
 MAX_CANDIDATES_PER_TIER_SNAPSHOT = 600
@@ -58,12 +60,15 @@ VWAP_NEAR_PCT = 0.02
 # --- Window-aware thresholds (NEW) ---
 # Why: afterhours/premarket volume + relvol are structurally lower.
 MIN_WINDOW_VOL_REG = 800_000
-MIN_WINDOW_VOL_PM = 450_000
-MIN_WINDOW_VOL_AH = 200_000
+MIN_WINDOW_VOL_PM  = 350_000
+MIN_WINDOW_VOL_AH  = 150_000
 
-MIN_REL_VOL_REG = 1.2
-MIN_REL_VOL_PM = 1.0
-MIN_REL_VOL_AH = 0.75
+MIN_REL_VOL_PM  = 0.85
+MIN_REL_VOL_AH  = 0.60
+
+MIN_RANGE_PCT_PM  = 0.010
+MIN_RANGE_PCT_AH  = 0.008
+
 
 MIN_RANGE_PCT_REG = 0.015
 MIN_RANGE_PCT_PM = 0.012
@@ -78,6 +83,7 @@ _REJECT_DEBUG_COUNT = 0
 # Reject stats (so you can see WHY stuff fails)
 # ============================================================
 REJECT_STATS: Dict[str, int] = {}
+_REF_CACHE:   Dict[str, Optional[Dict[str, Any]]] = {}
 
 
 def reject(reason: str) -> None:
@@ -296,12 +302,20 @@ def get_daily_aggs_20d(ticker: str, end_date_str: str, log_fn=None) -> List[Dict
 
 
 def polygon_reference(ticker: str, log_fn=None) -> Optional[Dict[str, Any]]:
-    url = f"https://api.polygon.io/v3/reference/tickers/{ticker}"
+    """Cached per scan run — avoids duplicate reference API calls."""
+    if ticker in _REF_CACHE:
+        return _REF_CACHE[ticker]
+    url = f"[api.polygon.io](https://api.polygon.io/v3/reference/tickers/{ticker})"
     try:
-        data = polygon_get(url, {}, log_fn=log_fn)
-        return data.get("results") or {}
+        data   = polygon_get(url, {}, log_fn=log_fn)
+        result = data.get("results") or {}
+        _REF_CACHE[ticker] = result
+        return result
     except Exception:
+        _REF_CACHE[ticker] = None
         return None
+
+
 
 
 def ortex_get(url: str, log_fn=None) -> Optional[Dict[str, Any]]:
@@ -889,16 +903,71 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "off") ->
     if log_fn:
         log_fn(f"Deep-analyze list: {len(deep_list)} tickers (Top {deep_top})")
 
-    analyzed: List[Dict[str, Any]] = []
+analyzed: List[Dict[str, Any]] = []
+_REF_CACHE.clear()
 
-    for idx, (_proxy_score, ticker, snap_meta) in enumerate(deep_list, start=1):
-        if log_fn and idx % 10 == 0:
-            log_fn(f"Analyzing (Polygon) {idx}/{len(deep_list)}...")
+def _analyze_one(args):
+    _idx, _proxy_score, ticker, snap_meta = args
+    try:
+        feat = analyze_ticker_window(
+            ticker, date_str, w_start, w_end, window, snap_meta, log_fn=None
+        )
+        if not feat:
+            return None
+        feat["window"] = window
+        feat["si_pct_ff"]  = None
+        feat["si_pct_chg"] = None
+        feat["ctb"]        = None
+        feat["avail"]      = None
+        base_score, prob, pressure = compute_scores(feat)
+        conf = confidence_1_to_10(prob, ortex_on=ortex_on, has_borrow=False)
+        return {
+            "ticker":         ticker,
+            "bucket":         "MOMENTUM",
+            "subtype":        setup_subtype(feat, label="MOMENTUM"),
+            "confidence":     conf,
+            "prob":           round(prob, 4),
+            "base_score":     round(base_score, 2),
+            "pressure_score": round(pressure, 2),
+            "close":          feat.get("close"),
+            "move_pct":       feat.get("move_pct"),
+            "dollar_vol":     feat.get("dollar_vol"),
+            "range_pct":      feat.get("range_pct"),
+            "hold_pct":       feat.get("hold_pct"),
+            "rel_vol":        feat.get("rel_vol"),
+            "float_shares":   feat.get("float_shares"),
+            "market_cap":     feat.get("market_cap"),
+            "vwap":           feat.get("vwap"),
+            "vol":            feat.get("vol"),
+            "si_pct_ff":      None,
+            "si_pct_chg":     None,
+            "ctb":            None,
+            "avail":          None,
+            "trigger":        feat.get("trigger"),
+            "stop":           feat.get("stop"),
+            "plan":           trade_plan(feat),
+        }
+    except Exception as e:
+        if log_fn:
+            log_fn(f"[ERROR] {ticker}: {type(e).__name__}: {e}")
+        return None
 
-        try:
-            feat = analyze_ticker_window(ticker, date_str, w_start, w_end, window, snap_meta, log_fn=log_fn)
-            if not feat:
-                continue
+args_list = [
+    (idx, ps, t, sm)
+    for idx, (ps, t, sm) in enumerate(deep_list, start=1)
+]
+
+if log_fn:
+    log_fn(f"Deep-analyzing {len(args_list)} tickers in parallel (8 workers)...")
+
+with ThreadPoolExecutor(max_workers=8) as pool:
+    for result in pool.map(_analyze_one, args_list):
+        if result is not None:
+            analyzed.append(result)
+
+if log_fn:
+    log_fn(f"Deep analysis done. {len(analyzed)} passed filters.")
+
 
             feat["window"] = window
 
