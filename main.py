@@ -1,25 +1,24 @@
-# ===== FILE: main.py (FULL REPLACEMENT) =====
-import traceback
-import os
-import json
-import time
-import uuid
-import threading
-import sqlite3
+from __future__ import annotations
+
 import hashlib
-from pathlib import Path
+import json
+import os
+import sqlite3
+import threading
+import time
+import traceback
+import uuid
 from collections import deque
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any, Callable, Dict, Generator, Optional
 
 from fastapi import FastAPI, Request
-from fastapi.responses import (
-    JSONResponse,
-    Response,
-    FileResponse,
-    PlainTextResponse,
-)
-from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
+from fastapi.staticfiles import StaticFiles
+
+import scanner  # your scanner.py
 
 # Optional Postgres (only used if DATABASE_URL is set)
 try:
@@ -29,12 +28,10 @@ except Exception:
     psycopg = None
     dict_row = None
 
-import scanner  # your scanner.py
-
-
 # -------------------- timezone helpers (CT) --------------------
 try:
     from zoneinfo import ZoneInfo
+
     CT_TZ = ZoneInfo("America/Chicago")
 except Exception:
     CT_TZ = None
@@ -70,8 +67,6 @@ OUT_DIR = BASE_DIR / "outputs"
 OUT_DIR.mkdir(exist_ok=True)
 
 SQLITE_PATH = OUT_DIR / "trades.sqlite3"
-
-# ✅ REVISION: serialize SQLite writes (fixes intermittent "won't save")
 DB_LOCK = threading.Lock()
 
 
@@ -86,8 +81,7 @@ def pg_conn():
     return psycopg.connect(url, row_factory=dict_row, connect_timeout=8)
 
 
-# ✅ REVISION: WAL + busy_timeout + connection timeout (fixes "database is locked" + missed inserts)
-def sqlite_conn():
+def sqlite_conn() -> sqlite3.Connection:
     conn = sqlite3.connect(str(SQLITE_PATH), check_same_thread=False, timeout=30)
     conn.row_factory = sqlite3.Row
     try:
@@ -112,8 +106,8 @@ def _table_has_column_sqlite(conn: sqlite3.Connection, table: str, col: str) -> 
 def _ensure_schema_migrations():
     """
     Minimal, safe migrations:
-      - add trades.review_text (store latest review string)
-      - add trades.reviewed_at_utc (timestamp string)
+    - add trades.review_text
+    - add trades.reviewed_at_utc
     """
     if using_postgres():
         try:
@@ -193,22 +187,21 @@ def db_init():
 
     _ensure_schema_migrations()
 
-    # -------------------- NEW TABLES: signals + kv --------------------
     signals_sql = """
     CREATE TABLE IF NOT EXISTS signals (
       id TEXT PRIMARY KEY,
       created_at_utc TEXT NOT NULL,
 
       scan_id TEXT,
-      scan_date_ct TEXT NOT NULL,          -- CT calendar date (YYYY-MM-DD)
+      scan_date_ct TEXT NOT NULL,
 
       ticker TEXT NOT NULL,
       confidence REAL,
-      entry REAL NOT NULL,                 -- trigger
-      win_px REAL NOT NULL,                -- entry*1.15
-      loss_px REAL NOT NULL,               -- entry*0.90
+      entry REAL NOT NULL,
+      win_px REAL NOT NULL,
+      loss_px REAL NOT NULL,
 
-      status TEXT NOT NULL,                -- PENDING/WIN/LOSS/NO_RESULT/NO_TRADE
+      status TEXT NOT NULL,
       triggered_at_utc TEXT,
       resolved_at_utc TEXT,
 
@@ -243,23 +236,22 @@ def db_init():
                 conn.close()
 
 
-# -------------------- Signals KV helpers --------------------
+# -------------------- KV helpers --------------------
 def kv_get(key: str) -> str | None:
     if using_postgres():
         with pg_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT v FROM kv WHERE k=%s", (key,))
                 row = cur.fetchone()
+                return row["v"] if row else None
+    conn = sqlite_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT v FROM kv WHERE k=?", (key,))
+        row = cur.fetchone()
         return row["v"] if row else None
-    else:
-        conn = sqlite_conn()
-        try:
-            cur = conn.cursor()
-            cur.execute("SELECT v FROM kv WHERE k=?", (key,))
-            row = cur.fetchone()
-            return row["v"] if row else None
-        finally:
-            conn.close()
+    finally:
+        conn.close()
 
 
 def kv_set(key: str, val: str):
@@ -267,24 +259,23 @@ def kv_set(key: str, val: str):
         with pg_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "INSERT INTO kv (k,v) VALUES (%s,%s) ON CONFLICT (k) DO UPDATE SET v=EXCLUDED.v",
+                    "INSERT INTO kv (k,v) VALUES (%s,%s) "
+                    "ON CONFLICT (k) DO UPDATE SET v=EXCLUDED.v",
                     (key, val),
                 )
             conn.commit()
-    else:
-        with DB_LOCK:
-            conn = sqlite_conn()
-            try:
-                conn.execute("INSERT OR REPLACE INTO kv (k,v) VALUES (?,?)", (key, val))
-                conn.commit()
-            finally:
-                conn.close()
+        return
+
+    with DB_LOCK:
+        conn = sqlite_conn()
+        try:
+            conn.execute("INSERT OR REPLACE INTO kv (k,v) VALUES (?,?)", (key, val))
+            conn.commit()
+        finally:
+            conn.close()
 
 
 def signals_insert_many(rows: list[dict]):
-    """
-    Dedupe is enforced by UNIQUE(scan_date_ct, ticker).
-    """
     if not rows:
         return
 
@@ -312,33 +303,39 @@ def signals_insert_many(rows: list[dict]):
                         r,
                     )
             conn.commit()
-    else:
-        with DB_LOCK:
-            conn = sqlite_conn()
-            try:
-                cur = conn.cursor()
-                for r in rows:
-                    cur.execute(
-                        """
-                        INSERT OR IGNORE INTO signals (
-                          id, created_at_utc,
-                          scan_id, scan_date_ct,
-                          ticker, confidence,
-                          entry, win_px, loss_px,
-                          status
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-                        """,
-                        (
-                            r["id"], datetime.utcnow().isoformat(),
-                            r.get("scan_id"), r["scan_date_ct"],
-                            r["ticker"], r.get("confidence"),
-                            r["entry"], r["win_px"], r["loss_px"],
-                            r["status"],
-                        ),
-                    )
-                conn.commit()
-            finally:
-                conn.close()
+        return
+
+    with DB_LOCK:
+        conn = sqlite_conn()
+        try:
+            cur = conn.cursor()
+            for r in rows:
+                cur.execute(
+                    """
+                    INSERT OR IGNORE INTO signals (
+                      id, created_at_utc,
+                      scan_id, scan_date_ct,
+                      ticker, confidence,
+                      entry, win_px, loss_px,
+                      status
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                    """,
+                    (
+                        r["id"],
+                        datetime.utcnow().isoformat(),
+                        r.get("scan_id"),
+                        r["scan_date_ct"],
+                        r["ticker"],
+                        r.get("confidence"),
+                        r["entry"],
+                        r["win_px"],
+                        r["loss_px"],
+                        r["status"],
+                    ),
+                )
+            conn.commit()
+        finally:
+            conn.close()
 
 
 def _ct_date_from_utc_ms(ms: int) -> str:
@@ -348,11 +345,7 @@ def _ct_date_from_utc_ms(ms: int) -> str:
     return dt.strftime("%Y-%m-%d")
 
 
-def grade_yesterday_if_needed(log_fn=None):
-    """
-    Run only once per CT calendar day (12:00am–11:59pm CT),
-    on the first scan of the new day.
-    """
+def grade_yesterday_if_needed(log_fn: Optional[Callable[[str], None]] = None):
     today = ct_date()
     last_done = kv_get("last_graded_date_ct")
     if last_done == today:
@@ -389,7 +382,7 @@ def grade_yesterday_if_needed(log_fn=None):
             log_fn(f"[GRADE] No pending signals found for {yday}. Marking graded.")
         return
 
-    updates = []
+    updates: list[tuple] = []
     for s in sigs:
         try:
             ticker = s["ticker"]
@@ -398,13 +391,10 @@ def grade_yesterday_if_needed(log_fn=None):
             loss_px = float(s["loss_px"])
 
             bars = scanner.get_minute_aggs(ticker, yday, log_fn=log_fn) or []
-
-            # Keep only bars in CT calendar date yday
             bars = [b for b in bars if _ct_date_from_utc_ms(b["t"]) == yday]
             if not bars:
-                continue  # leave pending if can't grade
+                continue
 
-            # Trigger: first minute with HIGH >= entry
             trig_i = None
             for i, b in enumerate(bars):
                 if float(b["h"]) >= entry:
@@ -487,11 +477,6 @@ def grade_yesterday_if_needed(log_fn=None):
 
 
 def scoreboard_all_time() -> dict:
-    """
-    Win-rate on triggered trades only: WIN/(WIN+LOSS).
-    Avg Max Gain % computed on triggered trades:
-      avg( (max_after_trigger - entry) / entry )
-    """
     if using_postgres():
         with pg_conn() as conn:
             with conn.cursor() as cur:
@@ -507,7 +492,7 @@ def scoreboard_all_time() -> dict:
             conn.close()
 
     counts = {"WIN": 0, "LOSS": 0, "NO_RESULT": 0, "NO_TRADE": 0, "PENDING": 0}
-    max_gain_list = []
+    max_gain_list: list[float] = []
 
     for r in rows:
         st = (r.get("status") or "PENDING").upper()
@@ -520,10 +505,10 @@ def scoreboard_all_time() -> dict:
         mx = r.get("max_after_trigger")
         if trig and entry is not None and mx is not None:
             try:
-                entry = float(entry)
-                mx = float(mx)
-                if entry > 0:
-                    max_gain_list.append((mx - entry) / entry)
+                ef = float(entry)
+                mf = float(mx)
+                if ef > 0:
+                    max_gain_list.append((mf - ef) / ef)
             except Exception:
                 pass
 
@@ -531,10 +516,7 @@ def scoreboard_all_time() -> dict:
     losses = counts["LOSS"]
     denom = wins + losses
     win_rate = (wins / denom) if denom > 0 else None
-
-    avg_max_gain = None
-    if max_gain_list:
-        avg_max_gain = sum(max_gain_list) / len(max_gain_list)
+    avg_max_gain = (sum(max_gain_list) / len(max_gain_list)) if max_gain_list else None
 
     return {
         "ok": True,
@@ -543,19 +525,19 @@ def scoreboard_all_time() -> dict:
         "no_result": counts["NO_RESULT"],
         "no_trade": counts["NO_TRADE"],
         "pending": counts["PENDING"],
-        "win_rate_triggered": win_rate,              # 0..1 or None
-        "avg_max_gain_pct_triggered": avg_max_gain,  # 0..1 or None
+        "win_rate_triggered": win_rate,
+        "avg_max_gain_pct_triggered": avg_max_gain,
     }
 
 
-# -------------------- Trades storage helpers (existing notebook) --------------------
+# -------------------- Trades helpers --------------------
 def trades_select(view: str, user_id: str | None) -> list[dict]:
     view = (view or "all").lower().strip()
     if view not in ("all", "yesterday"):
         view = "all"
 
     where = []
-    params = []
+    params: list[Any] = []
 
     if user_id:
         where.append("user_id = %s")
@@ -587,8 +569,7 @@ def trades_select(view: str, user_id: str | None) -> list[dict]:
         with pg_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(sql, params)
-                rows = cur.fetchall()
-        rows = [dict(r) for r in rows]
+                rows = [dict(r) for r in cur.fetchall()]
     else:
         sql_sqlite = sql.replace("%s", "?")
         conn = sqlite_conn()
@@ -648,41 +629,62 @@ def trade_insert(row: dict):
                     """,
                     row,
                 )
-                conn.commit()
-    else:
-        with DB_LOCK:
-            conn = sqlite_conn()
-            try:
-                cur = conn.cursor()
-                cur.execute(
-                    """
-                    INSERT INTO trades (
-                      id, user_id, created_at_utc,
-                      scan_id, scan_date_ct,
-                      ticker, bucket, subtype, confidence, plan,
-                      trigger, stop, scan_close, move_pct, dollar_vol, range_pct, hold_pct, rel_vol, si_pct_ff, ctb, avail,
-                      entry_price, entry_time_ct, exit_price, exit_time_ct, shares, review_flags
-                    ) VALUES (
-                      ?, ?, ?,
-                      ?, ?,
-                      ?, ?, ?, ?, ?,
-                      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                      ?, ?, ?, ?, ?, ?
-                    );
-                    """,
-                    (
-                        row["id"], row["user_id"], row["created_at_utc"],
-                        row.get("scan_id"), row.get("scan_date_ct"),
-                        row.get("ticker"), row.get("bucket"), row.get("subtype"), row.get("confidence"), row.get("plan"),
-                        row.get("trigger"), row.get("stop"), row.get("scan_close"), row.get("move_pct"), row.get("dollar_vol"),
-                        row.get("range_pct"), row.get("hold_pct"), row.get("rel_vol"), row.get("si_pct_ff"), row.get("ctb"), row.get("avail"),
-                        row.get("entry_price"), row.get("entry_time_ct"), row.get("exit_price"), row.get("exit_time_ct"),
-                        row.get("shares"), row.get("review_flags"),
-                    ),
-                )
-                conn.commit()
-            finally:
-                conn.close()
+            conn.commit()
+        return
+
+    with DB_LOCK:
+        conn = sqlite_conn()
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                INSERT INTO trades (
+                  id, user_id, created_at_utc,
+                  scan_id, scan_date_ct,
+                  ticker, bucket, subtype, confidence, plan,
+                  trigger, stop, scan_close, move_pct, dollar_vol, range_pct, hold_pct, rel_vol, si_pct_ff, ctb, avail,
+                  entry_price, entry_time_ct, exit_price, exit_time_ct, shares, review_flags
+                ) VALUES (
+                  ?, ?, ?,
+                  ?, ?,
+                  ?, ?, ?, ?, ?,
+                  ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                  ?, ?, ?, ?, ?, ?
+                );
+                """,
+                (
+                    row["id"],
+                    row["user_id"],
+                    row["created_at_utc"],
+                    row.get("scan_id"),
+                    row.get("scan_date_ct"),
+                    row.get("ticker"),
+                    row.get("bucket"),
+                    row.get("subtype"),
+                    row.get("confidence"),
+                    row.get("plan"),
+                    row.get("trigger"),
+                    row.get("stop"),
+                    row.get("scan_close"),
+                    row.get("move_pct"),
+                    row.get("dollar_vol"),
+                    row.get("range_pct"),
+                    row.get("hold_pct"),
+                    row.get("rel_vol"),
+                    row.get("si_pct_ff"),
+                    row.get("ctb"),
+                    row.get("avail"),
+                    row.get("entry_price"),
+                    row.get("entry_time_ct"),
+                    row.get("exit_price"),
+                    row.get("exit_time_ct"),
+                    row.get("shares"),
+                    row.get("review_flags"),
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
 
 
 def trade_close(trade_id: str, exit_price: float, exit_time_ct: str, user_id: str | None = None):
@@ -699,29 +701,31 @@ def trade_close(trade_id: str, exit_price: float, exit_time_ct: str, user_id: st
                         "UPDATE trades SET exit_price=%s, exit_time_ct=%s WHERE id=%s",
                         (exit_price, exit_time_ct, trade_id),
                     )
-                conn.commit()
-    else:
-        with DB_LOCK:
-            conn = sqlite_conn()
-            try:
-                cur = conn.cursor()
-                if user_id:
-                    cur.execute(
-                        "UPDATE trades SET exit_price=?, exit_time_ct=? WHERE id=? AND user_id=?",
-                        (exit_price, exit_time_ct, trade_id, user_id),
-                    )
-                else:
-                    cur.execute(
-                        "UPDATE trades SET exit_price=?, exit_time_ct=? WHERE id=?",
-                        (exit_price, exit_time_ct, trade_id),
-                    )
-                conn.commit()
-            finally:
-                conn.close()
+            conn.commit()
+        return
+
+    with DB_LOCK:
+        conn = sqlite_conn()
+        try:
+            cur = conn.cursor()
+            if user_id:
+                cur.execute(
+                    "UPDATE trades SET exit_price=?, exit_time_ct=? WHERE id=? AND user_id=?",
+                    (exit_price, exit_time_ct, trade_id, user_id),
+                )
+            else:
+                cur.execute(
+                    "UPDATE trades SET exit_price=?, exit_time_ct=? WHERE id=?",
+                    (exit_price, exit_time_ct, trade_id),
+                )
+            conn.commit()
+        finally:
+            conn.close()
 
 
 def trade_save_review(trade_id: str, review_text: str, user_id: str | None = None):
     reviewed_at_utc = datetime.utcnow().isoformat()
+
     if using_postgres():
         with pg_conn() as conn:
             with conn.cursor() as cur:
@@ -735,25 +739,26 @@ def trade_save_review(trade_id: str, review_text: str, user_id: str | None = Non
                         "UPDATE trades SET review_text=%s, reviewed_at_utc=NOW() WHERE id=%s",
                         (review_text, trade_id),
                     )
-                conn.commit()
-    else:
-        with DB_LOCK:
-            conn = sqlite_conn()
-            try:
-                cur = conn.cursor()
-                if user_id:
-                    cur.execute(
-                        "UPDATE trades SET review_text=?, reviewed_at_utc=? WHERE id=? AND user_id=?",
-                        (review_text, reviewed_at_utc, trade_id, user_id),
-                    )
-                else:
-                    cur.execute(
-                        "UPDATE trades SET review_text=?, reviewed_at_utc=? WHERE id=?",
-                        (review_text, reviewed_at_utc, trade_id),
-                    )
-                conn.commit()
-            finally:
-                conn.close()
+            conn.commit()
+        return
+
+    with DB_LOCK:
+        conn = sqlite_conn()
+        try:
+            cur = conn.cursor()
+            if user_id:
+                cur.execute(
+                    "UPDATE trades SET review_text=?, reviewed_at_utc=? WHERE id=? AND user_id=?",
+                    (review_text, reviewed_at_utc, trade_id, user_id),
+                )
+            else:
+                cur.execute(
+                    "UPDATE trades SET review_text=?, reviewed_at_utc=? WHERE id=?",
+                    (review_text, reviewed_at_utc, trade_id),
+                )
+            conn.commit()
+        finally:
+            conn.close()
 
 
 def trade_save_flags(trade_id: str, review_flags: list[dict], user_id: str | None = None):
@@ -770,29 +775,24 @@ def trade_save_flags(trade_id: str, review_flags: list[dict], user_id: str | Non
                         (flags_json, trade_id, user_id),
                     )
                 else:
-                    cur.execute(
-                        "UPDATE trades SET review_flags=%s WHERE id=%s",
-                        (flags_json, trade_id),
-                    )
+                    cur.execute("UPDATE trades SET review_flags=%s WHERE id=%s", (flags_json, trade_id))
             conn.commit()
-    else:
-        with DB_LOCK:
-            conn = sqlite_conn()
-            try:
-                cur = conn.cursor()
-                if user_id:
-                    cur.execute(
-                        "UPDATE trades SET review_flags=? WHERE id=? AND user_id=?",
-                        (flags_json, trade_id, user_id),
-                    )
-                else:
-                    cur.execute(
-                        "UPDATE trades SET review_flags=? WHERE id=?",
-                        (flags_json, trade_id),
-                    )
-                conn.commit()
-            finally:
-                conn.close()
+        return
+
+    with DB_LOCK:
+        conn = sqlite_conn()
+        try:
+            cur = conn.cursor()
+            if user_id:
+                cur.execute(
+                    "UPDATE trades SET review_flags=? WHERE id=? AND user_id=?",
+                    (flags_json, trade_id, user_id),
+                )
+            else:
+                cur.execute("UPDATE trades SET review_flags=? WHERE id=?", (flags_json, trade_id))
+            conn.commit()
+        finally:
+            conn.close()
 
 
 # -------------------- FastAPI app --------------------
@@ -810,13 +810,6 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 app.mount("/outputs", StaticFiles(directory=str(OUT_DIR)), name="outputs")
 
-
-@app.on_event("startup")
-def _startup():
-    db_init()
-
-
-# -------------------- UI no-cache routes --------------------
 INDEX_PATH = STATIC_DIR / "index.html"
 
 
@@ -830,7 +823,7 @@ def _sha256(path: Path) -> str:
 
 # -------------------- scan state (in-memory) --------------------
 STATE_LOCK = threading.Lock()
-STATE = {
+STATE: dict[str, Any] = {
     "running": False,
     "scan_id": None,
     "started_at_ct": None,
@@ -854,7 +847,7 @@ STATE = {
 }
 
 
-def _state_snapshot():
+def _state_snapshot() -> dict:
     with STATE_LOCK:
         return json.loads(
             json.dumps(
@@ -920,6 +913,12 @@ def mark_done(ok: bool, html_path: str | None):
         STATE["html_path"] = html_path
         STATE["running"] = False
         STATE["done_seq"] += 1
+
+
+# -------------------- startup --------------------
+@app.on_event("startup")
+def _startup():
+    db_init()
 
 
 # -------------------- routes --------------------
@@ -1012,7 +1011,7 @@ def run_scan(mode: str = "auto", ortex: str = "off"):
         if ortex not in ("on", "off"):
             ortex = "off"
 
-        # NEW: grade yesterday once per CT day on first scan
+        # grade yesterday once per CT day on first scan
         try:
             grade_yesterday_if_needed(log_fn=push_log)
         except Exception:
@@ -1063,11 +1062,7 @@ def run_scan(mode: str = "auto", ortex: str = "off"):
                 "scanned_count": None,
             }
 
-        th = threading.Thread(
-            target=_scan_worker,
-            args=(scan_id, eff_mode, ortex_for_worker),
-            daemon=True,
-        )
+        th = threading.Thread(target=_scan_worker, args=(scan_id, eff_mode, ortex_for_worker), daemon=True)
         th.start()
 
         snap = _state_snapshot()
@@ -1090,10 +1085,7 @@ def run_scan(mode: str = "auto", ortex: str = "off"):
             push_log(tb)
         except Exception:
             pass
-        return JSONResponse(
-            {"ok": False, "error": f"{type(e).__name__}: {str(e)}"},
-            status_code=500,
-        )
+        return JSONResponse({"ok": False, "error": f"{type(e).__name__}: {str(e)}"}, status_code=500)
 
 
 def _scan_worker(scan_id: str, mode: str, ortex: str):
@@ -1101,7 +1093,7 @@ def _scan_worker(scan_id: str, mode: str, ortex: str):
         push_log("Starting scan… (manual)")
         push_log(f"Worker params → mode={mode} | ortex={ortex}")
 
-        html_path = None
+        html_path: str | None = None
         picked_rows: list[dict] = []
 
         def _row_capture(r: dict):
@@ -1122,7 +1114,8 @@ def _scan_worker(scan_id: str, mode: str, ortex: str):
 
         # Save only SQUEEZE picks as signals (dedupe by date+ticker)
         today_ct = ct_date()
-        to_save = []
+        to_save: list[dict] = []
+
         for r in picked_rows:
             if (r.get("bucket") or "").upper() != "SQUEEZE":
                 continue
@@ -1135,18 +1128,23 @@ def _scan_worker(scan_id: str, mode: str, ortex: str):
             if entry <= 0:
                 continue
 
-            to_save.append({
-                "id": str(uuid.uuid4()),
-                "scan_id": scan_id,
-                "scan_date_ct": today_ct,
-                "ticker": (r.get("ticker") or "").upper().strip(),
-                "confidence": r.get("confidence"),
-                "entry": entry,
-                "win_px": entry + (max(entry - float(r.get("stop") or entry * 0.90), entry * 0.02) * 2.0),
-            "loss_px": float(r.get("stop") or entry * 0.90),
+            stop_val = r.get("stop")
+            stop_px = float(stop_val) if stop_val not in (None, "") else entry * 0.90
+            risk = max(entry - stop_px, entry * 0.02)
 
-                "status": "PENDING",
-            })
+            to_save.append(
+                {
+                    "id": str(uuid.uuid4()),
+                    "scan_id": scan_id,
+                    "scan_date_ct": today_ct,
+                    "ticker": (r.get("ticker") or "").upper().strip(),
+                    "confidence": r.get("confidence"),
+                    "entry": entry,
+                    "win_px": entry + (risk * 2.0),
+                    "loss_px": stop_px,
+                    "status": "PENDING",
+                }
+            )
 
         try:
             signals_insert_many(to_save)
@@ -1168,10 +1166,10 @@ def _scan_worker(scan_id: str, mode: str, ortex: str):
 
 @app.get("/stream/{scan_id}")
 def stream(scan_id: str):
-    def event_gen():
-        last_log_seq    = 0
+    def event_gen() -> Generator[str, None, None]:
+        last_log_seq = 0
         last_log_offset = 0
-        last_row_seq    = 0
+        last_row_seq = 0
 
         last_meta_seq = 0
         last_done_seq = 0
@@ -1184,50 +1182,51 @@ def stream(scan_id: str):
         yield _sse("meta", snap["meta"])
 
         while True:
-    snap = _state_snapshot()
+            snap = _state_snapshot()
 
-    if snap["log_seq"] != last_log_seq:
-        with STATE_LOCK:
-            logs = list(STATE["logs"])
-            seq = STATE["log_seq"]
-            new_lines = logs[last_log_offset:]
-            for line in new_lines:
-                yield _sse("log", {"line": line})
-            last_log_offset = len(logs)
-            last_log_seq = seq
+            if snap["log_seq"] != last_log_seq:
+                with STATE_LOCK:
+                    logs = list(STATE["logs"])
+                    seq = STATE["log_seq"]
+                    new_lines = logs[last_log_offset:]
+                    for line in new_lines:
+                        yield _sse("log", {"line": line})
+                    last_log_offset = len(logs)
+                    last_log_seq = seq
 
-    if snap["meta_seq"] != last_meta_seq:
-        yield _sse("meta", snap["meta"])
-        last_meta_seq = snap["meta_seq"]
+            if snap["meta_seq"] != last_meta_seq:
+                yield _sse("meta", snap["meta"])
+                last_meta_seq = snap["meta_seq"]
 
-    if snap["row_seq"] != last_row_seq:
-        with STATE_LOCK:
-            rows = list(STATE["rows"])
-            seq = STATE["row_seq"]
-            for r in rows[-25:]:
-                yield _sse("row", r)
-            last_row_seq = seq
+            if snap["row_seq"] != last_row_seq:
+                with STATE_LOCK:
+                    rows = list(STATE["rows"])
+                    seq = STATE["row_seq"]
+                    for r in rows[-25:]:
+                        yield _sse("row", r)
+                    last_row_seq = seq
 
-    if snap["done_seq"] != last_done_seq and snap["done"]:
-        yield _sse("done", {"ok": snap["ok"], "html_path": snap["html_path"]})
-        return
+            if snap["done_seq"] != last_done_seq and snap["done"]:
+                yield _sse("done", {"ok": snap["ok"], "html_path": snap["html_path"]})
+                return
 
-    yield ": ping\n\n"
-    time.sleep(0.35)
+            yield ": ping\n\n"
+            time.sleep(0.35)
 
     return _sse_response(event_gen)
 
 
-def _sse(event_name: str, data_obj: dict):
+def _sse(event_name: str, data_obj: dict) -> str:
     return f"event: {event_name}\ndata: {json.dumps(data_obj, ensure_ascii=False)}\n\n"
 
 
-def _sse_response(gen_fn):
+def _sse_response(gen_fn: Callable[[], Generator[str, None, None]]):
     from starlette.responses import StreamingResponse
+
     return StreamingResponse(gen_fn(), media_type="text/event-stream")
 
 
-# -------------------- NEW: Scoreboard API --------------------
+# -------------------- APIs --------------------
 @app.get("/api/scoreboard")
 def api_scoreboard():
     try:
@@ -1236,7 +1235,6 @@ def api_scoreboard():
         return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=500)
 
 
-# -------------------- TRADES API (NOTEBOOK) --------------------
 @app.get("/api/trades")
 def api_get_trades(view: str = "all", user_id: str | None = None):
     try:
@@ -1265,16 +1263,13 @@ async def api_create_trade(request: Request):
         "id": trade_id,
         "user_id": user_id,
         "created_at_utc": datetime.utcnow().isoformat(),
-
         "scan_id": payload.get("scan_id"),
         "scan_date_ct": scan_date_ct,
-
         "ticker": (payload.get("ticker") or "").upper().strip(),
         "bucket": payload.get("bucket"),
         "subtype": payload.get("subtype"),
         "confidence": payload.get("confidence"),
         "plan": payload.get("plan"),
-
         "trigger": payload.get("trigger"),
         "stop": payload.get("stop"),
         "scan_close": payload.get("scan_close"),
@@ -1286,13 +1281,11 @@ async def api_create_trade(request: Request):
         "si_pct_ff": payload.get("si_pct_ff"),
         "ctb": payload.get("ctb"),
         "avail": payload.get("avail"),
-
         "entry_price": float(entry_price) if entry_price not in (None, "") else None,
         "entry_time_ct": entry_time_ct,
         "exit_price": float(exit_price) if exit_price not in (None, "") else None,
         "exit_time_ct": exit_time_ct,
         "shares": float(shares) if shares not in (None, "") else None,
-
         "review_flags": json.dumps(payload.get("review_flags") or []),
     }
 
@@ -1321,10 +1314,6 @@ async def api_close_trade(trade_id: str, request: Request, user_id: str | None =
 
 @app.post("/api/trades/{trade_id}/review")
 async def api_review_trade(trade_id: str, request: Request, user_id: str | None = None):
-    """
-    Returns simple coaching text + saves it to DB.
-    Rules-based (no LLM), so it runs on Render with zero extra services.
-    """
     payload = await request.json()
     note = (payload.get("note") or "").strip()
 
@@ -1337,9 +1326,9 @@ async def api_review_trade(trade_id: str, request: Request, user_id: str | None 
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=500)
 
-    issues = []
-    tips = []
-    review_flags = []
+    issues: list[str] = []
+    tips: list[str] = []
+    review_flags: list[dict] = []
 
     ep = t.get("entry_price")
     xp = t.get("exit_price")
@@ -1363,11 +1352,15 @@ async def api_review_trade(trade_id: str, request: Request, user_id: str | None 
         tips.append("Add 1–2 sentences: why entry, where stop should be, and what target/scale plan was.")
 
     if "vwap" in subtype or ("vwap" in note.lower() if note else False):
-        tips.append("VWAP pullbacks: best entries are reclaim/hold at VWAP with volume returning. Avoid chasing extended candles above VWAP.")
+        tips.append(
+            "VWAP pullbacks: best entries are reclaim/hold at VWAP with volume returning. Avoid chasing extended candles above VWAP."
+        )
     else:
-        tips.append("Break→pullback: focus on the retest holding a key level (break line / premarket high) with volume staying elevated.")
+        tips.append(
+            "Break→pullback: focus on the retest holding a key level (break line / premarket high) with volume staying elevated."
+        )
 
-    review_lines = []
+    review_lines: list[str] = []
     review_lines.append(f"{t.get('ticker','')} • {t.get('subtype','') or 'setup'}")
 
     if ep is not None and xp is not None and sh is not None:
@@ -1402,7 +1395,6 @@ async def api_review_trade(trade_id: str, request: Request, user_id: str | None 
 
     review_text = "\n".join(review_lines).strip()
 
-    # Save review + flags
     try:
         trade_save_review(trade_id, review_text, user_id=user_id)
     except Exception:
