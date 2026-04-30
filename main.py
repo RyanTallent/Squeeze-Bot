@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import alerts
 import hashlib
 import json
 import os
@@ -1163,6 +1164,34 @@ def _scan_worker(scan_id: str, mode: str, ortex: str):
         push_log(f"[FATAL WORKER ERROR] {type(e).__name__}: {str(e)}")
         mark_done(False, None)
 
+        # Email alert (best-effort)
+        try:
+            base_url = (os.getenv("PUBLIC_BASE_URL") or "").strip()
+            subject = f"SqueezeBot: {len(to_save)} squeeze signals • {today_ct} • {mode.upper()}"
+            lines = [
+                f"Scan date (CT): {today_ct}",
+                f"Mode: {mode}",
+                f"Ortex: {ortex}",
+                f"Squeeze signals saved: {len(to_save)}",
+                "",
+                "Tickers:",
+            ]
+            for s in to_save:
+                lines.append(f"- {s.get('ticker')} @ {s.get('entry')}  stop {s.get('loss_px')}  win {s.get('win_px')}")
+
+            if base_url:
+                lines += ["", f"Open app: {base_url}", f"Health: {base_url}/health"]
+
+            alerts.send_email_resend(subject=subject, text="\n".join(lines))
+        except Exception:
+            pass
+
+@app.post("/cron/run_scan")
+def cron_run_scan(token: str, mode: str = "auto", ortex: str = "off"):
+    expected = (os.getenv("CRON_TOKEN") or "").strip()
+    if not expected or token != expected:
+        return JSONResponse({"ok": False, "error": "unauthorized"}, status_code=401)
+    return run_scan(mode=mode, ortex=ortex)
 
 @app.get("/stream/{scan_id}")
 def stream(scan_id: str):
