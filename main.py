@@ -1142,8 +1142,9 @@ def _scan_worker(scan_id: str, mode: str, ortex: str):
                 "ticker": (r.get("ticker") or "").upper().strip(),
                 "confidence": r.get("confidence"),
                 "entry": entry,
-                "win_px": entry * 1.15,
-                "loss_px": entry * 0.90,
+                "win_px": entry + max(entry - float(r.get("stop") or entry * 0.90), entry * 0.02) * 2.0,
+            "loss_px": float(r.get("stop") or entry * 0.90),
+
                 "status": "PENDING",
             })
 
@@ -1168,8 +1169,10 @@ def _scan_worker(scan_id: str, mode: str, ortex: str):
 @app.get("/stream/{scan_id}")
 def stream(scan_id: str):
     def event_gen():
-        last_log_seq = 0
-        last_row_seq = 0
+        last_log_seq    = 0
+        last_log_offset = 0
+        last_row_seq    = 0
+
         last_meta_seq = 0
         last_done_seq = 0
 
@@ -1183,13 +1186,16 @@ def stream(scan_id: str):
         while True:
             snap = _state_snapshot()
 
-            if snap["log_seq"] != last_log_seq:
+             if snap["log_seq"] != last_log_seq:
                 with STATE_LOCK:
                     logs = list(STATE["logs"])
                     seq = STATE["log_seq"]
-                for line in logs[-60:]:
+                new_lines = logs[last_log_offset:]
+                for line in new_lines:
                     yield _sse("log", {"line": line})
+                last_log_offset = len(logs)
                 last_log_seq = seq
+
 
             if snap["meta_seq"] != last_meta_seq:
                 yield _sse("meta", snap["meta"])
