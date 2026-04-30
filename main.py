@@ -1142,7 +1142,7 @@ def _scan_worker(scan_id: str, mode: str, ortex: str):
                 "ticker": (r.get("ticker") or "").upper().strip(),
                 "confidence": r.get("confidence"),
                 "entry": entry,
-                "win_px": entry + max(entry - float(r.get("stop") or entry * 0.90), entry * 0.02) * 2.0,
+                "win_px": entry + (max(entry - float(r.get("stop") or entry * 0.90), entry * 0.02) * 2.0),
             "loss_px": float(r.get("stop") or entry * 0.90),
 
                 "status": "PENDING",
