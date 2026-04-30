@@ -1184,37 +1184,36 @@ def stream(scan_id: str):
         yield _sse("meta", snap["meta"])
 
         while True:
-            snap = _state_snapshot()
+    snap = _state_snapshot()
 
-             if snap["log_seq"] != last_log_seq:
-                with STATE_LOCK:
-                    logs = list(STATE["logs"])
-                    seq = STATE["log_seq"]
-                new_lines = logs[last_log_offset:]
-                for line in new_lines:
-                    yield _sse("log", {"line": line})
-                last_log_offset = len(logs)
-                last_log_seq = seq
+    if snap["log_seq"] != last_log_seq:
+        with STATE_LOCK:
+            logs = list(STATE["logs"])
+            seq = STATE["log_seq"]
+            new_lines = logs[last_log_offset:]
+            for line in new_lines:
+                yield _sse("log", {"line": line})
+            last_log_offset = len(logs)
+            last_log_seq = seq
 
+    if snap["meta_seq"] != last_meta_seq:
+        yield _sse("meta", snap["meta"])
+        last_meta_seq = snap["meta_seq"]
 
-            if snap["meta_seq"] != last_meta_seq:
-                yield _sse("meta", snap["meta"])
-                last_meta_seq = snap["meta_seq"]
+    if snap["row_seq"] != last_row_seq:
+        with STATE_LOCK:
+            rows = list(STATE["rows"])
+            seq = STATE["row_seq"]
+            for r in rows[-25:]:
+                yield _sse("row", r)
+            last_row_seq = seq
 
-            if snap["row_seq"] != last_row_seq:
-                with STATE_LOCK:
-                    rows = list(STATE["rows"])
-                    seq = STATE["row_seq"]
-                for r in rows[-25:]:
-                    yield _sse("row", r)
-                last_row_seq = seq
+    if snap["done_seq"] != last_done_seq and snap["done"]:
+        yield _sse("done", {"ok": snap["ok"], "html_path": snap["html_path"]})
+        return
 
-            if snap["done_seq"] != last_done_seq and snap["done"]:
-                yield _sse("done", {"ok": snap["ok"], "html_path": snap["html_path"]})
-                return
-
-            yield ": ping\n\n"
-            time.sleep(0.35)
+    yield ": ping\n\n"
+    time.sleep(0.35)
 
     return _sse_response(event_gen)
 
