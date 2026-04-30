@@ -1,17 +1,20 @@
-# scanner.py
-import os
+from __future__ import annotations
+
 import json
 import math
+import os
 import time
 import traceback
-import requests
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
-from typing import Optional, Dict, Any, List, Tuple
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
+import requests
 
-
+# ============================================================
+# Config
+# ============================================================
 TOP_N_PER_BUCKET = 5
 
 DEEP_ANALYZE_TOP_DAY = 75
@@ -20,10 +23,9 @@ ORTEX_FINALISTS_DAY = 25
 DEEP_ANALYZE_TOP_NIGHT = 35
 ORTEX_FINALISTS_NIGHT = 0
 
-# Snapshot gate (proxy) — revised slightly to avoid wasting deep slots
+# Snapshot gate (proxy)
 MIN_DOLLAR_VOL_PROXY = 200_000
-MIN_MOVE_PROXY_PCT   = 0.012
-
+MIN_MOVE_PROXY_PCT = 0.012
 
 PRICE_TIERS = [(0.01, 2.50), (2.50, 5.00), (5.00, 10.00)]
 MAX_CANDIDATES_PER_TIER_SNAPSHOT = 600
@@ -39,7 +41,7 @@ AH_START_CT = (15, 0)
 AH_END_CT = (19, 0)
 
 # Longer window so filters make sense intraday
-MIN_ANALYSIS_MINUTES = 30  # was 15
+MIN_ANALYSIS_MINUTES = 30
 
 POLYGON_KEY = os.getenv("POLYGON_API_KEY")
 ORTEX_KEY = os.getenv("ORTEX_API_KEY")
@@ -51,39 +53,36 @@ OUT_DIR = Path("outputs")
 OUT_DIR.mkdir(exist_ok=True)
 
 # ============================================================
-# RYAN FILTERS
+# Ryan filters / thresholds
 # ============================================================
-MAX_MARKET_CAP = 2_000_000_000      # 2B
-MAX_FLOAT_SHARES = 100_000_000      # shares-outstanding proxy
+MAX_MARKET_CAP = 2_000_000_000  # 2B
+MAX_FLOAT_SHARES = 100_000_000  # shares-outstanding proxy
 VWAP_NEAR_PCT = 0.02
 
-# --- Window-aware thresholds (NEW) ---
-# Why: afterhours/premarket volume + relvol are structurally lower.
+# Window-aware thresholds
 MIN_WINDOW_VOL_REG = 800_000
-MIN_WINDOW_VOL_PM  = 350_000
-MIN_WINDOW_VOL_AH  = 150_000
+MIN_WINDOW_VOL_PM = 350_000
+MIN_WINDOW_VOL_AH = 150_000
 
-MIN_REL_VOL_PM  = 0.85
-MIN_REL_VOL_AH  = 0.60
-
-MIN_RANGE_PCT_PM  = 0.010
-MIN_RANGE_PCT_AH  = 0.008
-
+# NOTE: your old file referenced MIN_REL_VOL_REG but didn’t define it.
+MIN_REL_VOL_REG = 1.00
+MIN_REL_VOL_PM = 0.85
+MIN_REL_VOL_AH = 0.60
 
 MIN_RANGE_PCT_REG = 0.015
 MIN_RANGE_PCT_PM = 0.012
 MIN_RANGE_PCT_AH = 0.010
 
 # Optional reject logging (guarded)
-REJECT_DEBUG = False          # set True if you want per-ticker reject logs
-REJECT_DEBUG_MAX = 30         # cap to avoid spam
+REJECT_DEBUG = False
+REJECT_DEBUG_MAX = 30
 _REJECT_DEBUG_COUNT = 0
 
 # ============================================================
-# Reject stats (so you can see WHY stuff fails)
+# Reject stats + caches
 # ============================================================
 REJECT_STATS: Dict[str, int] = {}
-_REF_CACHE:   Dict[str, Optional[Dict[str, Any]]] = {}
+_REF_CACHE: Dict[str, Optional[Dict[str, Any]]] = {}
 
 
 def reject(reason: str) -> None:
@@ -92,6 +91,7 @@ def reject(reason: str) -> None:
 
 try:
     from zoneinfo import ZoneInfo  # py3.9+
+
     CT_TZ = ZoneInfo("America/Chicago")
 except Exception:
     CT_TZ = timezone(timedelta(hours=-6))
@@ -157,7 +157,6 @@ def _thresholds_for_window(window_name: str) -> Tuple[float, float, float]:
         return (MIN_WINDOW_VOL_AH, MIN_REL_VOL_AH, MIN_RANGE_PCT_AH)
     if "PREMARKET" in w:
         return (MIN_WINDOW_VOL_PM, MIN_REL_VOL_PM, MIN_RANGE_PCT_PM)
-    # REGULAR default
     return (MIN_WINDOW_VOL_REG, MIN_REL_VOL_REG, MIN_RANGE_PCT_REG)
 
 
@@ -178,6 +177,7 @@ def _maybe_log_reject(log_fn, ticker: str, reason: str, extra: str = "") -> None
 # Market Window
 # ============================================================
 def current_market_window(dt: datetime) -> Tuple[str, datetime, datetime]:
+    # Weekend: return last weekday afterhours window
     if dt.weekday() >= 5:
         back = 1 if dt.weekday() == 5 else 2
         y = dt - timedelta(days=back)
@@ -218,6 +218,7 @@ def current_market_window(dt: datetime) -> Tuple[str, datetime, datetime]:
     if dt > ah_end:
         return ("AFTERHOURS (LAST)", ah_start, ah_end)
 
+    # Pre-market before PM_START_CT: use yesterday afterhours
     y = dt - timedelta(days=1)
     while y.weekday() >= 5:
         y -= timedelta(days=1)
@@ -243,7 +244,12 @@ def resolve_ortex_on(mode: str, ortex_request: str, dt: datetime) -> Tuple[bool,
 # ============================================================
 # Polygon / Ortex fetchers
 # ============================================================
-def polygon_get(url: str, params: Optional[Dict[str, Any]] = None, log_fn=None, retries: int = 3) -> Dict[str, Any]:
+def polygon_get(
+    url: str,
+    params: Optional[Dict[str, Any]] = None,
+    log_fn=None,
+    retries: int = 3,
+) -> Dict[str, Any]:
     if not POLYGON_KEY:
         raise RuntimeError("POLYGON_API_KEY environment variable is not set")
 
@@ -305,17 +311,16 @@ def polygon_reference(ticker: str, log_fn=None) -> Optional[Dict[str, Any]]:
     """Cached per scan run — avoids duplicate reference API calls."""
     if ticker in _REF_CACHE:
         return _REF_CACHE[ticker]
-    url = f"[api.polygon.io](https://api.polygon.io/v3/reference/tickers/{ticker})"
+
+    url = f"https://api.polygon.io/v3/reference/tickers/{ticker}"
     try:
-        data   = polygon_get(url, {}, log_fn=log_fn)
+        data = polygon_get(url, {}, log_fn=log_fn)
         result = data.get("results") or {}
         _REF_CACHE[ticker] = result
         return result
     except Exception:
         _REF_CACHE[ticker] = None
         return None
-
-
 
 
 def ortex_get(url: str, log_fn=None) -> Optional[Dict[str, Any]]:
@@ -441,7 +446,7 @@ def vwap_pullback_score(close: float, vwap: Optional[float], high: float, low: f
 def pick_snapshot_candidates(
     snap: List[Dict[str, Any]],
     price_min: float,
-    price_max: float
+    price_max: float,
 ) -> List[Tuple[float, str, Dict[str, Any]]]:
     out: List[Tuple[float, str, Dict[str, Any]]] = []
 
@@ -467,7 +472,7 @@ def pick_snapshot_candidates(
 
         dollar_vol_proxy = day_vol * p
 
-        # Revised gate (still lenient, but stops ultra-dead names)
+        # Gate
         if dollar_vol_proxy < MIN_DOLLAR_VOL_PROXY and abs(move_pct) < MIN_MOVE_PROXY_PCT:
             continue
 
@@ -497,7 +502,7 @@ def analyze_ticker_window(
     w_end: datetime,
     window_name: str,
     snap_meta: Dict[str, Any],
-    log_fn=None
+    log_fn=None,
 ) -> Optional[Dict[str, Any]]:
     min_window_vol, min_rel_vol, min_range_pct = _thresholds_for_window(window_name)
 
@@ -609,8 +614,12 @@ def analyze_ticker_window(
 
     return {
         "ticker": ticker,
-        "open": o, "high": h, "low": l, "close": c,
-        "vol": v, "dollar_vol": dollar_vol,
+        "open": o,
+        "high": h,
+        "low": l,
+        "close": c,
+        "vol": v,
+        "dollar_vol": dollar_vol,
         "range_pct": range_pct,
         "hold_pct": hold_pct,
         "move_pct": move_pct,
@@ -620,8 +629,6 @@ def analyze_ticker_window(
         "vwap": vwap,
         "trigger": h,
         "stop": l,
-
-        # include thresholds used (handy for debugging / scoring bonuses)
         "min_window_vol": min_window_vol,
         "min_rel_vol": min_rel_vol,
         "min_range_pct": min_range_pct,
@@ -674,12 +681,7 @@ def compute_scores(feat: Dict[str, Any]) -> Tuple[float, float, float]:
     else:
         pressure_weight, opportunity_weight, structure_weight = 0.34, 0.33, 0.33
 
-    base_score = (
-        pressure_weight * pressure +
-        opportunity_weight * opportunity +
-        structure_weight * structure
-    )
-
+    base_score = (pressure_weight * pressure) + (opportunity_weight * opportunity) + (structure_weight * structure)
     prob = score_to_prob(base_score)
     return base_score, prob, pressure
 
@@ -786,69 +788,81 @@ def write_html_report(meta: Dict[str, Any], squeeze_rows: List[Dict[str, Any]], 
 
     def row_tr(r: Dict[str, Any]) -> str:
         return f"""
-        <tr>
-          <td><b>{r["ticker"]}</b></td>
-          <td>{r["confidence"]}</td>
-          <td>{r.get("subtype","")}</td>
-          <td>{fmt(r.get("close"),2)}</td>
-          <td>{pct(r.get("move_pct"),1)}</td>
-          <td>{fmt(r.get("dollar_vol"),0)}</td>
-          <td>{pct(r.get("range_pct"),1)}</td>
-          <td>{fmt(r.get("rel_vol"),2)}</td>
-          <td>{fmt(r.get("float_shares"),0)}</td>
-          <td>{fmt(r.get("market_cap"),0)}</td>
-          <td>{fmt(r.get("vwap"),4)}</td>
-          <td>{fmt(r.get("si_pct_ff"),1)}</td>
-          <td>{fmt(r.get("ctb"),1)}</td>
-          <td>{fmt(r.get("avail"),0)}</td>
-        </tr>
-        """
+<tr>
+  <td><b>{r.get("ticker","")}</b></td>
+  <td>{r.get("confidence","")}</td>
+  <td>{r.get("subtype","")}</td>
+  <td>{fmt(r.get("close"),2)}</td>
+  <td>{pct(r.get("move_pct"),1)}</td>
+  <td>{fmt(r.get("dollar_vol"),0)}</td>
+  <td>{pct(r.get("range_pct"),1)}</td>
+  <td>{fmt(r.get("rel_vol"),2)}</td>
+  <td>{fmt(r.get("float_shares"),0)}</td>
+  <td>{fmt(r.get("market_cap"),0)}</td>
+  <td>{fmt(r.get("vwap"),4)}</td>
+  <td>{fmt(r.get("si_pct_ff"),1)}</td>
+  <td>{fmt(r.get("ctb"),1)}</td>
+  <td>{fmt(r.get("avail"),0)}</td>
+</tr>
+"""
 
     def table(rows: List[Dict[str, Any]]) -> str:
         if not rows:
             return "<div class='muted'>None</div>"
         body = "".join(row_tr(r) for r in rows)
         return f"""
-        <table>
-          <thead>
-            <tr>
-              <th>Ticker</th><th>Conf</th><th>Subtype</th><th>Price</th><th>Move</th><th>$Vol</th><th>Range</th>
-              <th>RelVol</th><th>Float</th><th>MktCap</th><th>VWAP</th>
-              <th>SI%</th><th>CTB</th><th>Avail</th>
-            </tr>
-          </thead>
-          <tbody>{body}</tbody>
-        </table>
-        """
+<table>
+  <thead>
+    <tr>
+      <th>Ticker</th><th>Conf</th><th>Subtype</th><th>Price</th><th>Move</th><th>$Vol</th><th>Range</th>
+      <th>RelVol</th><th>Float</th><th>MktCap</th><th>VWAP</th><th>SI%</th><th>CTB</th><th>Avail</th>
+    </tr>
+  </thead>
+  <tbody>
+    {body}
+  </tbody>
+</table>
+"""
 
     html = f"""<!doctype html>
-<html><head><meta charset="utf-8"><title>SqueezeBot {meta['date']}</title>
-<style>
-body {{ font-family: Arial, sans-serif; background:#0b0f14; color:#e7eefc; margin:24px; }}
-.card {{ background:#111827; border:1px solid #253045; border-radius:16px; padding:16px; margin-bottom:16px; }}
-h1 {{ margin:0 0 6px 0; }}
-.muted {{ color:#93a4bd; }}
-table {{ width:100%; border-collapse:collapse; }}
-th,td {{ border-bottom:1px solid #253045; padding:10px; font-size:14px; vertical-align:top; }}
-th {{ text-align:left; color:#93a4bd; font-weight:700; }}
-</style></head>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>SqueezeBot {meta['date']}</title>
+  <style>
+    body {{ font-family: Arial, sans-serif; background:#0b0f14; color:#e7eefc; margin:24px; }}
+    .card {{ background:#111827; border:1px solid #253045; border-radius:16px; padding:16px; margin-bottom:16px; }}
+    h1 {{ margin:0 0 6px 0; }}
+    .muted {{ color:#93a4bd; }}
+    table {{ width:100%; border-collapse:collapse; }}
+    th,td {{ border-bottom:1px solid #253045; padding:10px; font-size:14px; vertical-align:top; }}
+    th {{ text-align:left; color:#93a4bd; font-weight:700; }}
+  </style>
+</head>
 <body>
-<div class="card">
-  <h1>Precipice Analytica</h1>
-  <div class="muted">by Ryan Tallent • {meta.get("date")} • Window: {meta.get("window")} • Mode: {meta.get("mode")} • ORTEX: {meta.get("ortex")}</div>
-  <div class="muted">Filters: MktCap&lt;2B • Float&lt;100M • Window-aware Vol/RelVol/Range • VWAP pullback bonus</div>
-</div>
-<div class="card">
-  <h2>SQUEEZE</h2>
-  <div class="muted">True squeezes (confirmed) + Squeeze Watch (if none confirmed)</div>
-  {table(squeeze_rows)}
-</div>
-<div class="card">
-  <h2>MOMENTUM</h2>
-  <div class="muted">Gainers only (Ryan filters applied)</div>
-  {table(momentum_rows)}
-</div>
-</body></html>
+  <div class="card">
+    <h1>Precipice Analytica</h1>
+    <div class="muted">
+      by Ryan Tallent • {meta.get("date")} • Window: {meta.get("window")} • Mode: {meta.get("mode")} • ORTEX: {meta.get("ortex")}
+    </div>
+    <div class="muted">
+      Filters: MktCap&lt;2B • Float&lt;100M • Window-aware Vol/RelVol/Range • VWAP pullback bonus
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>SQUEEZE</h2>
+    <div class="muted">True squeezes (confirmed) + Squeeze Watch (if none confirmed)</div>
+    {table(squeeze_rows)}
+  </div>
+
+  <div class="card">
+    <h2>MOMENTUM</h2>
+    <div class="muted">Gainers only (Ryan filters applied)</div>
+    {table(momentum_rows)}
+  </div>
+</body>
+</html>
 """
     html_path.write_text(html, encoding="utf-8")
     return str(html_path).replace("\\", "/")
@@ -861,6 +875,7 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "off") ->
     global _REJECT_DEBUG_COUNT
     _REJECT_DEBUG_COUNT = 0
     REJECT_STATS.clear()
+    _REF_CACHE.clear()
 
     mode2 = (mode or "day").lower().strip()
     if mode2 not in ("day", "night"):
@@ -897,80 +912,32 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "off") ->
     candidates: List[Tuple[float, str, Dict[str, Any]]] = []
     for pmin, pmax in PRICE_TIERS:
         candidates.extend(pick_snapshot_candidates(snap, pmin, pmax))
-    candidates.sort(reverse=True, key=lambda x: x[0])
 
+    candidates.sort(reverse=True, key=lambda x: x[0])
     deep_list = candidates[:deep_top]
+
     if log_fn:
         log_fn(f"Deep-analyze list: {len(deep_list)} tickers (Top {deep_top})")
 
-analyzed: List[Dict[str, Any]] = []
-_REF_CACHE.clear()
+    analyzed: List[Dict[str, Any]] = []
+    args_list = [(idx, ps, t, sm) for idx, (ps, t, sm) in enumerate(deep_list, start=1)]
 
-def _analyze_one(args):
-    _idx, _proxy_score, ticker, snap_meta = args
-    try:
-        feat = analyze_ticker_window(
-            ticker, date_str, w_start, w_end, window, snap_meta, log_fn=None
-        )
-        if not feat:
-            return None
-        feat["window"] = window
-        feat["si_pct_ff"]  = None
-        feat["si_pct_chg"] = None
-        feat["ctb"]        = None
-        feat["avail"]      = None
-        base_score, prob, pressure = compute_scores(feat)
-        conf = confidence_1_to_10(prob, ortex_on=ortex_on, has_borrow=False)
-        return {
-            "ticker":         ticker,
-            "bucket":         "MOMENTUM",
-            "subtype":        setup_subtype(feat, label="MOMENTUM"),
-            "confidence":     conf,
-            "prob":           round(prob, 4),
-            "base_score":     round(base_score, 2),
-            "pressure_score": round(pressure, 2),
-            "close":          feat.get("close"),
-            "move_pct":       feat.get("move_pct"),
-            "dollar_vol":     feat.get("dollar_vol"),
-            "range_pct":      feat.get("range_pct"),
-            "hold_pct":       feat.get("hold_pct"),
-            "rel_vol":        feat.get("rel_vol"),
-            "float_shares":   feat.get("float_shares"),
-            "market_cap":     feat.get("market_cap"),
-            "vwap":           feat.get("vwap"),
-            "vol":            feat.get("vol"),
-            "si_pct_ff":      None,
-            "si_pct_chg":     None,
-            "ctb":            None,
-            "avail":          None,
-            "trigger":        feat.get("trigger"),
-            "stop":           feat.get("stop"),
-            "plan":           trade_plan(feat),
-        }
-    except Exception as e:
-        if log_fn:
-            log_fn(f"[ERROR] {ticker}: {type(e).__name__}: {e}")
-        return None
-
-args_list = [
-    (idx, ps, t, sm)
-    for idx, (ps, t, sm) in enumerate(deep_list, start=1)
-]
-
-if log_fn:
-    log_fn(f"Deep-analyzing {len(args_list)} tickers in parallel (8 workers)...")
-
-with ThreadPoolExecutor(max_workers=8) as pool:
-    for result in pool.map(_analyze_one, args_list):
-        if result is not None:
-            analyzed.append(result)
-
-if log_fn:
-    log_fn(f"Deep analysis done. {len(analyzed)} passed filters.")
-
+    def _analyze_one(args):
+        _idx, _proxy_score, ticker, snap_meta = args
+        try:
+            feat = analyze_ticker_window(
+                ticker=ticker,
+                date_str=date_str,
+                w_start=w_start,
+                w_end=w_end,
+                window_name=window,
+                snap_meta=snap_meta,
+                log_fn=None,
+            )
+            if not feat:
+                return None
 
             feat["window"] = window
-
             feat["si_pct_ff"] = None
             feat["si_pct_chg"] = None
             feat["ctb"] = None
@@ -979,7 +946,7 @@ if log_fn:
             base_score, prob, pressure = compute_scores(feat)
             conf = confidence_1_to_10(prob, ortex_on=ortex_on, has_borrow=False)
 
-            row = {
+            return {
                 "ticker": ticker,
                 "bucket": "MOMENTUM",
                 "subtype": setup_subtype(feat, label="MOMENTUM"),
@@ -987,7 +954,6 @@ if log_fn:
                 "prob": round(prob, 4),
                 "base_score": round(base_score, 2),
                 "pressure_score": round(pressure, 2),
-
                 "close": feat.get("close"),
                 "move_pct": feat.get("move_pct"),
                 "dollar_vol": feat.get("dollar_vol"),
@@ -998,24 +964,29 @@ if log_fn:
                 "market_cap": feat.get("market_cap"),
                 "vwap": feat.get("vwap"),
                 "vol": feat.get("vol"),
-
                 "si_pct_ff": None,
                 "si_pct_chg": None,
                 "ctb": None,
                 "avail": None,
-
                 "trigger": feat.get("trigger"),
                 "stop": feat.get("stop"),
                 "plan": trade_plan(feat),
             }
-
-            analyzed.append(row)
-
         except Exception as e:
             if log_fn:
-                log_fn(f"[ERROR] Polygon analyze failed for {ticker}: {type(e).__name__}: {e}")
-                log_fn(traceback.format_exc())
-            continue
+                log_fn(f"[ERROR] {ticker}: {type(e).__name__}: {e}")
+            return None
+
+    if log_fn:
+        log_fn(f"Deep-analyzing {len(args_list)} tickers in parallel (8 workers)...")
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        for result in pool.map(_analyze_one, args_list):
+            if result is not None:
+                analyzed.append(result)
+
+    if log_fn:
+        log_fn(f"Deep analysis done. {len(analyzed)} passed filters.")
 
     if not analyzed:
         if log_fn:
@@ -1023,7 +994,7 @@ if log_fn:
             log_fn(f"Reject breakdown: {REJECT_STATS}")
         return None
 
-    finalists: List[Dict[str, Any]] = []
+    # ORTEX enrich on a small finalist set
     if ortex_on and ortex_finalists > 0:
         finalists = sorted(
             analyzed,
@@ -1034,59 +1005,60 @@ if log_fn:
                 (r.get("range_pct") or 0),
                 (r.get("dollar_vol") or 0),
             ),
-            reverse=True
+            reverse=True,
         )[:ortex_finalists]
+
         if log_fn:
             log_fn(f"ORTEX enrich: {len(finalists)} finalists selected.")
 
-    for r in finalists:
-        t = r["ticker"]
-        try:
-            si = ortex_short_interest_features(t, log_fn=log_fn) or {}
-            r["si_pct_ff"] = si.get("si_pct_ff")
-            r["si_pct_chg"] = si.get("si_pct_chg")
-            r["ctb"] = ortex_ctb_latest(t, log_fn=log_fn)
-            r["avail"] = ortex_availability_latest(t, log_fn=log_fn)
+        for r in finalists:
+            t = r["ticker"]
+            try:
+                si = ortex_short_interest_features(t, log_fn=log_fn) or {}
+                r["si_pct_ff"] = si.get("si_pct_ff")
+                r["si_pct_chg"] = si.get("si_pct_chg")
+                r["ctb"] = ortex_ctb_latest(t, log_fn=log_fn)
+                r["avail"] = ortex_availability_latest(t, log_fn=log_fn)
 
-            feat = dict(r)
-            feat["window"] = window
+                feat = dict(r)
+                feat["window"] = window
 
-            base_score, prob, pressure = compute_scores(feat)
-            has_borrow = (r.get("ctb") is not None and r.get("avail") is not None)
+                base_score, prob, pressure = compute_scores(feat)
+                has_borrow = (r.get("ctb") is not None and r.get("avail") is not None)
 
-            r["base_score"] = round(base_score, 2)
-            r["prob"] = round(prob, 4)
-            r["pressure_score"] = round(pressure, 2)
-            r["confidence"] = confidence_1_to_10(prob, ortex_on=True, has_borrow=has_borrow)
+                r["base_score"] = round(base_score, 2)
+                r["prob"] = round(prob, 4)
+                r["pressure_score"] = round(pressure, 2)
+                r["confidence"] = confidence_1_to_10(prob, ortex_on=True, has_borrow=has_borrow)
 
-            if is_true_squeeze(feat, ortex_on=True):
-                r["bucket"] = "SQUEEZE"
-                r["subtype"] = setup_subtype(feat, label="TRUE_SQUEEZE")
-            else:
-                r["bucket"] = "MOMENTUM"
-                r["subtype"] = setup_subtype(feat, label="MOMENTUM")
+                if is_true_squeeze(feat, ortex_on=True):
+                    r["bucket"] = "SQUEEZE"
+                    r["subtype"] = setup_subtype(feat, label="TRUE_SQUEEZE")
+                else:
+                    r["bucket"] = "MOMENTUM"
+                    r["subtype"] = setup_subtype(feat, label="MOMENTUM")
 
-            r["plan"] = trade_plan(feat)
+                r["plan"] = trade_plan(feat)
 
-        except Exception as e:
-            if log_fn:
-                log_fn(f"[ERROR] ORTEX enrich failed for {t}: {type(e).__name__}: {e}")
-                log_fn(traceback.format_exc())
-            continue
+            except Exception as e:
+                if log_fn:
+                    log_fn(f"[ERROR] ORTEX enrich failed for {t}: {type(e).__name__}: {e}")
+                    log_fn(traceback.format_exc())
+                continue
 
+    # Build SQUEEZE list
     squeezes_true = [r for r in analyzed if r.get("bucket") == "SQUEEZE"]
-
     if squeezes_true:
         squeezes = sorted(
             squeezes_true,
             key=lambda r: (r.get("confidence", 0), r.get("base_score", 0)),
-            reverse=True
+            reverse=True,
         )[:TOP_N_PER_BUCKET]
     else:
         watch_sorted = sorted(
             analyzed,
             key=lambda r: (r.get("pressure_score", 0), r.get("base_score", 0), (r.get("dollar_vol") or 0)),
-            reverse=True
+            reverse=True,
         )
         squeezes = []
         for r in watch_sorted:
@@ -1099,16 +1071,16 @@ if log_fn:
             if len(squeezes) >= TOP_N_PER_BUCKET:
                 break
 
+    # Build MOMENTUM list (gainers only)
     momentum = [
-        r for r in analyzed
-        if r.get("bucket") != "SQUEEZE"
-        and (r.get("move_pct") is not None)
-        and (r["move_pct"] > 0)
+        r
+        for r in analyzed
+        if r.get("bucket") != "SQUEEZE" and (r.get("move_pct") is not None) and (r["move_pct"] > 0)
     ]
     momentum = sorted(
         momentum,
         key=lambda r: (r.get("confidence", 0), r.get("base_score", 0)),
-        reverse=True
+        reverse=True,
     )[:TOP_N_PER_BUCKET]
 
     if row_fn:
@@ -1123,7 +1095,6 @@ if log_fn:
     }
 
     html_path = write_html_report(meta, squeezes, momentum)
-
     if log_fn:
         log_fn(f"Saved HTML: {html_path}")
 
