@@ -1560,14 +1560,13 @@ def _run_scan_for_user(user: dict[str, Any] | None, mode: str = "auto", ortex: s
                 "scanned_count": None,
             }
 
-        th = threading.Thread(target=_scan_worker, args=(scan_id, eff_mode, ortex_for_worker), daemon=True)
+        user_id = user["id"] if user is not None else None
+        th = threading.Thread(
+            target=_scan_worker,
+            args=(scan_id, eff_mode, ortex_for_worker, user_id, wants_ortex),
+            daemon=True,
+        )
         th.start()
-
-        if user is not None:
-            try:
-                increment_scan_usage(user["id"], used_ortex=wants_ortex)
-            except Exception as usage_err:
-                push_log(f"[USAGE WARNING] Could not record scan usage: {type(usage_err).__name__}")
 
         snap = _state_snapshot()
         return {
@@ -1592,7 +1591,13 @@ def _run_scan_for_user(user: dict[str, Any] | None, mode: str = "auto", ortex: s
         return JSONResponse({"ok": False, "error": f"{type(e).__name__}: {str(e)}"}, status_code=500)
 
 
-def _scan_worker(scan_id: str, mode: str, ortex: str):
+def _scan_worker(
+    scan_id: str,
+    mode: str,
+    ortex: str,
+    user_id: str | None = None,
+    used_ortex: bool = False,
+):
     try:
         push_log("Starting scan… (manual)")
         push_log(f"Worker params → mode={mode} | ortex={ortex}")
@@ -1615,6 +1620,13 @@ def _scan_worker(scan_id: str, mode: str, ortex: str):
             push_log(f"[SCANNER ERROR] {type(scan_err).__name__}: {str(scan_err)}")
             mark_done(False, None)
             return
+
+        if user_id:
+            try:
+                increment_scan_usage(user_id, used_ortex=used_ortex)
+                push_log("[USAGE] Scan credit recorded.")
+            except Exception as usage_err:
+                push_log(f"[USAGE WARNING] Could not record scan usage: {type(usage_err).__name__}")
 
         # Save only SQUEEZE picks as signals (dedupe by date+ticker)
         today_ct = ct_date()
