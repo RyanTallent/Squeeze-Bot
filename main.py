@@ -1974,6 +1974,20 @@ def api_usage(request: Request):
     return {"ok": True, "usage": usage_summary(auth_user), "user": _public_user(auth_user)}
 
 
+@app.get("/api/debug/ortex/{ticker}")
+def api_debug_ortex(ticker: str, request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    if (auth_user.get("plan_code") or "") != "founder":
+        return JSONResponse({"ok": False, "error": "Founder access required"}, status_code=403)
+
+    try:
+        return scanner.ortex_debug_ticker(ticker)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=500)
+
+
 # -------------------- APIs --------------------
 @app.get("/api/scoreboard")
 def api_scoreboard(request: Request):

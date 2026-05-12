@@ -45,6 +45,16 @@ MIN_ANALYSIS_MINUTES = 30
 
 POLYGON_KEY = os.getenv("POLYGON_API_KEY")
 ORTEX_KEY = os.getenv("ORTEX_API_KEY")
+ORTEX_EXCHANGE_SYMBOLS = tuple(
+    x.strip().lower()
+    for x in (os.getenv("ORTEX_EXCHANGE_SYMBOLS") or "us").split(",")
+    if x.strip()
+)
+ORTEX_DEBUG_EXCHANGE_SYMBOLS = tuple(
+    x.strip().lower()
+    for x in (os.getenv("ORTEX_DEBUG_EXCHANGE_SYMBOLS") or "us,nasdaq,nyse,xnas,xnys").split(",")
+    if x.strip()
+)
 
 SESSION = requests.Session()
 SESSION.headers.update({"User-Agent": "squeeze-bot/engine-v2.4-ryan"})
@@ -323,84 +333,239 @@ def polygon_reference(ticker: str, log_fn=None) -> Optional[Dict[str, Any]]:
         return None
 
 
-def ortex_get(url: str, log_fn=None) -> Optional[Dict[str, Any]]:
+def ortex_get_with_status(url: str) -> Tuple[Optional[Dict[str, Any]], int | None, str | None]:
     if not ORTEX_KEY:
-        return None
-
-    r = SESSION.get(url, headers={"Ortex-Api-Key": ORTEX_KEY}, timeout=30)
-
-    if r.status_code == 404:
-        return None
-    if r.status_code == 429:
-        if log_fn:
-            log_fn("[ORTEX 429] throttled — skipping")
-        return None
-    if r.status_code >= 400:
-        if log_fn:
-            log_fn(f"[ORTEX {r.status_code}] {url} {r.text[:140]}")
-        return None
+        return None, None, "ORTEX_API_KEY not set"
 
     try:
-        return r.json()
+        r = SESSION.get(
+            url,
+            headers={"Ortex-Api-Key": ORTEX_KEY, "accept": "*/*"},
+            params={"format": "json", "page_size": 100},
+            timeout=30,
+        )
+    except requests.RequestException as e:
+        return None, None, f"{type(e).__name__}: {str(e)[:140]}"
+
+    if r.status_code >= 400:
+        return None, r.status_code, r.text[:180]
+
+    try:
+        return r.json(), r.status_code, None
     except Exception:
-        return None
+        return None, r.status_code, "Invalid JSON response"
 
 
-def ortex_short_interest_features(ticker: str, log_fn=None) -> Optional[Dict[str, Any]]:
-    data = ortex_get(f"https://api.ortex.com/api/v1/stock/US/{ticker}/short_interest", log_fn=log_fn)
-    if not data:
-        return None
-    rows = data.get("rows", []) if isinstance(data, dict) else []
+def ortex_get(url: str, log_fn=None) -> Optional[Dict[str, Any]]:
+    data, status, error = ortex_get_with_status(url)
+    if error and log_fn:
+        if status == 404:
+            return None
+        if status == 429:
+            log_fn("[ORTEX 429] throttled — skipping")
+        elif status:
+            log_fn(f"[ORTEX {status}] {url} {error[:140]}")
+        else:
+            log_fn(f"[ORTEX] {url} {error[:140]}")
+    return data
+
+
+def _flatten_rows(rows: Any) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    if isinstance(rows, dict):
+        out.append(rows)
+    elif isinstance(rows, list):
+        for item in rows:
+            if isinstance(item, dict):
+                out.append(item)
+            elif isinstance(item, list):
+                out.extend(_flatten_rows(item))
+    return out
+
+
+def _ortex_rows(data: Any) -> List[Dict[str, Any]]:
+    if isinstance(data, dict):
+        return _flatten_rows(data.get("rows") or data.get("results") or data.get("data") or [])
+    return _flatten_rows(data)
+
+
+def _latest_ortex_row(data: Any) -> Optional[Dict[str, Any]]:
+    rows = _ortex_rows(data)
     if not rows:
         return None
-
-    latest = rows[-1]
-    prev = rows[-2] if len(rows) >= 2 else None
-
-    si_pct = safe_float(latest.get("shortInterestPcFreeFloat"))
-    si_shares = safe_float(latest.get("shortInterestShares"))
-
-    si_pct_chg = None
-    if prev is not None and si_pct is not None:
-        prev_pct = safe_float(prev.get("shortInterestPcFreeFloat"))
-        if prev_pct is not None:
-            si_pct_chg = si_pct - prev_pct
-
-    return {"si_pct_ff": si_pct, "si_pct_chg": si_pct_chg, "si_shares": si_shares}
+    rows.sort(key=lambda r: str(r.get("date") or r.get("Date") or ""))
+    return rows[-1]
 
 
-def ortex_ctb_latest(ticker: str, log_fn=None) -> Optional[float]:
-    for url in [
-        f"https://api.ortex.com/api/v1/stock/US/{ticker}/ctb/all",
-        f"https://api.ortex.com/api/v1/stock/US/{ticker}/ctb/new",
-    ]:
-        data = ortex_get(url, log_fn=log_fn)
-        if not data:
-            continue
-        rows = data.get("rows", []) if isinstance(data, dict) else []
-        if not rows:
-            continue
-        latest = rows[-1]
-        for k in ("ctbAvg", "ctbAverage", "average", "borrowCostAvg", "borrowCostAverage"):
-            v = safe_float(latest.get(k))
+def _first_float(row: Dict[str, Any] | None, keys: Tuple[str, ...]) -> Optional[float]:
+    if not row:
+        return None
+    lowered = {str(k).lower(): v for k, v in row.items()}
+    for key in keys:
+        if key in row:
+            v = safe_float(row.get(key))
+            if v is not None:
+                return v
+        lk = key.lower()
+        if lk in lowered:
+            v = safe_float(lowered.get(lk))
             if v is not None:
                 return v
     return None
 
 
-def ortex_availability_latest(ticker: str, log_fn=None) -> Optional[float]:
-    data = ortex_get(f"https://api.ortex.com/api/v1/stock/US/{ticker}/availability", log_fn=log_fn)
+def _ortex_exchange_urls(
+    ticker: str,
+    suffix: str,
+    exchange_symbols: Tuple[str, ...] = ORTEX_EXCHANGE_SYMBOLS,
+) -> List[Tuple[str, str]]:
+    ticker = ticker.upper().strip()
+    return [
+        (exchange, f"https://api.ortex.com/api/v1/stock/{exchange}/{ticker}/{suffix}")
+        for exchange in ORTEX_EXCHANGE_SYMBOLS
+    ]
+
+
+def _ortex_first_data(ticker: str, suffix: str, log_fn=None) -> Tuple[Optional[Dict[str, Any]], str | None]:
+    for exchange, url in _ortex_exchange_urls(ticker, suffix):
+        data = ortex_get(url, log_fn=log_fn)
+        if _ortex_rows(data):
+            return data, exchange
+    return None, None
+
+
+def ortex_short_interest_features(ticker: str, log_fn=None) -> Optional[Dict[str, Any]]:
+    data, exchange = _ortex_first_data(ticker, "short_interest", log_fn=log_fn)
     if not data:
         return None
-    rows = data.get("rows", []) if isinstance(data, dict) else []
+    rows = _ortex_rows(data)
     if not rows:
         return None
+
+    rows.sort(key=lambda r: str(r.get("date") or r.get("Date") or ""))
     latest = rows[-1]
-    for k in ("shares", "availableShares", "availabilityShares", "available", "avail"):
-        v = safe_float(latest.get(k))
+    prev = rows[-2] if len(rows) >= 2 else None
+
+    si_pct = _first_float(
+        latest,
+        (
+            "shortInterestPcFreeFloat",
+            "short_interest_pc_free_float",
+            "siPctFreeFloat",
+            "si_pct_ff",
+        ),
+    )
+    si_shares = _first_float(latest, ("shortInterestShares", "short_interest_shares", "siShares"))
+
+    si_pct_chg = None
+    if prev is not None and si_pct is not None:
+        prev_pct = _first_float(
+            prev,
+            (
+                "shortInterestPcFreeFloat",
+                "short_interest_pc_free_float",
+                "siPctFreeFloat",
+                "si_pct_ff",
+            ),
+        )
+        if prev_pct is not None:
+            si_pct_chg = si_pct - prev_pct
+
+    return {"si_pct_ff": si_pct, "si_pct_chg": si_pct_chg, "si_shares": si_shares, "ortex_exchange": exchange}
+
+
+def ortex_ctb_latest(ticker: str, log_fn=None) -> Optional[float]:
+    for suffix in ("ctb/all", "ctb/new"):
+        data, _exchange = _ortex_first_data(ticker, suffix, log_fn=log_fn)
+        if not data:
+            continue
+        latest = _latest_ortex_row(data)
+        v = _first_float(
+            latest,
+            (
+                "costToBorrowAll",
+                "cost_to_borrow_all",
+                "costToBorrow",
+                "cost_to_borrow",
+                "ctbAvg",
+                "ctbAverage",
+                "average",
+                "borrowCostAvg",
+                "borrowCostAverage",
+            ),
+        )
         if v is not None:
             return v
     return None
+
+
+def ortex_availability_latest(ticker: str, log_fn=None) -> Optional[float]:
+    data, _exchange = _ortex_first_data(ticker, "availability", log_fn=log_fn)
+    if not data:
+        return None
+    latest = _latest_ortex_row(data)
+    return _first_float(
+        latest,
+        (
+            "shortAvailabilityShares",
+            "short_availability_shares",
+            "availabilityShares",
+            "availableShares",
+            "shares",
+            "available",
+            "avail",
+        ),
+    )
+
+
+def ortex_debug_ticker(ticker: str) -> Dict[str, Any]:
+    ticker = ticker.upper().strip()
+    endpoints = {
+        "short_interest": "short_interest",
+        "ctb_all": "ctb/all",
+        "ctb_new": "ctb/new",
+        "availability": "availability",
+    }
+
+    checks: Dict[str, Any] = {}
+    for name, suffix in endpoints.items():
+        endpoint_checks: List[Dict[str, Any]] = []
+        for exchange, url in _ortex_exchange_urls(ticker, suffix, ORTEX_DEBUG_EXCHANGE_SYMBOLS):
+            data, status, error = ortex_get_with_status(url)
+            rows = _ortex_rows(data)
+            latest = _latest_ortex_row(data)
+            endpoint_checks.append(
+                {
+                    "exchange_symbol": exchange,
+                    "http_status": status,
+                    "ok": bool(rows),
+                    "row_count": len(rows),
+                    "latest_date": latest.get("date") if latest else None,
+                    "latest_fields": sorted([str(k) for k in latest.keys()]) if latest else [],
+                    "error": error,
+                }
+            )
+        checks[name] = endpoint_checks
+
+    si = ortex_short_interest_features(ticker) or {}
+    ctb = ortex_ctb_latest(ticker)
+    avail = ortex_availability_latest(ticker)
+
+    return {
+        "ok": True,
+        "ticker": ticker,
+        "ortex_key_set": bool(ORTEX_KEY),
+        "scan_exchange_symbols": list(ORTEX_EXCHANGE_SYMBOLS),
+        "debug_exchange_symbols_checked": list(ORTEX_DEBUG_EXCHANGE_SYMBOLS),
+        "parsed": {
+            "si_pct_ff": si.get("si_pct_ff"),
+            "si_pct_chg": si.get("si_pct_chg"),
+            "si_shares": si.get("si_shares"),
+            "ctb": ctb,
+            "availability": avail,
+        },
+        "checks": checks,
+    }
 
 
 # ============================================================
