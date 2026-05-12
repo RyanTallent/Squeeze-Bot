@@ -324,6 +324,18 @@ SESSION_DAYS = 30
 PASSWORD_ITERATIONS = 260_000
 
 PLANS: dict[str, dict[str, Any]] = {
+    "founder": {
+        "name": "Founder",
+        "price": 0,
+        "scan_limit_weekly": None,
+        "ortex_limit_weekly": None,
+        "features": [
+            "Unlimited scans",
+            "Unlimited ORTEX-backed scans",
+            "Full scanner, journal, research, signals, risk, and future admin access",
+        ],
+        "public": False,
+    },
     "free_trial": {
         "name": "Free Trial",
         "price": 0,
@@ -364,7 +376,7 @@ PLANS: dict[str, dict[str, Any]] = {
 
 
 def public_plans() -> list[dict[str, Any]]:
-    return [{"code": code, **plan} for code, plan in PLANS.items()]
+    return [{"code": code, **plan} for code, plan in PLANS.items() if plan.get("public", True)]
 
 
 def _utc_now() -> datetime:
@@ -377,6 +389,20 @@ def _utc_now_iso() -> str:
 
 def _normalize_email(email: str) -> str:
     return (email or "").strip().lower()
+
+
+def _owner_emails() -> set[str]:
+    defaults = {"ryantallent8@gmail.com"}
+    configured = {
+        _normalize_email(x)
+        for x in (os.getenv("OWNER_EMAILS") or "").split(",")
+        if _normalize_email(x)
+    }
+    return defaults | configured
+
+
+def _is_owner_email(email: str) -> bool:
+    return _normalize_email(email) in _owner_emails()
 
 
 def _is_valid_email(email: str) -> bool:
@@ -440,6 +466,69 @@ def _public_user(user: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def update_user_plan(user_id: str, plan_code: str, subscription_status: str):
+    if using_postgres():
+        with pg_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE users SET plan_code=%s, subscription_status=%s WHERE id=%s",
+                    (plan_code, subscription_status, user_id),
+                )
+            conn.commit()
+        return
+
+    with DB_LOCK:
+        conn = sqlite_conn()
+        try:
+            conn.execute(
+                "UPDATE users SET plan_code=?, subscription_status=? WHERE id=?",
+                (plan_code, subscription_status, user_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def _ensure_owner_access(user: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not user:
+        return None
+    if not _is_owner_email(user.get("email") or ""):
+        return user
+    if user.get("plan_code") != "founder" or user.get("subscription_status") != "founder":
+        update_user_plan(user["id"], "founder", "founder")
+        user = dict(user)
+        user["plan_code"] = "founder"
+        user["subscription_status"] = "founder"
+    return user
+
+
+def promote_owner_accounts():
+    emails = list(_owner_emails())
+    if not emails:
+        return
+
+    if using_postgres():
+        with pg_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE users SET plan_code='founder', subscription_status='founder' WHERE email = ANY(%s)",
+                    (emails,),
+                )
+            conn.commit()
+        return
+
+    with DB_LOCK:
+        conn = sqlite_conn()
+        try:
+            conn.executemany(
+                "UPDATE users SET plan_code='founder', subscription_status='founder' WHERE email=?",
+                [(email,) for email in emails],
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+
 def user_by_email(email: str) -> dict[str, Any] | None:
     email = _normalize_email(email)
     if using_postgres():
@@ -447,14 +536,14 @@ def user_by_email(email: str) -> dict[str, Any] | None:
             with conn.cursor() as cur:
                 cur.execute("SELECT * FROM users WHERE email=%s", (email,))
                 row = cur.fetchone()
-                return dict(row) if row else None
+                return _ensure_owner_access(dict(row) if row else None)
 
     conn = sqlite_conn()
     try:
         cur = conn.cursor()
         cur.execute("SELECT * FROM users WHERE email=?", (email,))
         row = cur.fetchone()
-        return dict(row) if row else None
+        return _ensure_owner_access(dict(row) if row else None)
     finally:
         conn.close()
 
@@ -465,25 +554,27 @@ def user_by_id(user_id: str) -> dict[str, Any] | None:
             with conn.cursor() as cur:
                 cur.execute("SELECT * FROM users WHERE id=%s", (user_id,))
                 row = cur.fetchone()
-                return dict(row) if row else None
+                return _ensure_owner_access(dict(row) if row else None)
 
     conn = sqlite_conn()
     try:
         cur = conn.cursor()
         cur.execute("SELECT * FROM users WHERE id=?", (user_id,))
         row = cur.fetchone()
-        return dict(row) if row else None
+        return _ensure_owner_access(dict(row) if row else None)
     finally:
         conn.close()
 
 
 def create_user(email: str, password: str) -> dict[str, Any]:
+    email = _normalize_email(email)
+    is_owner = _is_owner_email(email)
     user = {
         "id": str(uuid.uuid4()),
-        "email": _normalize_email(email),
+        "email": email,
         "password_hash": _hash_password(password),
-        "plan_code": "free_trial",
-        "subscription_status": "trial",
+        "plan_code": "founder" if is_owner else "free_trial",
+        "subscription_status": "founder" if is_owner else "trial",
         "lifetime_scans_used": 0,
         "created_at_utc": _utc_now_iso(),
     }
@@ -622,7 +713,7 @@ def current_user_from_request(request: Request) -> dict[str, Any] | None:
                     (token_hash, now_iso),
                 )
                 row = cur.fetchone()
-                return dict(row) if row else None
+                return _ensure_owner_access(dict(row) if row else None)
 
     conn = sqlite_conn()
     try:
@@ -637,7 +728,7 @@ def current_user_from_request(request: Request) -> dict[str, Any] | None:
             (token_hash, now_iso),
         )
         row = cur.fetchone()
-        return dict(row) if row else None
+        return _ensure_owner_access(dict(row) if row else None)
     finally:
         conn.close()
 
@@ -683,13 +774,15 @@ def usage_summary(user: dict[str, Any]) -> dict[str, Any]:
     usage = get_usage(user["id"])
     lifetime_used = int(user.get("lifetime_scans_used") or 0)
     lifetime_limit = plan.get("lifetime_scan_limit")
+    scan_limit_weekly = plan.get("scan_limit_weekly")
+    ortex_limit_weekly = plan.get("ortex_limit_weekly")
     return {
         "plan": plan,
         "week_start_ct": usage["week_start_ct"],
         "scans_used": int(usage.get("scans_used") or 0),
-        "scan_limit_weekly": int(plan["scan_limit_weekly"]),
+        "scan_limit_weekly": int(scan_limit_weekly) if scan_limit_weekly is not None else None,
         "ortex_scans_used": int(usage.get("ortex_scans_used") or 0),
-        "ortex_limit_weekly": int(plan["ortex_limit_weekly"]),
+        "ortex_limit_weekly": int(ortex_limit_weekly) if ortex_limit_weekly is not None else None,
         "lifetime_scans_used": lifetime_used,
         "lifetime_scan_limit": lifetime_limit,
     }
@@ -697,14 +790,16 @@ def usage_summary(user: dict[str, Any]) -> dict[str, Any]:
 
 def check_scan_allowed(user: dict[str, Any], wants_ortex: bool) -> tuple[bool, str | None]:
     summary = usage_summary(user)
-    if summary["scans_used"] >= summary["scan_limit_weekly"]:
+    scan_limit = summary.get("scan_limit_weekly")
+    if scan_limit is not None and summary["scans_used"] >= int(scan_limit):
         return False, "Weekly scan limit reached. Upgrade your plan or wait for the weekly reset."
 
     lifetime_limit = summary.get("lifetime_scan_limit")
     if lifetime_limit is not None and summary["lifetime_scans_used"] >= int(lifetime_limit):
         return False, "Free trial scan already used. Choose a paid plan to keep scanning."
 
-    if wants_ortex and summary["ortex_scans_used"] >= summary["ortex_limit_weekly"]:
+    ortex_limit = summary.get("ortex_limit_weekly")
+    if wants_ortex and ortex_limit is not None and summary["ortex_scans_used"] >= int(ortex_limit):
         return False, "Weekly ORTEX scan limit reached. Run a Polygon-only scan or upgrade your plan."
 
     return True, None
@@ -1404,6 +1499,7 @@ def mark_done(ok: bool, html_path: str | None):
 @app.on_event("startup")
 def _startup():
     db_init()
+    promote_owner_accounts()
 
 
 # -------------------- routes --------------------
