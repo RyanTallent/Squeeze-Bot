@@ -1,1777 +1,960 @@
-<!-- ===== FILE: static/index.html (FULL REPLACEMENT) ===== -->
 <!doctype html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Precipice Analytica</title>
-
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
-
+  <title>Cardo Praevisio</title>
   <style>
     :root{
-      --bg:#071019;
-      --panel:#0B1622;
-      --panel2:#0E1C2B;
-      --border:#1D334A;
-      --text:#E9EEF4;
-      --muted:#9AA7B6;
-
-      --gold:#B08B2E;
-      --green:#2AAE6A;
-      --red:#D16060;
-
-      --btn:#0F2438;
-      --chip:#0E2032;
-
-      --shadow: 0 16px 36px rgba(0,0,0,.35);
-      --shadow2: 0 14px 26px rgba(0,0,0,.35);
-
-      --radius:14px;
+      --bg:#f7f5f0;
+      --panel:#ffffff;
+      --panel2:#f1eee7;
+      --text:#151515;
+      --muted:#66645f;
+      --line:#ded8cb;
+      --accent:#9b7a2f;
+      --accent2:#1f7a55;
+      --danger:#b54848;
+      --shadow:0 20px 55px rgba(29,25,18,.10);
+      --radius:18px;
     }
-
+    [data-theme="dark"]{
+      --bg:#11100e;
+      --panel:#191815;
+      --panel2:#22201c;
+      --text:#f4efe6;
+      --muted:#b8afa1;
+      --line:#343026;
+      --accent:#c7a04a;
+      --accent2:#54b987;
+      --danger:#ef7777;
+      --shadow:0 22px 60px rgba(0,0,0,.35);
+    }
     *{box-sizing:border-box}
-    html,body{height:100%}
+    html,body{min-height:100%}
     body{
       margin:0;
-      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Apple Color Emoji","Segoe UI Emoji";
+      font-family:Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      color:var(--text);
       background:
-        radial-gradient(1200px 700px at 20% 0%, rgba(176,139,46,.10), transparent 55%),
-        radial-gradient(900px 600px at 85% 10%, rgba(42,174,106,.07), transparent 55%),
+        radial-gradient(900px 520px at 12% -10%, rgba(155,122,47,.13), transparent 60%),
+        radial-gradient(720px 460px at 92% 10%, rgba(31,122,85,.10), transparent 58%),
         var(--bg);
-      color:var(--text);
     }
-
-    /* App shell */
-    .appbar{
-      position:sticky;
-      top:0;
-      z-index:60;
-      backdrop-filter: blur(10px);
-      background: linear-gradient(180deg, rgba(7,16,25,.92), rgba(7,16,25,.70));
-      border-bottom:1px solid rgba(29,51,74,.55);
+    a{color:inherit}
+    button,input,select,textarea{font:inherit}
+    .hidden{display:none!important}
+    .shell{max-width:1180px;margin:0 auto;padding:0 20px}
+    .topbar{
+      position:sticky;top:0;z-index:50;
+      border-bottom:1px solid var(--line);
+      backdrop-filter:blur(16px);
+      background:color-mix(in srgb, var(--bg) 88%, transparent);
     }
-    .appbarInner{
-      max-width:1180px;
-      margin:0 auto;
-      padding:12px 18px;
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:12px;
+    .topbarInner{
+      max-width:1180px;margin:0 auto;padding:14px 20px;
+      display:flex;align-items:center;justify-content:space-between;gap:16px;
     }
-    .appBrand{
-      display:flex;
-      align-items:center;
-      gap:10px;
-      min-width:220px;
+    .brand{display:flex;align-items:center;gap:12px;font-weight:900;letter-spacing:.02em}
+    .mark{
+      width:38px;height:38px;border-radius:12px;border:1px solid var(--line);
+      display:grid;place-items:center;background:var(--panel);box-shadow:var(--shadow);
+      color:var(--accent);font-weight:950;
     }
-    .appName{
-      font-family:'Playfair Display', serif;
-      font-weight:700;
-      letter-spacing:.2px;
-      font-size:18px;
-      line-height:1;
+    .brand small{display:block;color:var(--muted);font-weight:700;font-size:11px;letter-spacing:.13em;text-transform:uppercase}
+    .topActions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+    .nav{display:flex;gap:8px;flex-wrap:wrap}
+    .nav button,.btn,.ghost{
+      border:1px solid var(--line);border-radius:999px;padding:10px 14px;
+      background:var(--panel);color:var(--text);cursor:pointer;font-weight:850;
     }
-    .appName em{ color: var(--gold); font-style:italic; }
-    .appSub{
-      font-size:12px;
-      color:rgba(233,238,244,.70);
-      margin-top:2px;
-      font-weight:700;
+    .nav button.active,.btn.primary{
+      border-color:color-mix(in srgb, var(--accent) 55%, var(--line));
+      background:linear-gradient(180deg, color-mix(in srgb, var(--accent) 18%, var(--panel)), var(--panel));
     }
-    .nav{
-      display:flex;
-      gap:8px;
-      flex-wrap:wrap;
-      justify-content:flex-end;
-      align-items:center;
+    .btn{border-radius:12px;box-shadow:var(--shadow)}
+    .btn.primary{color:var(--text)}
+    .btn.success{border-color:color-mix(in srgb, var(--accent2) 45%, var(--line));background:color-mix(in srgb, var(--accent2) 12%, var(--panel))}
+    .btn.danger{border-color:color-mix(in srgb, var(--danger) 45%, var(--line));background:color-mix(in srgb, var(--danger) 10%, var(--panel))}
+    .btn:disabled{opacity:.55;cursor:not-allowed}
+    .ghost{box-shadow:none;background:transparent}
+    .hero{padding:72px 0 44px;display:grid;grid-template-columns:1.08fr .92fr;gap:28px;align-items:center}
+    .eyebrow{color:var(--accent);font-weight:950;text-transform:uppercase;letter-spacing:.14em;font-size:12px}
+    h1{font-size:clamp(42px,7vw,78px);line-height:.96;margin:12px 0 18px;letter-spacing:-.06em}
+    h2{font-size:clamp(26px,4vw,42px);line-height:1.02;margin:0 0 12px;letter-spacing:-.035em}
+    h3{margin:0 0 8px;font-size:18px}
+    p{color:var(--muted);line-height:1.65}
+    .heroText{font-size:18px;max-width:720px}
+    .heroActions{display:flex;gap:12px;flex-wrap:wrap;margin-top:24px}
+    .statGrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .stat,.card,.modalCard{
+      background:color-mix(in srgb, var(--panel) 94%, transparent);
+      border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);
     }
-    .navBtn{
-      border:1px solid rgba(29,51,74,.85);
-      background: rgba(14,32,50,.60);
-      color: rgba(233,238,244,.92);
-      padding:8px 10px;
-      border-radius: 999px;
-      font-size: 13px;
-      font-weight: 800;
-      cursor:pointer;
-      white-space:nowrap;
-    }
-    .navBtn:hover{filter:brightness(1.05)}
-    .navBtn.active{
-      border-color: rgba(176,139,46,.55);
-      background: rgba(176,139,46,.12);
-      color: var(--text);
-    }
-
-    .statusPills{
-      display:flex;
-      gap:8px;
-      align-items:center;
-      flex-wrap:wrap;
-      justify-content:flex-end;
-    }
+    .stat{padding:18px}
+    .stat b{font-size:24px}
+    .stat span{display:block;color:var(--muted);font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;margin-top:4px}
+    .section{padding:32px 0}
+    .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+    .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+    .card{padding:20px}
+    .card ul{margin:14px 0 0;padding-left:18px;color:var(--muted);line-height:1.75}
+    .muted{color:var(--muted)}
     .pill{
-      display:flex;
-      gap:8px;
-      align-items:center;
-      color:var(--muted);
-      font-size:12.5px;
-      padding:6px 10px;
-      border-radius:999px;
-      border:1px solid rgba(29,51,74,.9);
-      background:rgba(14,32,50,.75);
-      white-space:nowrap;
+      display:inline-flex;align-items:center;gap:8px;padding:7px 10px;border-radius:999px;
+      border:1px solid var(--line);background:var(--panel2);color:var(--muted);font-size:12px;font-weight:850;
     }
-    .pill b{color:var(--text);font-weight:900}
-
-    .wrap{max-width:1180px;margin:0 auto;padding:18px 18px 26px 18px}
-
-    .card{
-      background:linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,.01));
-      border:1px solid rgba(29,51,74,.85);
-      border-radius:var(--radius);
-      padding:16px;
-      box-shadow:var(--shadow);
-      margin-top:16px;
-      backdrop-filter: blur(6px);
-    }
-
-    /* Buttons */
-    .btn{
-      border:none;
-      border-radius:12px;
-      padding:11px 16px;
-      background:linear-gradient(180deg, rgba(15,36,56,1), rgba(12,28,44,1));
-      color:var(--text);
-      font-weight:900;
-      cursor:pointer;
-      box-shadow:var(--shadow2);
-      letter-spacing:.2px;
-      transition:transform .10s ease, opacity .10s ease, filter .10s ease;
-      border:1px solid rgba(29,51,74,.85);
-    }
-    .btn:hover{transform:translateY(-1px);filter:brightness(1.03)}
-    .btn:active{transform:translateY(0px);opacity:.96}
-    .btn:disabled{opacity:.55;cursor:not-allowed;transform:none}
-    .btn.secondary{
-      background:rgba(14,32,50,.65);
-      color:var(--text);
-      border:1px solid rgba(29,51,74,.85);
-      box-shadow:none;
-      letter-spacing:0;
-      font-weight:800;
-    }
-    .btn.toggle{
-      background:rgba(14,32,50,.65);
-      color:var(--text);
-      border:1px solid rgba(29,51,74,.85);
-      box-shadow:none;
-      letter-spacing:0;
-      font-weight:900;
-    }
-    .btn.toggle.on{
-      background:rgba(42,174,106,.12);
-      border-color:rgba(42,174,106,.45);
-      color:rgba(205,255,229,.95);
-    }
-    .btn.toggle.off{
-      background:rgba(209,96,96,.10);
-      border-color:rgba(209,96,96,.35);
-      color:rgba(255,210,210,.92);
-    }
-
-    /* Toolbar */
-    .toolbar{
-      margin-top:16px;
-      display:flex;
-      gap:10px;
-      align-items:center;
-      flex-wrap:wrap;
-      padding:10px 12px;
-      border-radius:12px;
-      border:1px solid rgba(29,51,74,.85);
-      background:linear-gradient(180deg, rgba(14,32,50,.9), rgba(11,22,34,.9));
-    }
-    .toolgroup{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-    .spacer{flex:1}
-
-    /* Toggle buttons */
-    .tbtn{
-      border:1px solid rgba(29,51,74,.85);
-      background:rgba(14,32,50,.55);
-      color:rgba(233,238,244,.95);
-      border-radius:12px;
-      padding:9px 12px;
-      cursor:pointer;
-      font-weight:900;
-      white-space:nowrap;
-    }
-    .tbtn:hover{filter:brightness(1.05)}
-    .tbtn.on{
-      background:rgba(42,174,106,.12);
-      border-color:rgba(42,174,106,.45);
-      color:rgba(205,255,229,.95);
-    }
-    .tbtn.off{
-      background:rgba(209,96,96,.10);
-      border-color:rgba(209,96,96,.35);
-      color:rgba(255,210,210,.92);
-    }
-
-    .dropwrap{position:relative}
-    .drop{
-      position:absolute;
-      top:44px;
-      left:0;
-      min-width:320px;
-      max-width:560px;
-      z-index:20;
-      display:none;
-      padding:12px;
-      border-radius:12px;
-      border:1px solid rgba(29,51,74,.85);
-      background:linear-gradient(180deg, rgba(14,32,50,.96), rgba(11,22,34,.96));
-      box-shadow:var(--shadow);
-    }
-    .drop.open{display:block}
-    .drop h4{margin:0 0 8px 0;font-size:14px}
-    .drop p{margin:6px 0;color:rgba(233,238,244,.92);font-size:12.5px;line-height:1.5}
-    .drop ul{margin:8px 0 0 0;padding-left:18px}
-    .drop li{margin:6px 0;color:rgba(233,238,244,.92);font-size:12.5px}
-
-    .qmark{
-      display:inline-flex;
-      align-items:center;
-      justify-content:center;
-      width:16px;height:16px;
-      border-radius:999px;
-      border:1px solid rgba(176,139,46,.45);
-      color:rgba(255,244,214,.95);
-      font-size:11px;
-      font-weight:900;
-      margin-left:6px;
-      cursor:help;
-      background:rgba(176,139,46,.10);
-      position:relative;
-      top:-1px;
-    }
-
-    .beginnerOnly{display:none}
-    .beginnerOn .beginnerOnly{display:block}
-
-    #tip{
-      position:fixed;
-      z-index:9999;
-      display:none;
-      max-width:360px;
-      padding:8px 10px;
-      border-radius:10px;
-      border:1px solid rgba(29,51,74,.85);
-      background:rgba(7,16,25,.98);
-      color:rgba(233,238,244,.95);
-      box-shadow:var(--shadow2);
-      font-size:12px;
-      line-height:1.4;
-      pointer-events:none;
-      white-space:pre-wrap;
-    }
-
-    .guide{
-      margin-top:10px;
-      padding:10px 12px;
-      border-radius:12px;
-      border:1px solid rgba(176,139,46,.35);
-      background:rgba(176,139,46,.08);
-      color:rgba(255,244,214,.92);
-      font-size:12.5px;
-      font-weight:900;
-    }
-
-    .badge{
-      display:inline-block;
-      margin-left:8px;
-      padding:2px 8px;
-      border-radius:999px;
-      font-size:11px;
-      font-weight:900;
-      border:1px solid rgba(29,51,74,.85);
-      background:rgba(14,32,50,.55);
-      color:rgba(233,238,244,.92);
-      vertical-align:middle;
-      white-space:nowrap;
-    }
-    .badge.ok{
-      border-color:rgba(42,174,106,.45);
-      background:rgba(42,174,106,.10);
-      color:rgba(205,255,229,.95);
-    }
-    .badge.adv{
-      border-color:rgba(209,96,96,.35);
-      background:rgba(209,96,96,.08);
-      color:rgba(255,210,210,.92);
-    }
-
-    .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
-    @media (max-width: 980px){.grid{grid-template-columns:1fr}}
-    @media (max-width: 900px){
-      .statusPills{display:none}
-    }
-
-    .title{font-weight:900;font-size:18px;margin:0 0 6px 0;color:var(--text)}
-    .smallline{color:var(--muted);font-size:12px;margin:0 0 12px 0}
-
-    .logbox{
-      height:250px;
-      overflow:auto;
-      background:rgba(14,32,50,.55);
-      border:1px solid rgba(29,51,74,.85);
-      border-radius:12px;
-      padding:12px;
-      font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
-      font-size:12px;
-      line-height:1.35;
-      color:#E9EEF4;
-      white-space:pre-wrap;
-    }
-
-    .tabs{display:flex;gap:10px;margin:10px 0 10px 0}
-    .tab{
-      padding:7px 12px;
-      border-radius:999px;
-      border:1px solid rgba(29,51,74,.85);
-      background:rgba(14,32,50,.65);
-      color:rgba(233,238,244,.92);
-      cursor:pointer;
-      font-weight:900;
-      font-size:12px;
-      white-space:nowrap;
-    }
-    .tab.active{
-      background:rgba(176,139,46,.16);
-      border-color:rgba(176,139,46,.55);
-      color:rgba(255,244,214,.95);
-    }
-
-    table{width:100%;border-collapse:collapse}
-    th,td{border-bottom:1px solid rgba(29,51,74,.7);padding:10px 8px;font-size:13px;vertical-align:top}
-    th{
-      color:rgba(233,238,244,.70);
-      text-align:left;
-      font-weight:900;
-      background:linear-gradient(180deg, rgba(14,32,50,.9), rgba(11,22,34,.9));
-      position:sticky;
-      top:0;
-      z-index:1;
-    }
-    tr:hover td{background:rgba(14,32,50,.35)}
-    .right{text-align:right}
-
-    .good{color:rgba(120,255,190,.92);font-weight:900}
-    .bad{color:rgba(255,150,150,.92);font-weight:900}
-    .gold{color:rgba(255,232,170,.95);font-weight:900}
-
-    .tickerCell b{letter-spacing:.2px}
-
-    .addbtn{
-      padding:7px 10px;
-      border-radius:10px;
-      border:1px solid rgba(29,51,74,.85);
-      background:rgba(14,32,50,.65);
-      color:rgba(233,238,244,.95);
-      cursor:pointer;
-      font-weight:900;
-      white-space:nowrap;
-    }
-    .addbtn:hover{filter:brightness(1.05)}
-
-    .rowexp{
-      margin-top:12px;
-      padding:12px;
-      border:1px dashed rgba(176,139,46,.35);
-      border-radius:12px;
-      background:rgba(14,32,50,.55);
-      color:rgba(233,238,244,.95);
-      font-size:12px;
-      display:none;
-      white-space:pre-wrap;
-    }
-
-    /* Notebook */
-    .notehead{
-      display:flex;
-      justify-content:space-between;
-      align-items:flex-start;
-      gap:12px;
-      flex-wrap:wrap;
-      margin-bottom:10px;
-    }
-    .select{
-      padding:9px 10px;
-      border-radius:10px;
-      border:1px solid rgba(29,51,74,.85);
-      background:rgba(14,32,50,.55);
-      color:rgba(233,238,244,.95);
-      font-weight:900;
-    }
-
-    .summaryRow{
-      display:flex;
-      flex-wrap:wrap;
-      gap:10px;
-      align-items:center;
-      justify-content:space-between;
-      margin-top:10px;
-    }
-    .summaryPills{
-      display:flex;
-      flex-wrap:wrap;
-      gap:10px;
-      align-items:center;
-    }
-    .sumPill{
-      padding:8px 10px;
-      border-radius:999px;
-      border:1px solid rgba(29,51,74,.85);
-      background:rgba(14,32,50,.55);
-      font-size:12.5px;
-      color:var(--muted);
-      white-space:nowrap;
-    }
-    .sumPill b{color:rgba(233,238,244,.95)}
-    .chartBox{
-      width:260px;
-      max-width:100%;
-      border:1px solid rgba(29,51,74,.85);
-      background:rgba(14,32,50,.55);
-      border-radius:12px;
-      padding:10px;
-    }
-    .chartTitle{
-      font-size:12px;
-      color:var(--muted);
-      margin:0 0 6px 0;
-      font-weight:900;
-    }
-    canvas{display:block;width:100%;height:70px}
-
-    .noteActions{
-      display:flex;
-      gap:10px;
-      flex-wrap:wrap;
-      align-items:center;
-      margin-top:12px;
-    }
-    .pillMini{
-      display:inline-flex;
-      align-items:center;
-      gap:8px;
-      padding:7px 10px;
-      border-radius:999px;
-      border:1px solid rgba(176,139,46,.35);
-      background:rgba(176,139,46,.10);
-      color:rgba(255,244,214,.92);
-      font-size:12px;
-      font-weight:900;
-      white-space:nowrap;
-    }
-
-    /* Pages */
+    .pricing{display:grid;grid-template-columns:repeat(5,1fr);gap:14px}
+    .price{position:relative;overflow:hidden}
+    .price strong{font-size:28px}
+    .price .code{font-size:12px;color:var(--accent);font-weight:950;text-transform:uppercase;letter-spacing:.1em}
+    .appLayout{display:grid;grid-template-columns:235px 1fr;gap:18px;padding:22px 0}
+    .sidebar{position:sticky;top:78px;align-self:start;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);box-shadow:var(--shadow);padding:12px}
+    .sideBtn{width:100%;border:0;background:transparent;color:var(--muted);border-radius:12px;text-align:left;padding:11px 12px;font-weight:900;cursor:pointer}
+    .sideBtn.active,.sideBtn:hover{background:var(--panel2);color:var(--text)}
     .page{display:none}
     .page.active{display:block}
-
-    /* Simple placeholder panels */
-    .emptyState{
-      border:1px dashed rgba(29,51,74,.85);
-      background:rgba(14,32,50,.35);
-      border-radius:12px;
-      padding:14px;
-      color:rgba(233,238,244,.88);
-      font-size:13px;
-      line-height:1.55;
+    .dashTop{display:grid;grid-template-columns:1.2fr .8fr;gap:16px;margin-bottom:16px}
+    .usageGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+    .usageBox{border:1px solid var(--line);border-radius:14px;background:var(--panel2);padding:12px}
+    .usageBox b{font-size:22px}
+    .usageBox span{display:block;color:var(--muted);font-size:12px;font-weight:850}
+    .toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:14px 0}
+    .field{display:grid;gap:7px;margin:10px 0}
+    .field label{font-size:12px;color:var(--muted);font-weight:900;text-transform:uppercase;letter-spacing:.08em}
+    input,select,textarea{
+      width:100%;border:1px solid var(--line);background:var(--panel);color:var(--text);
+      border-radius:12px;padding:11px 12px;outline:none;
     }
-
-    /* Setup cards preserved (from your old UI) */
-    .setupCard{
-      border:1px solid rgba(29,51,74,.75);
-      background:rgba(14,32,50,.45);
-      border-radius:12px;
-      padding:10px;
-      margin-top:10px;
-      display:flex;
-      gap:10px;
-      align-items:flex-start;
+    textarea{min-height:90px;resize:vertical}
+    .logbox{
+      height:250px;overflow:auto;white-space:pre-wrap;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+      font-size:12px;line-height:1.5;border:1px solid var(--line);border-radius:14px;background:var(--panel2);padding:12px;
     }
-    .setupSvg{
-      width:110px;
-      min-width:110px;
-      border:1px solid rgba(29,51,74,.75);
-      background:rgba(7,16,25,.55);
-      border-radius:10px;
-      padding:6px;
+    table{width:100%;border-collapse:collapse}
+    th,td{border-bottom:1px solid var(--line);padding:10px 8px;text-align:left;font-size:13px;vertical-align:top}
+    th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.08em;background:var(--panel2)}
+    .right{text-align:right}
+    .good{color:var(--accent2);font-weight:950}
+    .bad{color:var(--danger);font-weight:950}
+    .tabs{display:flex;gap:8px;margin:12px 0}
+    .tab{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:8px 12px;font-weight:900;cursor:pointer;color:var(--muted)}
+    .tab.active{color:var(--text);border-color:var(--accent);background:color-mix(in srgb, var(--accent) 12%, var(--panel))}
+    .tableWrap{overflow:auto;border:1px solid var(--line);border-radius:14px;background:var(--panel)}
+    .planBox{white-space:pre-wrap;border:1px dashed var(--accent);border-radius:14px;background:color-mix(in srgb, var(--accent) 8%, var(--panel));padding:12px;margin-top:12px;color:var(--muted)}
+    .modal{position:fixed;inset:0;z-index:100;display:none;place-items:center;background:rgba(0,0,0,.45);padding:20px}
+    .modal.open{display:grid}
+    .modalCard{width:min(440px,100%);padding:22px;background:var(--panel)}
+    .modalHead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:10px}
+    .x{border:0;background:transparent;color:var(--muted);font-size:24px;cursor:pointer}
+    .error{color:var(--danger);font-weight:850;font-size:13px;min-height:20px}
+    .researchGrid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+    .fineprint{font-size:12px;color:var(--muted);line-height:1.55}
+    @media (max-width:1050px){
+      .hero,.dashTop,.appLayout{grid-template-columns:1fr}
+      .sidebar{position:static}
+      .pricing,.grid4{grid-template-columns:repeat(2,1fr)}
     }
-    .setupText b{color:rgba(255,244,214,.95)}
-    .setupText{font-size:12.5px;line-height:1.45;color:rgba(233,238,244,.92)}
+    @media (max-width:760px){
+      .grid3,.grid4,.pricing,.statGrid,.usageGrid,.researchGrid{grid-template-columns:1fr}
+      .topbarInner{align-items:flex-start;flex-direction:column}
+      .nav{width:100%}
+    }
   </style>
 </head>
-
-<body>
-  <!-- Sticky app bar -->
-  <div class="appbar">
-    <div class="appbarInner">
-      <div class="appBrand">
+<body data-theme="light">
+  <header class="topbar">
+    <div class="topbarInner">
+      <div class="brand">
+        <div class="mark">CP</div>
         <div>
-          <div class="appName">Precipice <em>Analytica</em></div>
-          <div class="appSub">Squeeze + Momentum Scanner</div>
+          Cardo Praevisio
+          <small>Market intelligence platform</small>
         </div>
       </div>
-
-      <div class="nav" aria-label="Primary navigation">
-        <button class="navBtn active" id="navScan" type="button">Scan</button>
-        <button class="navBtn" id="navSignals" type="button">Signals</button>
-        <button class="navBtn" id="navJournal" type="button">Journal</button>
-        <button class="navBtn" id="navScoreboard" type="button">Scoreboard</button>
-        <button class="navBtn" id="navSettings" type="button">Settings</button>
+      <div class="topActions">
+        <nav class="nav hidden" id="appNav">
+          <button type="button" data-page="Dashboard" class="active">Dashboard</button>
+          <button type="button" data-page="Scanner">Scanner</button>
+          <button type="button" data-page="Research">Research</button>
+          <button type="button" data-page="Journal">Journal</button>
+          <button type="button" data-page="Pricing">Pricing</button>
+        </nav>
+        <button class="ghost" id="themeBtn" type="button">Dark mode</button>
+        <button class="ghost publicOnly" id="loginTop" type="button">Log in</button>
+        <button class="btn primary publicOnly" id="signupTop" type="button">Sign up</button>
+        <span class="pill hidden" id="userPill"></span>
+        <button class="ghost hidden" id="logoutBtn" type="button">Log out</button>
       </div>
+    </div>
+  </header>
 
-      <div class="statusPills">
-        <div class="pill" id="pillApi">API: <b>checking…</b></div>
-        <div class="pill" id="pillWindow">Window: <b>—</b></div>
-        <div class="pill" id="pillOrtex">ORTEX: <b>OFF</b></div>
-        <div class="pill" id="pillLast">Last Scan: <b>—</b></div>
+  <main id="publicView">
+    <section class="shell hero">
+      <div>
+        <div class="eyebrow">Research - Intelligence - Execution</div>
+        <h1>Institutional-grade market intelligence for active traders and investors.</h1>
+        <p class="heroText">
+          Cardo Praevisio combines live scanners, short-pressure intelligence, quantitative signals,
+          risk architecture, and research workflows into one professional decision platform.
+        </p>
+        <div class="heroActions">
+          <button class="btn primary" id="heroSignup" type="button">Start with one free scan</button>
+          <button class="btn" id="heroLogin" type="button">Log in</button>
+        </div>
+        <p class="fineprint">Educational and informational only. Trading involves risk and you can lose money.</p>
       </div>
+      <div class="statGrid">
+        <div class="stat"><b>Macro</b><span>Regime and correlation mapping</span></div>
+        <div class="stat"><b>Equity</b><span>Company and sector intelligence</span></div>
+        <div class="stat"><b>Quant</b><span>Signal generation and scoring</span></div>
+        <div class="stat"><b>Risk</b><span>Exposure and drawdown control</span></div>
+      </div>
+    </section>
+
+    <section class="shell section">
+      <div class="grid3">
+        <div class="card">
+          <div class="eyebrow">Research</div>
+          <h2>Macro, equity, quantitative, volatility.</h2>
+          <p>Build high-conviction theses with valuation dashboards, sector benchmarking, earnings reviews, and scenario forecasting.</p>
+        </div>
+        <div class="card">
+          <div class="eyebrow">Intelligence</div>
+          <h2>Data aggregation, scanners, market structure.</h2>
+          <p>Unify price action, short interest, borrow pressure, options activity, liquidity flows, and sentiment into actionable context.</p>
+        </div>
+        <div class="card">
+          <div class="eyebrow">Execution</div>
+          <h2>Trading strategies and capital deployment.</h2>
+          <p>Turn research into disciplined execution plans, signals, alerts, journal reviews, and risk-first process improvement.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="shell section">
+      <div style="display:flex;justify-content:space-between;gap:16px;align-items:end;flex-wrap:wrap;margin-bottom:14px">
+        <div>
+          <div class="eyebrow">Core research divisions</div>
+          <h2>A hedge-fund-style operating system.</h2>
+        </div>
+        <button class="btn primary" id="divisionCta" type="button">Create account</button>
+      </div>
+      <div class="grid4">
+        <div class="card">
+          <h3>Fundamental Research</h3>
+          <ul>
+            <li>DCF valuation models</li>
+            <li>Earnings quality analysis</li>
+            <li>Free cash flow modeling</li>
+            <li>Long/short thesis reports</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Alternative Data</h3>
+          <ul>
+            <li>Options flow analysis</li>
+            <li>Dark pool tracking</li>
+            <li>Insider accumulation</li>
+            <li>Sentiment and macro mapping</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Quantitative Systems</h3>
+          <ul>
+            <li>Factor modeling</li>
+            <li>Momentum algorithms</li>
+            <li>Market regime detection</li>
+            <li>Probabilistic trade scoring</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Risk Intelligence</h3>
+          <ul>
+            <li>Portfolio stress testing</li>
+            <li>Correlation exposure</li>
+            <li>Tail-risk analysis</li>
+            <li>Volatility exposure tracking</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="shell section">
+      <div class="card">
+        <div class="eyebrow">Membership tiers</div>
+        <h2>Start with one free scan. Upgrade when the intelligence is worth it.</h2>
+        <div class="pricing" id="publicPricing"></div>
+      </div>
+    </section>
+  </main>
+
+  <main id="appView" class="shell hidden">
+    <div class="appLayout">
+      <aside class="sidebar">
+        <button class="sideBtn active" data-page="Dashboard">Dashboard</button>
+        <button class="sideBtn" data-page="Scanner">Scanner</button>
+        <button class="sideBtn" data-page="Signals">Signals</button>
+        <button class="sideBtn" data-page="Research">Research</button>
+        <button class="sideBtn" data-page="Journal">Journal</button>
+        <button class="sideBtn" data-page="Risk">Risk</button>
+        <button class="sideBtn" data-page="Pricing">Pricing</button>
+      </aside>
+
+      <section>
+        <div class="page active" id="pageDashboard">
+          <div class="dashTop">
+            <div class="card">
+              <div class="eyebrow">Command center</div>
+              <h2>Welcome to Cardo Praevisio.</h2>
+              <p>
+                Your account is active. The scanner is protected behind login, scan usage is tracked,
+                and ORTEX-backed scans are reserved for plans with weekly ORTEX credits.
+              </p>
+              <div class="toolbar">
+                <button class="btn primary" type="button" data-jump="Scanner">Run scanner</button>
+                <button class="btn" type="button" data-jump="Research">View research suite</button>
+              </div>
+            </div>
+            <div class="card">
+              <div class="eyebrow">Plan and usage</div>
+              <h3 id="planTitle">-</h3>
+              <div class="usageGrid">
+                <div class="usageBox"><b id="scansUsed">-</b><span>Scans used</span></div>
+                <div class="usageBox"><b id="scanLimit">-</b><span>Weekly scans</span></div>
+                <div class="usageBox"><b id="ortexUsed">-</b><span>ORTEX used</span></div>
+                <div class="usageBox"><b id="ortexLimit">-</b><span>ORTEX weekly</span></div>
+              </div>
+              <p class="fineprint" id="trialNote"></p>
+            </div>
+          </div>
+          <div class="grid3">
+            <div class="card"><h3>Scanner</h3><p>Live momentum and short-pressure screens with entry, stop, target, and journal flow.</p></div>
+            <div class="card"><h3>Research</h3><p>Fundamental, alternative-data, quantitative, and risk divisions for institutional workflow.</p></div>
+            <div class="card"><h3>Execution</h3><p>Track actions, review mistakes, and build rules that improve repeatability.</p></div>
+          </div>
+        </div>
+
+        <div class="page" id="pageScanner">
+          <div class="card">
+            <div class="eyebrow">Live scanner</div>
+            <h2>Momentum and squeeze intelligence.</h2>
+            <p>Run a protected scan. Toggle ORTEX on when you want short interest, borrow cost, and availability included.</p>
+            <div class="toolbar">
+              <select id="scanMode" style="max-width:160px">
+                <option value="auto">Auto window</option>
+                <option value="day">Day mode</option>
+                <option value="night">Night mode</option>
+              </select>
+              <button class="btn" id="ortexToggle" type="button">ORTEX: OFF</button>
+              <button class="btn primary" id="scanBtn" type="button">Run scan</button>
+              <button class="ghost" id="clearBtn" type="button">Clear</button>
+              <span class="pill" id="scanStatus">Idle</span>
+            </div>
+            <div class="dashTop">
+              <div>
+                <h3>Live log</h3>
+                <div class="logbox" id="logBox"></div>
+              </div>
+              <div>
+                <h3>Results</h3>
+                <p class="fineprint" id="resultMeta">Updated - scanned -</p>
+                <div class="tabs">
+                  <button class="tab active" id="tabSqueeze" type="button">Squeeze</button>
+                  <button class="tab" id="tabMomentum" type="button">Momentum</button>
+                </div>
+                <div class="tableWrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Ticker</th><th>Conf</th><th>Setup</th><th class="right">Price</th><th class="right">Move</th><th class="right">Float</th><th class="right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody id="resultsBody"></tbody>
+                  </table>
+                </div>
+                <div class="planBox hidden" id="planBox"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="page" id="pageSignals">
+          <div class="card">
+            <div class="eyebrow">Signals</div>
+            <h2>Signal outcomes and quality control.</h2>
+            <p>Saved squeeze signals are already tracked by the backend. The next build should expose status, trigger time, win/loss result, max gain, and setup quality notes here.</p>
+          </div>
+        </div>
+
+        <div class="page" id="pageResearch">
+          <div class="card">
+            <div class="eyebrow">Research suite</div>
+            <h2>Core research divisions.</h2>
+            <div class="researchGrid">
+              <div class="card">
+                <h3>Fundamental Research Division</h3>
+                <p>DCF models, revenue decomposition, earnings quality, margin trends, balance-sheet stress, liquidity, and sector benchmarking.</p>
+              </div>
+              <div class="card">
+                <h3>Alternative Data & Intelligence Division</h3>
+                <p>Options flow, dark pools, insider accumulation, sentiment, economic releases, transaction trends, shipping indicators, and liquidity flows.</p>
+              </div>
+              <div class="card">
+                <h3>Quantitative Systems Division</h3>
+                <p>Factor models, relative strength, liquidity scoring, anomaly detection, regime detection, squeeze expansion, and breakout probability.</p>
+              </div>
+              <div class="card">
+                <h3>Risk & Exposure Intelligence Division</h3>
+                <p>Drawdown probability, stress testing, correlation, beta, factor, sector, volatility, overnight, and derivatives exposure.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="page" id="pageJournal">
+          <div class="card">
+            <div class="eyebrow">Journal</div>
+            <h2>Execution notebook.</h2>
+            <div class="toolbar">
+              <select id="noteView" style="max-width:190px">
+                <option value="all">All trades</option>
+                <option value="yesterday">Yesterday</option>
+              </select>
+              <button class="btn" id="addPastBtn" type="button">Add past trade</button>
+              <span class="pill" id="noteMeta">-</span>
+            </div>
+            <div class="usageGrid" style="margin-bottom:14px">
+              <div class="usageBox"><b id="sumTrades">-</b><span>Trades</span></div>
+              <div class="usageBox"><b id="sumWinrate">-</b><span>Win rate</span></div>
+              <div class="usageBox"><b id="sumTotal">-</b><span>Total P/L</span></div>
+              <div class="usageBox"><b id="sumAvg">-</b><span>Avg closed</span></div>
+            </div>
+            <div class="tableWrap">
+              <table>
+                <thead>
+                  <tr><th>Ticker</th><th>Setup</th><th>Conf</th><th class="right">Entry</th><th class="right">Exit</th><th class="right">Shares</th><th class="right">P/L</th><th class="right">Actions</th></tr>
+                </thead>
+                <tbody id="noteBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="page" id="pageRisk">
+          <div class="card">
+            <div class="eyebrow">Risk architecture</div>
+            <h2>Exposure intelligence coming next.</h2>
+            <p>This area will track drawdown probability, gross/net exposure, sector concentration, beta, volatility exposure, event risk, liquidity risk, and tail-risk scenarios.</p>
+          </div>
+        </div>
+
+        <div class="page" id="pagePricing">
+          <div class="card">
+            <div class="eyebrow">Plans</div>
+            <h2>Weekly scan limits and ORTEX allocation.</h2>
+            <div class="pricing" id="appPricing"></div>
+            <p class="fineprint">Stripe checkout will plug into these plan records in the next payment build.</p>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <div class="modal" id="authModal">
+    <div class="modalCard">
+      <div class="modalHead">
+        <div>
+          <div class="eyebrow" id="authModeLabel">Sign up</div>
+          <h2 id="authTitle">Create account</h2>
+        </div>
+        <button class="x" id="closeAuth" type="button">&times;</button>
+      </div>
+      <div class="field">
+        <label>Email</label>
+        <input id="authEmail" type="email" autocomplete="email" placeholder="you@example.com" />
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input id="authPassword" type="password" autocomplete="current-password" placeholder="Minimum 8 characters" />
+      </div>
+      <div class="error" id="authError"></div>
+      <div class="toolbar">
+        <button class="btn primary" id="submitAuth" type="button">Create account</button>
+        <button class="ghost" id="swapAuth" type="button">I already have an account</button>
+      </div>
+      <p class="fineprint">By continuing you agree to use Cardo Praevisio for educational and informational purposes only.</p>
     </div>
   </div>
-
-  <div class="wrap">
-    <!-- PAGES -->
-    <div class="page active" id="pageScan">
-      <!-- One toolbar -->
-      <div class="toolbar" id="toolbar">
-        <div class="toolgroup">
-          <button class="tbtn off" id="btnBeginner">Beginner: OFF</button>
-          <button class="tbtn off beginnerOnly" id="btnShowAll">Show all: OFF</button>
-          <button class="tbtn off" id="btnAdvanced">Advanced: OFF</button>
-
-          <div class="dropwrap">
-            <button class="tbtn" id="btnHelp">Help</button>
-            <div class="drop" id="dropHelp">
-              <h4>Quick help</h4>
-              <p><b>How to use:</b> Click <b>Scan</b> → click a row → follow <b>ENTRY / STOP / TARGET</b> → use <b>Notebook</b> to track.</p>
-              <p><b>Rule:</b> If STOP hits, exit. Don’t “hope”.</p>
-
-              <div class="beginnerOnly">
-                <p><b>Beginner checklist:</b></p>
-                <ul>
-                  <li>Start with Conf 7+ only.</li>
-                  <li>Never average down.</li>
-                  <li>Size small so a STOP loss is “small”.</li>
-                </ul>
-              </div>
-            </div>
-          </div>
-
-          <div class="dropwrap">
-            <button class="tbtn" id="btnSetups">Setups</button>
-            <div class="drop" id="dropSetups">
-              <h4>Setups (easy)</h4>
-
-              <div class="setupCard">
-                <div class="setupSvg">
-                  <svg viewBox="0 0 120 70" width="100%" height="70" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M10 50 L35 30 L55 18 L72 26 L88 38 L110 22" fill="none" stroke="rgba(255,244,214,.85)" stroke-width="2" stroke-linecap="round"/>
-                    <line x1="10" y1="34" x2="110" y2="34" stroke="rgba(42,174,106,.55)" stroke-width="2" stroke-dasharray="4 4"/>
-                    <circle cx="88" cy="38" r="3" fill="rgba(255,232,170,.95)"/>
-                  </svg>
-                </div>
-                <div class="setupText">
-                  <b>VWAP Pullback</b><br/>
-                  Price runs up, then pulls back near VWAP (the dotted line) and holds. Entry is when it starts going back up.
-                </div>
-              </div>
-
-              <div class="setupCard">
-                <div class="setupSvg">
-                  <svg viewBox="0 0 120 70" width="100%" height="70" xmlns="http://www.w3.org/2000/svg">
-                    <line x1="10" y1="35" x2="110" y2="35" stroke="rgba(255,232,170,.55)" stroke-width="2"/>
-                    <path d="M10 50 L35 40 L55 35 L75 20 L92 26 L110 22" fill="none" stroke="rgba(255,244,214,.85)" stroke-width="2" stroke-linecap="round"/>
-                    <circle cx="55" cy="35" r="3" fill="rgba(255,232,170,.95)"/>
-                  </svg>
-                </div>
-                <div class="setupText">
-                  <b>Break → Pullback (Retest)</b><br/>
-                  Price breaks above a key level, then comes back to “retest” it. Entry is when the retest holds and it turns up.
-                </div>
-              </div>
-
-              <div class="setupCard">
-                <div class="setupSvg">
-                  <svg viewBox="0 0 120 70" width="100%" height="70" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M10 52 L30 44 L50 38 L70 28 L90 18 L110 10" fill="none" stroke="rgba(255,244,214,.85)" stroke-width="2" stroke-linecap="round"/>
-                    <path d="M102 12 L110 10 L108 18" fill="none" stroke="rgba(42,174,106,.85)" stroke-width="2" stroke-linecap="round"/>
-                  </svg>
-                </div>
-                <div class="setupText">
-                  <b>Momentum Breakout</b><br/>
-                  Strong uptrend making new highs. Entry is on the break above the recent high (with volume).
-                </div>
-              </div>
-
-              <div class="setupCard">
-                <div class="setupSvg">
-                  <svg viewBox="0 0 120 70" width="100%" height="70" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M10 48 L32 28 L52 16 L70 22 L88 30 L110 18" fill="none" stroke="rgba(255,244,214,.85)" stroke-width="2" stroke-linecap="round"/>
-                    <circle cx="70" cy="22" r="3" fill="rgba(255,232,170,.95)"/>
-                  </svg>
-                </div>
-                <div class="setupText">
-                  <b>Momentum Pullback</b><br/>
-                  Price is trending up, then cools off (small pullback). Entry is when the pullback stops and price turns up again.
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="dropwrap">
-            <button class="tbtn" id="btnGlossary">Glossary</button>
-            <div class="drop" id="dropGlossary">
-              <h4>Signals</h4>
-              <ul>
-                <li><b>Confidence (Conf):</b> Setup quality score. Higher is better, not guaranteed.</li>
-                <li><b>Move (%):</b> Percent change vs yesterday close.</li>
-                <li><b>Share Float (SFloat):</b> Shares available to trade. Smaller float can move faster.</li>
-                <li><b>VWAP:</b> Volume-Weighted Average Price. A line traders watch for support/resistance.</li>
-              </ul>
-
-              <h4 style="margin-top:12px">Data sources</h4>
-              <ul>
-                <li><b>Polygon:</b> Live market data (price/volume/candles). Powers the scan results.</li>
-                <li><b>ORTEX:</b> Short interest + borrow data (SI%, borrow cost, availability). Helps confirm squeeze pressure.</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-
-        <div class="spacer"></div>
-
-        <div class="toolgroup">
-          <select class="select" id="noteView">
-            <option value="all">notebook: all</option>
-            <option value="yesterday">notebook: yesterday</option>
-          </select>
-
-          <button class="btn toggle off" id="btnOrtex" title="Turn ORTEX request ON/OFF">ORTEX: OFF</button>
-          <button class="btn" id="btnScan">Scan</button>
-          <button class="btn secondary" id="btnClear">Clear</button>
-        </div>
-      </div>
-
-      <div class="guide beginnerOnly">
-        1) Scan → 2) Click a row → 3) Set Risk $ → 4) Follow STOP → 5) Log trade
-      </div>
-
-      <div class="grid">
-        <div class="card">
-          <div class="title">Live Log</div>
-          <div class="smallline" id="logStatus">Idle.</div>
-          <div class="logbox" id="logBox"></div>
-        </div>
-
-        <div class="card">
-          <div class="title">Results</div>
-          <div class="smallline" id="resultsMeta">US Equities • Updated — • — scanned</div>
-
-          <div class="tabs">
-            <button class="tab active" id="tabSqueeze">SQUEEZE</button>
-            <button class="tab" id="tabMomentum">MOMENTUM</button>
-          </div>
-
-          <div style="overflow:auto; max-height:420px; border-radius:12px; border:1px solid rgba(29,51,74,.85);">
-            <table>
-              <thead>
-                <tr>
-                  <th><span id="thTicker">Ticker</span></th>
-                  <th>
-                    <span id="thConf">Conf</span>
-                    <span class="qmark" data-tip="Higher = better setup ranking (not guaranteed).">?</span>
-                  </th>
-                  <th>
-                    <span id="thSetup">Setup</span>
-                    <span class="qmark" data-tip="The pattern it resembles (VWAP pullback, breakout, etc.).">?</span>
-                  </th>
-                  <th class="right">
-                    <span id="thPrice">Price</span>
-                    <span class="qmark" data-tip="Last price from the scan.">?</span>
-                  </th>
-                  <th class="right">
-                    <span id="thMove">Move</span>
-                    <span class="qmark" data-tip="% vs yesterday close.">?</span>
-                  </th>
-                  <th class="right">
-                    <span id="thFloat">SFloat</span>
-                    <span class="qmark" data-tip="Shares available to trade. Smaller float can move faster.">?</span>
-                  </th>
-
-                  <th class="right advCol" style="display:none">
-                    $Vol
-                    <span class="qmark" data-tip="Dollar volume in the scan window (Volume × Price). Higher = more liquidity.">?</span>
-                  </th>
-                  <th class="right advCol" style="display:none">
-                    RelVol
-                    <span class="qmark" data-tip="Relative volume vs what’s ‘normal’ for this time slice. >1 means above expected.">?</span>
-                  </th>
-                  <th class="right advCol" style="display:none">
-                    Range
-                    <span class="qmark" data-tip="High–Low range in the scan window as a percent. Bigger range = more movement.">?</span>
-                  </th>
-                  <th class="right advCol" style="display:none">
-                    VWAP
-                    <span class="qmark" data-tip="Volume-Weighted Average Price for the scan window. Often acts like support/resistance.">?</span>
-                  </th>
-
-                  <th class="right"><span id="thAdd">Add</span></th>
-                </tr>
-              </thead>
-              <tbody id="resultsBody"></tbody>
-            </table>
-          </div>
-
-          <div class="rowexp" id="planBox"></div>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="notehead">
-          <div style="width:100%">
-            <div class="title" style="margin-bottom:4px">Notebook</div>
-            <div class="smallline" id="noteMeta">Trades you add will appear here.</div>
-
-            <div class="summaryRow">
-              <div class="summaryPills">
-                <div class="sumPill">Trades: <b id="sumTrades">—</b></div>
-                <div class="sumPill">Win rate: <b id="sumWinrate">—</b></div>
-                <div class="sumPill">Avg win: <b id="sumAvgWin">—</b></div>
-                <div class="sumPill">Avg loss: <b id="sumAvgLoss">—</b></div>
-                <div class="sumPill">Total P/L: <b id="sumTotal">—</b></div>
-              </div>
-
-              <div class="chartBox">
-                <div class="chartTitle">Equity curve (Notebook)</div>
-                <canvas id="pnlChart" width="520" height="140"></canvas>
-              </div>
-            </div>
-
-            <div class="noteActions">
-              <button class="btn secondary" id="btnAddPast">Add Past Trade</button>
-              <span class="pillMini">Tip: add old trades → get review/corrections</span>
-            </div>
-          </div>
-        </div>
-
-        <div style="overflow:auto; border:1px solid rgba(29,51,74,.85); border-radius:12px; max-height:320px;">
-          <table>
-            <thead>
-              <tr>
-                <th>Ticker</th>
-                <th>Setup</th>
-                <th>Conf</th>
-                <th class="right">Entry</th>
-                <th class="right">Exit</th>
-                <th class="right">Shares</th>
-                <th class="right">P/L $</th>
-                <th class="right">P/L %</th>
-                <th>Flags</th>
-                <th class="right">Actions</th>
-              </tr>
-            </thead>
-            <tbody id="noteBody"></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <div class="page" id="pageSignals">
-      <div class="card">
-        <div class="title">Signals</div>
-        <div class="smallline">Saved squeeze signals and outcomes (coming next).</div>
-        <div class="emptyState">
-          This page will show your daily squeeze signals with status (PENDING/WIN/LOSS/NO_TRADE), trigger time, and max gain/drawdown.
-          <br/><br/>
-          Next build: signal table + filters + “why flagged”.
-        </div>
-      </div>
-    </div>
-
-    <div class="page" id="pageJournal">
-      <div class="card">
-        <div class="title">Journal</div>
-        <div class="smallline">Your process, mistakes, and execution rules.</div>
-        <div class="emptyState">
-          You already have the Notebook on the Scan page. This Journal page will become a higher-level view:
-          tags, screenshots/notes, and weekly review prompts.
-        </div>
-      </div>
-    </div>
-
-    <div class="page" id="pageScoreboard">
-      <div class="card">
-        <div class="title">Scoreboard</div>
-        <div class="smallline">System performance + your Notebook performance.</div>
-        <div class="emptyState">
-          You can keep using the live scoreboard API. Next we’ll build a full scoreboard view here (charts + breakdown by setup/window).
-        </div>
-      </div>
-    </div>
-
-    <div class="page" id="pageSettings">
-      <div class="card">
-        <div class="title">Mission</div>
-        <div class="smallline">
-          Precipice Analytica delivers real-time, data-driven signals for high-probability setups at market inflection points.
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="title">About</div>
-        <div class="smallline" style="font-size:13px; line-height:1.6; color:rgba(233,238,244,.88)">
-          Precipice Analytica is built for traders who want clarity, not noise. We scan for squeeze and momentum conditions in real time and surface high‑probability setups with actionable levels. “Precipice” represents the critical moments when price pressure can turn into a breakout, and “Analytica” reflects our commitment to logical, data‑driven decision‑making—so every signal supports disciplined, risk‑first execution.
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="title">Disclaimer</div>
-        <div class="smallline" style="font-size:13px; line-height:1.6; color:rgba(233,238,244,.88)">
-          This platform is for educational and informational purposes only and is not financial advice. Trading involves risk and you can lose money.
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Global tooltip -->
-  <div id="tip"></div>
 
 <script>
-  const el = (id) => document.getElementById(id);
-
-  // ===== App navigation =====
-  const pages = {
-    Scan: el("pageScan"),
-    Signals: el("pageSignals"),
-    Journal: el("pageJournal"),
-    Scoreboard: el("pageScoreboard"),
-    Settings: el("pageSettings"),
-  };
-  const navButtons = {
-    Scan: el("navScan"),
-    Signals: el("navSignals"),
-    Journal: el("navJournal"),
-    Scoreboard: el("navScoreboard"),
-    Settings: el("navSettings"),
+  const $ = (id) => document.getElementById(id);
+  const state = {
+    user:null,
+    usage:null,
+    plans:[],
+    authMode:"signup",
+    theme:localStorage.getItem("cp_theme") || "light",
+    ortex:"off",
+    scanId:null,
+    es:null,
+    showing:"SQUEEZE",
+    scanned:null,
+    results:{ SQUEEZE:[], MOMENTUM:[] }
   };
 
-  function setActivePage(name){
-    Object.keys(pages).forEach(k => pages[k]?.classList.remove("active"));
-    Object.keys(navButtons).forEach(k => navButtons[k]?.classList.remove("active"));
-
-    pages[name]?.classList.add("active");
-    navButtons[name]?.classList.add("active");
-
-    // Close dropdowns when navigating
-    try{ closeAllDrops(); }catch(e){}
-    try{ hideTip(); }catch(e){}
+  function setTheme(theme){
+    state.theme = theme === "dark" ? "dark" : "light";
+    document.body.setAttribute("data-theme", state.theme);
+    $("themeBtn").textContent = state.theme === "dark" ? "Light mode" : "Dark mode";
+    localStorage.setItem("cp_theme", state.theme);
   }
 
-  navButtons.Scan.addEventListener("click", () => setActivePage("Scan"));
-  navButtons.Signals.addEventListener("click", () => setActivePage("Signals"));
-  navButtons.Journal.addEventListener("click", () => setActivePage("Journal"));
-  navButtons.Scoreboard.addEventListener("click", () => setActivePage("Scoreboard"));
-  navButtons.Settings.addEventListener("click", () => setActivePage("Settings"));
-
-  // Tooltip (not clipped by overflow)
-  const tip = el("tip");
-  function showTip(text, x, y){
-    if(!tip) return;
-    tip.textContent = text;
-    tip.style.display = "block";
-    const pad = 12;
-    const maxX = window.innerWidth - 380;
-    const maxY = window.innerHeight - 180;
-    tip.style.left = Math.min(x + pad, maxX) + "px";
-    tip.style.top  = Math.min(y + pad, maxY) + "px";
-  }
-  function hideTip(){ if(tip) tip.style.display = "none"; }
-  function bindTipTargets(){
-    document.querySelectorAll("[data-tip]").forEach(q => {
-      q.addEventListener("mouseenter", (e) => showTip(q.getAttribute("data-tip") || "", e.clientX, e.clientY));
-      q.addEventListener("mouseleave", hideTip);
-      q.addEventListener("click", (e) => { e.stopPropagation(); showTip(q.getAttribute("data-tip") || "", e.clientX, e.clientY); });
-    });
-  }
-  document.addEventListener("mousemove", (e) => {
-    if(tip && tip.style.display === "block"){ showTip(tip.textContent, e.clientX, e.clientY); }
-  });
-  document.addEventListener("scroll", hideTip, true);
-  window.addEventListener("blur", hideTip);
-
-  function fmtMoney(x){
-    if(x === null || x === undefined) return "—";
-    const n = Number(x);
-    if(!Number.isFinite(n)) return "—";
-    const sign = n >= 0 ? "+" : "";
-    return sign + n.toFixed(2);
+  async function safeJson(resp){
+    try{
+      const ct = (resp.headers.get("content-type") || "").toLowerCase();
+      if(ct.includes("application/json")){
+        const data = await resp.json();
+        return {...data, _status:resp.status, _ok_http:resp.ok};
+      }
+      return {ok:false,error:(await resp.text()).slice(0,300),_status:resp.status,_ok_http:resp.ok};
+    }catch(e){
+      return {ok:false,error:"Could not read server response",_status:resp.status,_ok_http:resp.ok};
+    }
   }
 
-  function paintNotebookScore(rows){
-    const trades = rows || [];
-    const closed = trades.filter(t => t.exit_price != null && t.pnl_dollars != null);
+  function openAuth(mode){
+    state.authMode = mode || "signup";
+    $("authModal").classList.add("open");
+    $("authError").textContent = "";
+    $("authModeLabel").textContent = state.authMode === "signup" ? "Sign up" : "Log in";
+    $("authTitle").textContent = state.authMode === "signup" ? "Create account" : "Welcome back";
+    $("submitAuth").textContent = state.authMode === "signup" ? "Create account" : "Log in";
+    $("swapAuth").textContent = state.authMode === "signup" ? "I already have an account" : "Create a new account";
+    setTimeout(() => $("authEmail").focus(), 50);
+  }
 
-    // These elements only exist in your old header scoreboard; safe-guard here
-    if(el("nbTrades")) el("nbTrades").textContent = trades.length.toLocaleString();
+  function closeAuth(){ $("authModal").classList.remove("open"); }
 
-    if(closed.length === 0){
-      if(el("nbWR")) el("nbWR").textContent = "—";
-      if(el("nbPL")) el("nbPL").textContent = "—";
-      if(el("nbPL")) el("nbPL").classList.remove("green","red");
+  async function submitAuth(){
+    $("authError").textContent = "";
+    const email = $("authEmail").value.trim();
+    const password = $("authPassword").value;
+    const url = state.authMode === "signup" ? "/api/auth/signup" : "/api/auth/login";
+    const resp = await fetch(url, {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({email,password})
+    }).catch(() => null);
+    if(!resp){
+      $("authError").textContent = "Could not reach server.";
       return;
     }
+    const data = await safeJson(resp);
+    if(!resp.ok || !data.ok){
+      $("authError").textContent = data.error || "Authentication failed.";
+      return;
+    }
+    state.user = data.user;
+    state.usage = data.usage;
+    state.plans = data.plans || state.plans;
+    closeAuth();
+    renderAll();
+    await loadNotebook();
+  }
 
-    const wins = closed.filter(t => Number(t.pnl_dollars) > 0).length;
-    const wr = (wins / closed.length) * 100;
-    const total = closed.reduce((a,t)=>a+Number(t.pnl_dollars),0);
-
-    if(el("nbWR")) el("nbWR").textContent = `${wr.toFixed(0)}%`;
-    if(el("nbPL")) {
-      el("nbPL").textContent = fmtMoney(total);
-      el("nbPL").classList.remove("green","red");
-      el("nbPL").classList.add(total >= 0 ? "green" : "red");
+  async function loadMe(){
+    const resp = await fetch("/api/auth/me").catch(() => null);
+    if(!resp) return;
+    const data = await safeJson(resp);
+    if(data && data.ok){
+      state.user = data.user;
+      state.usage = data.usage;
+      state.plans = data.plans || [];
     }
   }
 
-  // ===== Scoreboard fetch + paint =====
-  function fmtPct2(x){
-    if(x === null || x === undefined) return "—";
-    const n = Number(x);
-    if(!Number.isFinite(n)) return "—";
-    return (n*100).toFixed(1) + "%";
-  }
-
-  async function loadScoreboard(){
-    try{
-      const r = await fetch("/api/scoreboard");
-      const j = await r.json();
-      if(!j || !j.ok){
-        return;
-      }
-      // Scoreboard page is placeholder for now; API remains used later.
-    }catch(e){
-      // silent
+  async function refreshUsage(){
+    if(!state.user) return;
+    const resp = await fetch("/api/usage").catch(() => null);
+    if(!resp) return;
+    const data = await safeJson(resp);
+    if(data.ok){
+      state.usage = data.usage;
+      state.user = data.user || state.user;
+      paintUsage();
     }
   }
 
-  let selectedMode = "auto";
-  let selectedOrtex = (localStorage.getItem("squeeze_ortex") || "off").toLowerCase();
-  if (!["on","off"].includes(selectedOrtex)) selectedOrtex = "off";
-
-  // Beginner mode
-  let beginner = (localStorage.getItem("beginner_mode") || "off").toLowerCase();
-  if(!["on","off"].includes(beginner)) beginner = "off";
-
-  // Beginner: show all toggle (only matters when beginner is ON)
-  let showAll = (localStorage.getItem("beginner_show_all") || "off").toLowerCase();
-  if(!["on","off"].includes(showAll)) showAll = "off";
-
-  // Advanced columns toggle (only matters when Beginner is OFF)
-  let advanced = (localStorage.getItem("ui_advanced") || "off").toLowerCase();
-  if(!["on","off"].includes(advanced)) advanced = "off";
-
-  function isBeginnerOn(){
-    return document.body.classList.contains("beginnerOn");
+  async function logout(){
+    await fetch("/api/auth/logout", {method:"POST"}).catch(()=>{});
+    state.user = null;
+    state.usage = null;
+    state.results = {SQUEEZE:[], MOMENTUM:[]};
+    if(state.es){ try{state.es.close();}catch(e){} state.es=null; }
+    renderAll();
   }
 
-  function isAdvancedOn(){
-    return (advanced === "on") && !isBeginnerOn();
-  }
-
-  function paintAdvancedHeaders(){
-    const show = isAdvancedOn();
-    document.querySelectorAll("th.advCol").forEach(th => {
-      th.style.display = show ? "" : "none";
-    });
-  }
-
-  function paintAdvanced(){
-    const b = el("btnAdvanced");
-    if(!b) return;
-    b.classList.remove("on","off");
-    b.classList.add(advanced === "on" ? "on" : "off");
-    b.textContent = `Advanced: ${advanced.toUpperCase()}`;
-    paintAdvancedHeaders();
-  }
-
-  function paintBeginner(){
-    const b = el("btnBeginner");
-    if(b){
-      b.classList.remove("on","off");
-      b.classList.add(beginner === "on" ? "on" : "off");
-      b.textContent = `Beginner: ${beginner.toUpperCase()}`;
+  function renderAll(){
+    const authed = !!state.user;
+    $("publicView").classList.toggle("hidden", authed);
+    $("appView").classList.toggle("hidden", !authed);
+    $("appNav").classList.toggle("hidden", !authed);
+    $("logoutBtn").classList.toggle("hidden", !authed);
+    $("userPill").classList.toggle("hidden", !authed);
+    document.querySelectorAll(".publicOnly").forEach(x => x.classList.toggle("hidden", authed));
+    if(authed){
+      $("userPill").textContent = `${state.user.email} - ${state.user.plan_name}`;
+      paintUsage();
     }
-    document.body.classList.toggle("beginnerOn", beginner === "on");
-
-    paintShowAll();
-    paintHeaders();
-    paintAdvancedHeaders();
-  }
-
-  function paintShowAll(){
-    const s = el("btnShowAll");
-    if(!s) return;
-    s.classList.remove("on","off");
-    s.classList.add(showAll === "on" ? "on" : "off");
-    s.textContent = `Show all: ${showAll.toUpperCase()}`;
-  }
-
-  function paintHeaders(){
-    const on = isBeginnerOn();
-    el("thConf").textContent  = on ? "Conf (1–10)" : "Conf";
-    el("thSetup").textContent = on ? "Setup (pattern)" : "Setup";
-    el("thMove").textContent  = on ? "Move (% today)" : "Move";
-    el("thFloat").textContent = on ? "Float (shares)" : "SFloat";
-    el("thAdd").textContent   = on ? "Trade" : "Add";
-  }
-
-  el("btnBeginner").addEventListener("click", () => {
-    beginner = (beginner === "on") ? "off" : "on";
-    try{ localStorage.setItem("beginner_mode", beginner); }catch(e){}
-    paintBeginner();
+    paintPricing("publicPricing");
+    paintPricing("appPricing");
     renderResults();
-  });
-
-  el("btnShowAll").addEventListener("click", (e) => {
-    e.stopPropagation();
-    showAll = (showAll === "on") ? "off" : "on";
-    try{ localStorage.setItem("beginner_show_all", showAll); }catch(_e){}
-    paintShowAll();
-    renderResults();
-  });
-
-  el("btnAdvanced").addEventListener("click", (e) => {
-    e.stopPropagation();
-    advanced = (advanced === "on") ? "off" : "on";
-    try{ localStorage.setItem("ui_advanced", advanced); }catch(_e){}
-    paintAdvanced();
-    renderResults();
-  });
-
-  // Dropdown behavior
-  function closeAllDrops(){
-    ["dropHelp","dropGlossary","dropSetups"].forEach(x => el(x)?.classList.remove("open"));
-  }
-  function toggleDrop(id){
-    const d = el(id);
-    if(!d) return;
-    const open = d.classList.contains("open");
-    closeAllDrops();
-    if(!open) d.classList.add("open");
   }
 
-  el("btnHelp").addEventListener("click", (e)=>{ e.stopPropagation(); toggleDrop("dropHelp"); });
-  el("btnGlossary").addEventListener("click", (e)=>{ e.stopPropagation(); toggleDrop("dropGlossary"); });
-  el("btnSetups").addEventListener("click", (e)=>{ e.stopPropagation(); toggleDrop("dropSetups"); });
-  document.addEventListener("click", () => { closeAllDrops(); hideTip(); });
-
-  let showing = "SQUEEZE";
-  let scanId = null;
-  let es = null;
-
-  let scannedCount = null;
-  let lastUpdatedStr = "—";
-  const results = { SQUEEZE: [], MOMENTUM: [] };
-
-  function log(line){
-    const box = el("logBox");
-    box.textContent += (line + "\n");
-    box.scrollTop = box.scrollHeight;
-    parseMetaFromLog(line);
+  function paintUsage(){
+    const u = state.usage;
+    if(!u) return;
+    $("planTitle").textContent = `${u.plan.name} - $${u.plan.price}/mo`;
+    $("scansUsed").textContent = u.scans_used;
+    $("scanLimit").textContent = u.scan_limit_weekly;
+    $("ortexUsed").textContent = u.ortex_scans_used;
+    $("ortexLimit").textContent = u.ortex_limit_weekly;
+    $("trialNote").textContent = u.lifetime_scan_limit
+      ? `Free trial: ${u.lifetime_scans_used}/${u.lifetime_scan_limit} lifetime scan used.`
+      : `Weekly reset starts ${u.week_start_ct}.`;
   }
 
-  function paintOrtexUI(v){
-    const btn = el("btnOrtex");
-    const label = (v === "on") ? "ON" : "OFF";
-    btn.textContent = `ORTEX: ${label}`;
-    btn.classList.remove("on","off");
-    btn.classList.add(v === "on" ? "on" : "off");
-  }
-
-  function setOrtex(v){
-    selectedOrtex = (v || "off").toLowerCase();
-    if (!["on","off"].includes(selectedOrtex)) selectedOrtex = "off";
-    try{ localStorage.setItem("squeeze_ortex", selectedOrtex); }catch(e){}
-    paintOrtexUI(selectedOrtex);
-  }
-
-  el("btnOrtex").addEventListener("click", () => {
-    setOrtex(selectedOrtex === "on" ? "off" : "on");
-    el("pillOrtex").innerHTML = `ORTEX: <b>${selectedOrtex.toUpperCase()}</b>`;
-  });
-
-  function parseMetaFromLog(line){
-    const m1 = line.match(/Snapshot tickers received:\s*(\d+)/i);
-    if(m1){
-      scannedCount = Number(m1[1]);
-      updateMetaLines();
-    }
-    const m2 = line.match(/Market window:\s*([A-Z \(\)]+)\s*\(/i);
-    if(m2){
-      el("pillWindow").innerHTML = `Window: <b>${m2[1].trim()}</b>`;
-    }
-    const m3 = line.match(/ORTEX mode:\s*(ON|OFF)/i);
-    if(m3){
-      el("pillOrtex").innerHTML = `ORTEX: <b>${m3[1].toUpperCase()}</b>`;
+  function paintPricing(targetId){
+    const root = $(targetId);
+    if(!root) return;
+    const plans = state.plans || [];
+    root.innerHTML = "";
+    for(const p of plans){
+      const div = document.createElement("div");
+      div.className = "card price";
+      div.innerHTML = `
+        <div class="code">${p.code.replaceAll("_"," ")}</div>
+        <h3>${p.name}</h3>
+        <p><strong>$${p.price}</strong><span class="muted">/mo</span></p>
+        <p>${p.scan_limit_weekly} scans/week<br>${p.ortex_limit_weekly} ORTEX scans/week</p>
+        <ul>${(p.features || []).map(f => `<li>${f}</li>`).join("")}</ul>
+      `;
+      root.appendChild(div);
     }
   }
 
-  function updateMetaLines(){
-    const scanned = (scannedCount == null) ? "—" : scannedCount.toLocaleString();
-    el("resultsMeta").textContent = `US Equities • Updated ${lastUpdatedStr} • ${scanned} scanned`;
-    el("noteMeta").textContent = `US Equities • Updated ${lastUpdatedStr} • ${scanned} scanned`;
+  function setPage(name){
+    if(!state.user && !["Pricing"].includes(name)){
+      openAuth("signup");
+      return;
+    }
+    document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
+    const page = $(`page${name}`);
+    if(page) page.classList.add("active");
+    document.querySelectorAll("[data-page]").forEach(b => b.classList.toggle("active", b.dataset.page === name));
+    if(name === "Journal") loadNotebook();
+    if(name === "Pricing") paintPricing("appPricing");
   }
 
   function fmtNum(x, nd=2){
-    if(x === null || x === undefined) return "NA";
     const n = Number(x);
-    if(Number.isNaN(n)) return "NA";
-    return n.toFixed(nd);
+    return Number.isFinite(n) ? n.toFixed(nd) : "-";
   }
   function fmtPct(x){
-    if(x === null || x === undefined) return "NA";
     const n = Number(x);
-    if(Number.isNaN(n)) return "NA";
-    const p = n * 100;
-    const sign = p > 0 ? "+" : "";
-    return sign + p.toFixed(1) + "%";
+    return Number.isFinite(n) ? `${n > 0 ? "+" : ""}${(n*100).toFixed(1)}%` : "-";
   }
   function fmtInt(x){
-    if(x === null || x === undefined) return "NA";
     const n = Number(x);
-    if(Number.isNaN(n)) return "NA";
-    return Math.round(n).toLocaleString();
+    return Number.isFinite(n) ? Math.round(n).toLocaleString() : "-";
+  }
+  function fmtMoney(x){
+    const n = Number(x);
+    return Number.isFinite(n) ? `${n >= 0 ? "+" : ""}${n.toFixed(2)}` : "-";
   }
 
-  function isGoldPick(r){
-    const conf = Number(r.confidence || 0);
-    return conf >= 9 || ((r.bucket || "").toUpperCase() === "SQUEEZE" && conf >= 8);
-  }
-
-  function moveClass(move_pct){
-    const n = Number(move_pct);
-    if(Number.isNaN(n)) return "";
-    if(n > 0) return "good";
-    if(n < 0) return "bad";
-    return "";
-  }
-
-  function beginnerOk(r){
-    return Number(r.confidence || 0) >= 7;
-  }
-
-  function renderResults(){
-    const body = el("resultsBody");
-    body.innerHTML = "";
-
-    const on = isBeginnerOn();
-    const advOn = isAdvancedOn();
-
-    let list = (results[showing] || []).slice();
-    if(on && showAll !== "on"){
-      list = list.filter(beginnerOk);
+  function log(line){
+    $("logBox").textContent += line + "\n";
+    $("logBox").scrollTop = $("logBox").scrollHeight;
+    const m = String(line).match(/Snapshot tickers received:\s*(\d+)/i);
+    if(m){
+      state.scanned = Number(m[1]);
+      $("resultMeta").textContent = `Updated now - scanned ${state.scanned.toLocaleString()}`;
     }
-    list = list.slice(0,5);
-
-    for(const r of list){
-      const tr = document.createElement("tr");
-      tr.style.cursor = "pointer";
-      const goldClass = isGoldPick(r) ? "gold" : "";
-      const mvClass = moveClass(r.move_pct);
-
-      const badge = (() => {
-        if(!on) return "";
-        if(beginnerOk(r)) return `<span class="badge ok">Beginner OK</span>`;
-        return `<span class="badge adv">Advanced</span>`;
-      })();
-
-      tr.innerHTML = `
-        <td class="tickerCell">
-          <b class="${goldClass}">${r.ticker || ""}</b>
-          ${badge}
-        </td>
-        <td class="${goldClass}">${r.confidence ?? ""}</td>
-        <td>${r.subtype || ""}</td>
-        <td class="right">${fmtNum(r.close,2)}</td>
-        <td class="right ${mvClass}">${fmtPct(r.move_pct)}</td>
-        <td class="right">${fmtInt(r.float_shares)}</td>
-
-        ${advOn ? `
-          <td class="right">${fmtInt(r.dollar_vol)}</td>
-          <td class="right">${fmtNum(r.rel_vol,2)}</td>
-          <td class="right">${fmtPct(r.range_pct)}</td>
-          <td class="right">${fmtNum(r.vwap,4)}</td>
-        ` : ""}
-
-        <td class="right"><button class="addbtn" data-t="${r.ticker}">${on ? "Trade" : "Add"}</button></td>
-      `;
-
-      tr.addEventListener("click", (e) => {
-        if(e.target && e.target.matches("button.addbtn")) return;
-
-        const planBox = el("planBox");
-        planBox.style.display = "block";
-
-        const entry = fmtNum(r.trigger, 4);
-        const stop  = fmtNum(r.stop, 4);
-        const risk = (r.trigger != null && r.stop != null) ? (Number(r.trigger) - Number(r.stop)) : null;
-
-        planBox.textContent =
-          `${r.ticker} — ${r.subtype}\n\n` +
-          (on
-            ? `ENTRY (buy trigger): ${entry}\n` +
-              `STOP (exit if wrong): ${stop}\n` +
-              `TARGET (take profit): 2R (about 2× your risk)\n` +
-              `\nRules:\n` +
-              `• If price hits STOP → sell. No exceptions.\n` +
-              `• Never average down.\n` +
-              `• Don’t buy if you don’t understand the setup.\n` +
-              (risk != null ? `• Your risk is about ${risk.toFixed(4)} per share.\n` : "") +
-              `\nNext: set Risk $ → we auto-calc shares → then Trade.\n`
-            : `ENTRY: ${entry}\nSTOP:  ${stop}\nTARGET: Use 2R (about 2× your risk)`);
-      });
-
-      body.appendChild(tr);
-    }
-
-    body.querySelectorAll("button.addbtn").forEach(btn => {
-      btn.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        const tkr = btn.getAttribute("data-t");
-        const row = (results.SQUEEZE.concat(results.MOMENTUM)).find(x => x.ticker === tkr);
-        if(!row) return;
-
-        const on = isBeginnerOn();
-        const defEntry = (row.trigger != null) ? String(row.trigger) : (row.close != null ? String(row.close) : "");
-        const entryStr = prompt(`Entry price for ${tkr}?`, defEntry);
-        if(entryStr === null) return;
-
-        const entryPx = Number(entryStr);
-        if(!Number.isFinite(entryPx) || entryPx <= 0){
-          alert("Entry must be a valid number.");
-          return;
-        }
-
-        if(on){
-          const stopPx = Number(row.stop);
-          if(!Number.isFinite(stopPx)){
-            alert("This trade has no STOP value. Skip it or turn Beginner off.");
-            return;
-          }
-          const riskPerShare = entryPx - stopPx;
-          if(!(riskPerShare > 0)){
-            alert("Beginner rule: STOP must be below ENTRY (for long trades). Skip this one or adjust entry.");
-            return;
-          }
-          const riskStr = prompt("Risk $ (max you’re okay losing) — example: 25", "25");
-          if(riskStr === null) return;
-          const riskDollars = Number(riskStr);
-          if(!Number.isFinite(riskDollars) || riskDollars <= 0){
-            alert("Risk $ must be a positive dollar amount (example: 25).");
-            return;
-          }
-          let sharesCalc = Math.floor(riskDollars / riskPerShare);
-          if(sharesCalc > 10000){
-            const ok = confirm(`This suggests ${sharesCalc.toLocaleString()} shares (oversized). Lower Risk $ or Cancel to stop.`);
-            if(!ok) return;
-          }
-          if(sharesCalc < 1){
-            alert("Risk $ is too small for this stop distance. Either raise Risk $ or skip this trade.");
-            return;
-          }
-
-          const ok = confirm(
-            `Beginner sizing:\n` +
-            `ENTRY: ${entryPx}\nSTOP: ${stopPx}\nRisk/share: ${riskPerShare.toFixed(4)}\n` +
-            `Risk $: ${riskDollars}\n\n` +
-            `Auto shares: ${sharesCalc.toLocaleString()}\n\n` +
-            `Press OK to add, Cancel to edit shares manually.`
-          );
-
-          let sharesFinal = sharesCalc;
-          if(!ok){
-            const manual = prompt("Shares (manual override)?", String(sharesCalc));
-            if(manual === null) return;
-            sharesFinal = Number(manual);
-            if(!Number.isFinite(sharesFinal) || sharesFinal <= 0){
-              alert("Shares must be a positive number.");
-              return;
-            }
-          }
-
-          await createTradeFromRow(row, entryPx, sharesFinal);
-          await loadNotebook();
-          return;
-        }
-
-        const sharesStr = prompt(`Shares for ${tkr}?`, "100");
-        if(sharesStr === null) return;
-
-        const shares = Number(sharesStr);
-        if(!Number.isFinite(shares) || shares <= 0){
-          alert("Shares must be a positive number.");
-          return;
-        }
-
-        await createTradeFromRow(row, entryPx, shares);
-        await loadNotebook();
-      });
-    });
   }
 
-  el("tabSqueeze").addEventListener("click", () => {
-    showing = "SQUEEZE";
-    el("tabSqueeze").classList.add("active");
-    el("tabMomentum").classList.remove("active");
-    renderResults();
-  });
-  el("tabMomentum").addEventListener("click", () => {
-    showing = "MOMENTUM";
-    el("tabMomentum").classList.add("active");
-    el("tabSqueeze").classList.remove("active");
-    renderResults();
-  });
-
-  async function safeReadJson(resp){
-    const status = resp.status;
-    const ok = resp.ok;
-    const ct = (resp.headers.get("content-type") || "").toLowerCase();
-
-    try{
-      if(ct.includes("application/json")){
-        const j = await resp.json();
-        return { ...j, _status: status, _ok_http: ok };
-      }
-      const t = await resp.text();
-      return { ok: false, error: t.slice(0, 300), _status: status, _ok_http: ok };
-    }catch(e){
-      try{
-        const t2 = await resp.text();
-        return { ok: false, error: t2.slice(0, 300), _status: status, _ok_http: ok };
-      }catch(_e2){
-        return { ok: false, error: "Could not read server response", _status: status, _ok_http: ok };
-      }
-    }
+  function paintOrtex(){
+    $("ortexToggle").textContent = `ORTEX: ${state.ortex.toUpperCase()}`;
+    $("ortexToggle").classList.toggle("success", state.ortex === "on");
   }
 
   async function runScan(){
-    // When scanning, force Scan page visible
-    setActivePage("Scan");
-
-    el("btnScan").disabled = true;
-    el("logStatus").textContent = "Running…";
-    el("planBox").style.display = "none";
-    el("planBox").textContent = "";
-
-    results.SQUEEZE = [];
-    results.MOMENTUM = [];
-    scannedCount = null;
-
-    if(es){ try{ es.close(); }catch(e){} es = null; }
-
-    lastUpdatedStr = new Date().toLocaleTimeString([], {hour:"numeric", minute:"2-digit"});
-    el("pillLast").innerHTML = `Last Scan: <b>${lastUpdatedStr}</b>`;
-    updateMetaLines();
+    if(!state.user){ openAuth("login"); return; }
+    state.results = {SQUEEZE:[], MOMENTUM:[]};
+    state.scanned = null;
+    state.showing = "SQUEEZE";
     renderResults();
+    $("logBox").textContent = "";
+    $("scanStatus").textContent = "Starting...";
+    $("scanBtn").disabled = true;
+    $("planBox").classList.add("hidden");
+    if(state.es){ try{state.es.close();}catch(e){} state.es=null; }
 
-    const mode = selectedMode || "auto";
-    const ortex = selectedOrtex || "off";
-
-    el("logBox").textContent = "";
-
-    let resp, data;
-    try{
-      resp = await fetch(`/run_scan?mode=${encodeURIComponent(mode)}&ortex=${encodeURIComponent(ortex)}`, { method:"POST" });
-      data = await safeReadJson(resp);
-    }catch(err){
-      el("logStatus").textContent = "Could not reach server.";
-      el("btnScan").disabled = false;
-      log(`[UI] fetch failed: ${String(err).slice(0,200)}`);
+    const mode = $("scanMode").value || "auto";
+    const resp = await fetch(`/run_scan?mode=${encodeURIComponent(mode)}&ortex=${encodeURIComponent(state.ortex)}`, {method:"POST"}).catch(()=>null);
+    if(!resp){
+      $("scanStatus").textContent = "Server unreachable";
+      $("scanBtn").disabled = false;
       return;
     }
-
+    const data = await safeJson(resp);
     if(!resp.ok || !data.ok){
-      el("logStatus").textContent = "Error starting scan.";
-      el("btnScan").disabled = false;
-
-      const status = data._status ?? resp.status;
-      log(`[UI] /run_scan failed (HTTP ${status})`);
-      if(data.error) log(`[UI] ${String(data.error).replace(/\s+/g," ").slice(0,260)}`);
-      log(`[UI] Fix hint: Check Render logs for the real Python exception above this.`);
+      $("scanStatus").textContent = "Scan blocked";
+      log(`[APP] ${data.error || "Could not start scan."}`);
+      if(data.usage){ state.usage = data.usage; paintUsage(); }
+      $("scanBtn").disabled = false;
       return;
     }
 
-    scanId = data.scan_id;
-
-    el("pillWindow").innerHTML = `Window: <b>${(data.window || "—")}</b>`;
-    el("pillOrtex").innerHTML = `ORTEX: <b>${(data.ortex_effective || "OFF")}</b>`;
-
-    es = new EventSource(`/stream/${scanId}`);
-
-    es.addEventListener("log", (ev) => {
+    state.scanId = data.scan_id;
+    $("scanStatus").textContent = `Running - ${data.window || "window"}`;
+    refreshUsage();
+    state.es = new EventSource(`/stream/${state.scanId}`);
+    state.es.addEventListener("log", ev => {
+      try{ log(JSON.parse(ev.data).line || ev.data); }catch(e){ log(ev.data); }
+    });
+    state.es.addEventListener("meta", ev => {
       try{
-        const j = JSON.parse(ev.data);
-        log(j.line || ev.data);
-      }catch(e){
-        log(ev.data);
-      }
+        const m = JSON.parse(ev.data);
+        if(typeof m.scanned_count === "number"){
+          state.scanned = m.scanned_count;
+          $("resultMeta").textContent = `Updated now - scanned ${state.scanned.toLocaleString()}`;
+        }
+      }catch(e){}
     });
-
-    es.addEventListener("meta", (ev) => {
-      let m = {};
-      try{ m = JSON.parse(ev.data); }catch(e){ return; }
-      if(m.window) el("pillWindow").innerHTML = `Window: <b>${m.window}</b>`;
-      if(m.ortex_effective) el("pillOrtex").innerHTML = `ORTEX: <b>${m.ortex_effective}</b>`;
-      if(typeof m.scanned_count === "number"){
-        scannedCount = m.scanned_count;
-        updateMetaLines();
-      }
+    state.es.addEventListener("row", ev => {
+      try{
+        const r = JSON.parse(ev.data);
+        const b = (r.bucket || "").toUpperCase() === "SQUEEZE" ? "SQUEEZE" : "MOMENTUM";
+        state.results[b].push(r);
+        state.results[b].sort((a,b) => Number(b.confidence||0)-Number(a.confidence||0));
+        renderResults();
+      }catch(e){}
     });
+    state.es.addEventListener("done", ev => {
+      $("scanStatus").textContent = "Done";
+      $("scanBtn").disabled = false;
+      setTimeout(() => { if(state.es){ try{state.es.close();}catch(e){} state.es=null; } }, 1000);
+      refreshUsage();
+    });
+  }
 
-    es.addEventListener("row", (ev) => {
-      let r;
-      try{ r = JSON.parse(ev.data); }catch(e){ return; }
-
-      const bucket = (r.bucket || "").toUpperCase() === "SQUEEZE" ? "SQUEEZE" : "MOMENTUM";
-      results[bucket].push(r);
-
-      results[bucket].sort((a,b) => {
-        const cA = Number(a.confidence || 0), cB = Number(b.confidence || 0);
-        if (cB !== cA) return cB - cA;
-
-        const sA = Number(a.base_score || 0), sB = Number(b.base_score || 0);
-        if (sB !== sA) return sB - sA;
-
-        const vA = Number(a.dollar_vol || 0), vB = Number(b.dollar_vol || 0);
-        return vB - vA;
+  function renderResults(){
+    const body = $("resultsBody");
+    if(!body) return;
+    body.innerHTML = "";
+    const list = (state.results[state.showing] || []).slice(0,8);
+    for(const r of list){
+      const tr = document.createElement("tr");
+      const mv = Number(r.move_pct);
+      tr.innerHTML = `
+        <td><b>${r.ticker || ""}</b></td>
+        <td>${r.confidence ?? ""}</td>
+        <td>${r.subtype || ""}</td>
+        <td class="right">${fmtNum(r.close,2)}</td>
+        <td class="right ${mv > 0 ? "good" : mv < 0 ? "bad" : ""}">${fmtPct(r.move_pct)}</td>
+        <td class="right">${fmtInt(r.float_shares)}</td>
+        <td class="right"><button class="ghost" data-add="${r.ticker}">Journal</button></td>
+      `;
+      tr.addEventListener("click", e => {
+        if(e.target.closest("button")) return;
+        $("planBox").classList.remove("hidden");
+        $("planBox").textContent = `${r.ticker} - ${r.subtype || "setup"}\n\n${r.plan || "No plan text available."}`;
       });
-
-      renderResults();
-    });
-
-    es.addEventListener("done", async (ev) => {
-      let j = {};
-      try{ j = JSON.parse(ev.data); }catch(e){}
-      el("logStatus").textContent = j.ok ? "Done." : "Done (error).";
-      el("btnScan").disabled = false;
-      setTimeout(() => { if(es){ try{ es.close(); }catch(e){} es=null; } }, 1200);
+      body.appendChild(tr);
+    }
+    body.querySelectorAll("[data-add]").forEach(btn => {
+      btn.addEventListener("click", async e => {
+        e.stopPropagation();
+        const ticker = btn.getAttribute("data-add");
+        const row = state.results.SQUEEZE.concat(state.results.MOMENTUM).find(r => r.ticker === ticker);
+        if(row) await addTradeFromScan(row);
+      });
     });
   }
 
-  el("btnScan").addEventListener("click", runScan);
-
-  el("btnClear").addEventListener("click", async () => {
-    await fetch("/clear_log", { method:"POST" }).catch(()=>{});
-    el("logBox").textContent = "";
-    el("logStatus").textContent = "Cleared.";
-  });
-
-  /* ---------- Notebook ---------- */
-  function setText(id, txt){ const n = el(id); if(n) n.textContent = txt; }
-
-  function drawEquityCurve(points){
-    const c = el("pnlChart");
-    if(!c) return;
-    const ctx = c.getContext("2d");
-    if(!ctx) return;
-
-    ctx.clearRect(0,0,c.width,c.height);
-
-    if(!points || points.length < 2){
-      ctx.globalAlpha = 0.35;
-      ctx.strokeStyle = "rgba(255,232,170,.9)";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(10, c.height/2);
-      ctx.lineTo(c.width-10, c.height/2);
-      ctx.stroke();
-      ctx.globalAlpha = 1;
-      return;
-    }
-
-    const pad = 10;
-    const ys = points;
-    const minY = Math.min(...ys);
-    const maxY = Math.max(...ys);
-    const spanY = (maxY - minY) || 1;
-
-    const w = c.width - pad*2;
-    const h = c.height - pad*2;
-
-    const X = (i) => pad + (i/(ys.length-1))*w;
-    const Y = (v) => pad + (1 - ((v - minY)/spanY))*h;
-
-    ctx.globalAlpha = 0.18;
-    ctx.strokeStyle = "rgba(255,232,170,.9)";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(pad, Y(0));
-    ctx.lineTo(c.width-pad, Y(0));
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-
-    ctx.strokeStyle = "rgba(255,232,170,.95)";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(X(0), Y(ys[0]));
-    for(let i=1;i<ys.length;i++){
-      ctx.lineTo(X(i), Y(ys[i]));
-    }
-    ctx.stroke();
-  }
-
-  function renderNotebookSummary(rows){
-    const trades = rows || [];
-    const closed = trades.filter(t => t.exit_price != null && t.pnl_dollars != null);
-
-    setText("sumTrades", String(trades.length));
-
-    if(closed.length === 0){
-      setText("sumWinrate", "—");
-      setText("sumAvgWin", "—");
-      setText("sumAvgLoss", "—");
-      setText("sumTotal", "—");
-      drawEquityCurve([]);
-      return;
-    }
-
-    const wins = closed.filter(t => Number(t.pnl_dollars) > 0);
-    const losses = closed.filter(t => Number(t.pnl_dollars) < 0);
-
-    const winrate = (wins.length / closed.length) * 100;
-
-    const avgWin = wins.length ? (wins.reduce((a,t)=>a+Number(t.pnl_dollars),0)/wins.length) : null;
-    const avgLoss = losses.length ? (losses.reduce((a,t)=>a+Number(t.pnl_dollars),0)/losses.length) : null;
-    const total = closed.reduce((a,t)=>a+Number(t.pnl_dollars),0);
-
-    setText("sumWinrate", winrate.toFixed(0) + "%");
-    setText("sumAvgWin", avgWin == null ? "—" : ("+" + avgWin.toFixed(2)));
-    setText("sumAvgLoss", avgLoss == null ? "—" : (avgLoss.toFixed(2)));
-    setText("sumTotal", (total >= 0 ? "+" : "") + total.toFixed(2));
-
-    let cum = 0;
-    const curve = [];
-    for(const t of closed){
-      cum += Number(t.pnl_dollars);
-      curve.push(cum);
-    }
-    drawEquityCurve(curve);
+  async function addTradeFromScan(row){
+    const entry = prompt(`Entry price for ${row.ticker}?`, row.trigger || row.close || "");
+    if(entry === null) return;
+    const shares = prompt(`Shares for ${row.ticker}?`, "100");
+    if(shares === null) return;
+    await fetch("/api/trades", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({
+        scan_id:state.scanId,
+        ticker:row.ticker,
+        bucket:row.bucket,
+        subtype:row.subtype,
+        confidence:row.confidence,
+        plan:row.plan,
+        trigger:row.trigger,
+        stop:row.stop,
+        scan_close:row.close,
+        move_pct:row.move_pct,
+        dollar_vol:row.dollar_vol,
+        range_pct:row.range_pct,
+        hold_pct:row.hold_pct,
+        rel_vol:row.rel_vol,
+        entry_price:Number(entry),
+        shares:Number(shares)
+      })
+    }).catch(()=>{});
+    await loadNotebook();
+    alert("Trade added to journal.");
   }
 
   async function loadNotebook(){
-    const view = el("noteView") ? el("noteView").value : "all";
-
-    let resp, data;
-    try{
-      resp = await fetch(`/api/trades?view=${encodeURIComponent(view)}&user_id=demo`);
-      data = await safeReadJson(resp);
-    }catch(e){
-      data = { trades: [] };
-    }
-
-    const rows = (data && data.trades) ? data.trades : [];
-    const body = el("noteBody");
+    if(!state.user) return;
+    const view = $("noteView") ? $("noteView").value : "all";
+    const resp = await fetch(`/api/trades?view=${encodeURIComponent(view)}`).catch(()=>null);
+    if(!resp) return;
+    const data = await safeJson(resp);
+    const rows = data.trades || [];
+    const body = $("noteBody");
     body.innerHTML = "";
-
     for(const t of rows){
-      const pnlD = t.pnl_dollars;
-      const pnlP = t.pnl_pct;
-
-      const pnlDStr = (pnlD == null)
-        ? "—"
-        : (pnlD >= 0 ? `<span class="good">+${Number(pnlD).toFixed(2)}</span>` : `<span class="bad">${Number(pnlD).toFixed(2)}</span>`);
-
-      const pnlPStr = (pnlP == null)
-        ? "—"
-        : (pnlP >= 0 ? `<span class="good">+${(Number(pnlP)*100).toFixed(1)}%</span>` : `<span class="bad">${(Number(pnlP)*100).toFixed(1)}%</span>`);
-
-      const flags = (() => { try{ return JSON.parse(t.review_flags || "[]"); }catch(e){ return []; } })();
-      const flagsStr = (flags || []).map(f => `${f.icon||""} ${f.label||""}`.trim()).join(" • ");
-
       const tr = document.createElement("tr");
-      tr.style.cursor = "pointer";
-
       tr.innerHTML = `
-        <td><b>${t.ticker}</b></td>
+        <td><b>${t.ticker || ""}</b></td>
         <td>${t.subtype || ""}</td>
         <td>${t.confidence ?? ""}</td>
-        <td class="right">${t.entry_price != null ? Number(t.entry_price).toFixed(2) : "—"}</td>
-        <td class="right">${t.exit_price != null ? Number(t.exit_price).toFixed(2) : "—"}</td>
-        <td class="right">${t.shares != null ? Number(t.shares).toFixed(0) : "—"}</td>
-        <td class="right">${pnlDStr}</td>
-        <td class="right">${pnlPStr}</td>
-        <td>${flagsStr || ""}</td>
-        <td class="right">
-          ${t.exit_price == null ? `<button class="addbtn" data-close="${t.id}">Close</button>` : `<button class="addbtn" data-review="${t.id}">Review</button>`}
-        </td>
+        <td class="right">${t.entry_price != null ? fmtNum(t.entry_price,2) : "-"}</td>
+        <td class="right">${t.exit_price != null ? fmtNum(t.exit_price,2) : "-"}</td>
+        <td class="right">${t.shares != null ? fmtInt(t.shares) : "-"}</td>
+        <td class="right ${Number(t.pnl_dollars) > 0 ? "good" : Number(t.pnl_dollars) < 0 ? "bad" : ""}">${t.pnl_dollars != null ? fmtMoney(t.pnl_dollars) : "-"}</td>
+        <td class="right">${t.exit_price == null ? `<button class="ghost" data-close="${t.id}">Close</button>` : `<button class="ghost" data-review="${t.id}">Review</button>`}</td>
       `;
-
-      tr.addEventListener("click", (e) => {
-        if (e.target && e.target.closest("button")) return;
-
-        const txt = (t.review_text || "").trim();
-        if(!txt){
-          alert("No saved review for this trade yet. Close it, then click Review.");
-          return;
-        }
-        alert(txt);
+      tr.addEventListener("click", e => {
+        if(e.target.closest("button")) return;
+        if(t.review_text) alert(t.review_text);
       });
-
       body.appendChild(tr);
     }
-
-    body.querySelectorAll("button[data-close]").forEach(btn => {
-      btn.addEventListener("click", async (e) => {
+    body.querySelectorAll("[data-close]").forEach(btn => {
+      btn.addEventListener("click", async e => {
         e.stopPropagation();
-        const id = btn.getAttribute("data-close");
         const px = prompt("Exit price?", "");
         if(px === null) return;
-
-        await fetch(`/api/trades/${id}?user_id=demo`, {
+        await fetch(`/api/trades/${btn.dataset.close}`, {
           method:"PATCH",
-          headers:{ "Content-Type":"application/json" },
-          body: JSON.stringify({ exit_price: px })
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({exit_price:Number(px)})
         }).catch(()=>{});
-
-        await loadNotebook();
+        loadNotebook();
       });
     });
-
-    body.querySelectorAll("button[data-review]").forEach(btn => {
-      btn.addEventListener("click", async (e) => {
+    body.querySelectorAll("[data-review]").forEach(btn => {
+      btn.addEventListener("click", async e => {
         e.stopPropagation();
-        const id = btn.getAttribute("data-review");
-        const note = prompt("Any notes/context for this trade? (optional)", "");
-        let resp, data;
-        try{
-          resp = await fetch(`/api/trades/${id}/review?user_id=demo`, {
-            method:"POST",
-            headers:{ "Content-Type":"application/json" },
-            body: JSON.stringify({ note: note || "" })
-          });
-          data = await safeReadJson(resp);
-        }catch(_e){
-          data = { ok:false, error:"Review endpoint not live yet." };
-        }
-        alert(data.ok ? (data.review || "Review complete.") : (data.error || "Review failed."));
-        await loadNotebook();
+        const note = prompt("Any notes/context for this trade?", "") || "";
+        const resp = await fetch(`/api/trades/${btn.dataset.review}/review`, {
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({note})
+        }).catch(()=>null);
+        const data = resp ? await safeJson(resp) : {ok:false,error:"Review failed."};
+        alert(data.ok ? data.review : (data.error || "Review failed."));
+        loadNotebook();
       });
     });
-
-    renderNotebookSummary(rows);
-    paintNotebookScore(rows);
+    renderJournalSummary(rows);
   }
 
-  async function createTradeFromRow(row, entryPrice, shares){
-    const payload = {
-      user_id: "demo",
-      scan_id: scanId,
-      scan_date_ct: null,
-      ticker: row.ticker,
-      bucket: row.bucket,
-      subtype: row.subtype,
-      confidence: row.confidence,
-      plan: row.plan,
-      trigger: row.trigger,
-      stop: row.stop,
-      scan_close: row.close,
-      move_pct: row.move_pct,
-      dollar_vol: row.dollar_vol,
-      range_pct: row.range_pct,
-      hold_pct: row.hold_pct,
-      rel_vol: row.rel_vol,
-      float_shares: row.float_shares,
-      entry_price: entryPrice,
-      shares: shares
-    };
-
-    await fetch("/api/trades", {
-      method:"POST",
-      headers:{ "Content-Type":"application/json" },
-      body: JSON.stringify(payload)
-    }).catch(()=>{});
+  function renderJournalSummary(rows){
+    const closed = rows.filter(t => t.pnl_dollars != null);
+    $("noteMeta").textContent = `${rows.length} trade records`;
+    $("sumTrades").textContent = rows.length;
+    if(!closed.length){
+      $("sumWinrate").textContent = "-";
+      $("sumTotal").textContent = "-";
+      $("sumAvg").textContent = "-";
+      return;
+    }
+    const wins = closed.filter(t => Number(t.pnl_dollars) > 0).length;
+    const total = closed.reduce((a,t) => a + Number(t.pnl_dollars), 0);
+    $("sumWinrate").textContent = `${Math.round((wins/closed.length)*100)}%`;
+    $("sumTotal").textContent = fmtMoney(total);
+    $("sumAvg").textContent = fmtMoney(total/closed.length);
   }
 
-  el("btnAddPast").addEventListener("click", async () => {
+  async function addPastTrade(){
     const ticker = prompt("Ticker?", "");
     if(!ticker) return;
-
     const date_ct = prompt("Date (YYYY-MM-DD)?", "");
-    const setup = prompt("Setup (ex: VWAP pullback, Break+PB)?", "VWAP pullback");
+    const setup = prompt("Setup?", "manual");
     const entry = prompt("Entry price?", "");
     if(entry === null) return;
-    const exit = prompt("Exit price? (leave blank if open)", "");
+    const exit = prompt("Exit price? Leave blank if open.", "");
     const shares = prompt("Shares?", "100");
-    const conf = prompt("Confidence 1–10? (optional)", "");
-    const note = prompt("Notes (optional)", "");
-
-    const payload = {
-      user_id:"demo",
-      scan_id:null,
-      scan_date_ct: date_ct || null,
-      ticker: ticker.toUpperCase().trim(),
-      bucket:"MANUAL",
-      subtype: setup || "manual",
-      confidence: conf ? Number(conf) : null,
-      plan: note || "",
-      entry_price: entry ? Number(entry) : null,
-      exit_price: exit ? Number(exit) : null,
-      shares: shares ? Number(shares) : null,
-      source: "past"
-    };
-
+    const conf = prompt("Confidence 1-10? Optional.", "");
     await fetch("/api/trades", {
       method:"POST",
-      headers:{ "Content-Type":"application/json" },
-      body: JSON.stringify(payload)
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({
+        scan_date_ct:date_ct || null,
+        ticker:ticker.toUpperCase().trim(),
+        bucket:"MANUAL",
+        subtype:setup || "manual",
+        confidence:conf ? Number(conf) : null,
+        entry_price:entry ? Number(entry) : null,
+        exit_price:exit ? Number(exit) : null,
+        shares:shares ? Number(shares) : null
+      })
     }).catch(()=>{});
-
-    await loadNotebook();
-    alert("Past trade added. If you entered an exit, you may need to click Close until we upgrade backend create-trade to accept exit directly.");
-  });
-
-  el("noteView").addEventListener("change", loadNotebook);
-
-  async function checkApi(){
-    try{
-      const r = await fetch("/health");
-      const j = await safeReadJson(r);
-      if(r.ok && j && j.ok){
-        el("pillApi").innerHTML = `API: <b class="good">OK</b>`;
-      }else{
-        el("pillApi").innerHTML = `API: <b class="bad">ERR</b>`;
-      }
-    }catch(e){
-      el("pillApi").innerHTML = `API: <b class="bad">DOWN</b>`;
-    }
+    loadNotebook();
   }
 
-  // Boot
-  setOrtex(selectedOrtex);
-  paintBeginner();
-  paintAdvanced();
-  bindTipTargets();
-  paintHeaders();
-  updateMetaLines();
-  paintShowAll();
-  checkApi().catch(()=>{});
-  loadNotebook().catch(()=>{});
-  loadScoreboard().catch(()=>{});
+  function bind(){
+    $("themeBtn").addEventListener("click", () => setTheme(state.theme === "dark" ? "light" : "dark"));
+    ["loginTop","heroLogin"].forEach(id => $(id)?.addEventListener("click", () => openAuth("login")));
+    ["signupTop","heroSignup","divisionCta"].forEach(id => $(id)?.addEventListener("click", () => openAuth("signup")));
+    $("closeAuth").addEventListener("click", closeAuth);
+    $("swapAuth").addEventListener("click", () => openAuth(state.authMode === "signup" ? "login" : "signup"));
+    $("submitAuth").addEventListener("click", submitAuth);
+    $("authPassword").addEventListener("keydown", e => { if(e.key === "Enter") submitAuth(); });
+    $("logoutBtn").addEventListener("click", logout);
+    document.querySelectorAll("[data-page]").forEach(b => b.addEventListener("click", () => setPage(b.dataset.page)));
+    document.querySelectorAll("[data-jump]").forEach(b => b.addEventListener("click", () => setPage(b.dataset.jump)));
+    $("ortexToggle").addEventListener("click", () => { state.ortex = state.ortex === "on" ? "off" : "on"; paintOrtex(); });
+    $("scanBtn").addEventListener("click", runScan);
+    $("clearBtn").addEventListener("click", () => { $("logBox").textContent = ""; $("scanStatus").textContent = "Cleared"; });
+    $("tabSqueeze").addEventListener("click", () => {
+      state.showing = "SQUEEZE";
+      $("tabSqueeze").classList.add("active");
+      $("tabMomentum").classList.remove("active");
+      renderResults();
+    });
+    $("tabMomentum").addEventListener("click", () => {
+      state.showing = "MOMENTUM";
+      $("tabMomentum").classList.add("active");
+      $("tabSqueeze").classList.remove("active");
+      renderResults();
+    });
+    $("noteView").addEventListener("change", loadNotebook);
+    $("addPastBtn").addEventListener("click", addPastTrade);
+  }
+
+  async function boot(){
+    setTheme(state.theme);
+    bind();
+    paintOrtex();
+    await loadMe();
+    renderAll();
+    if(state.user) await loadNotebook();
+  }
+  boot();
 </script>
 </body>
 </html>

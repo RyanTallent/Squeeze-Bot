@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import alerts
+import base64
 import hashlib
+import hmac
 import json
 import os
+import re
+import secrets
 import sqlite3
 import threading
 import time
@@ -220,11 +224,46 @@ def db_init():
     );
     """
 
+    users_sql = """
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      email TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      plan_code TEXT NOT NULL DEFAULT 'free_trial',
+      subscription_status TEXT NOT NULL DEFAULT 'trial',
+      lifetime_scans_used INTEGER NOT NULL DEFAULT 0,
+      created_at_utc TEXT NOT NULL
+    );
+    """
+
+    sessions_sql = """
+    CREATE TABLE IF NOT EXISTS sessions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      token_hash TEXT NOT NULL UNIQUE,
+      created_at_utc TEXT NOT NULL,
+      expires_at_utc TEXT NOT NULL
+    );
+    """
+
+    scan_usage_sql = """
+    CREATE TABLE IF NOT EXISTS scan_usage (
+      user_id TEXT NOT NULL,
+      week_start_ct TEXT NOT NULL,
+      scans_used INTEGER NOT NULL DEFAULT 0,
+      ortex_scans_used INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (user_id, week_start_ct)
+    );
+    """
+
     if using_postgres():
         with pg_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(signals_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ"))
                 cur.execute(kv_sql)
+                cur.execute(users_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ"))
+                cur.execute(sessions_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ").replace("expires_at_utc TEXT", "expires_at_utc TIMESTAMPTZ"))
+                cur.execute(scan_usage_sql)
             conn.commit()
     else:
         with DB_LOCK:
@@ -232,6 +271,9 @@ def db_init():
             try:
                 conn.execute(signals_sql)
                 conn.execute(kv_sql)
+                conn.execute(users_sql)
+                conn.execute(sessions_sql)
+                conn.execute(scan_usage_sql)
                 conn.commit()
             finally:
                 conn.close()
@@ -271,6 +313,448 @@ def kv_set(key: str, val: str):
         conn = sqlite_conn()
         try:
             conn.execute("INSERT OR REPLACE INTO kv (k,v) VALUES (?,?)", (key, val))
+            conn.commit()
+        finally:
+            conn.close()
+
+
+# -------------------- Auth + plans --------------------
+SESSION_COOKIE_NAME = "cp_session"
+SESSION_DAYS = 30
+PASSWORD_ITERATIONS = 260_000
+
+PLANS: dict[str, dict[str, Any]] = {
+    "free_trial": {
+        "name": "Free Trial",
+        "price": 0,
+        "scan_limit_weekly": 1,
+        "ortex_limit_weekly": 0,
+        "lifetime_scan_limit": 1,
+        "features": ["1 lifetime Polygon-only scan", "Public research previews"],
+    },
+    "starter": {
+        "name": "Starter",
+        "price": 29,
+        "scan_limit_weekly": 5,
+        "ortex_limit_weekly": 1,
+        "features": ["Scanner access", "1 ORTEX-backed scan/week", "Trade journal"],
+    },
+    "trader_pro": {
+        "name": "Trader Pro",
+        "price": 79,
+        "scan_limit_weekly": 25,
+        "ortex_limit_weekly": 8,
+        "features": ["Live scans", "Signals", "Alerts", "Journal analytics"],
+    },
+    "trader_elite": {
+        "name": "Trader Elite",
+        "price": 179,
+        "scan_limit_weekly": 75,
+        "ortex_limit_weekly": 25,
+        "features": ["High-volume scanning", "Premium ORTEX allowance", "Performance analytics"],
+    },
+    "research_elite": {
+        "name": "Research Elite",
+        "price": 349,
+        "scan_limit_weekly": 125,
+        "ortex_limit_weekly": 50,
+        "features": ["Institutional research suite", "Quant intelligence", "Risk dashboards"],
+    },
+}
+
+
+def public_plans() -> list[dict[str, Any]]:
+    return [{"code": code, **plan} for code, plan in PLANS.items()]
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _utc_now_iso() -> str:
+    return _utc_now().isoformat()
+
+
+def _normalize_email(email: str) -> str:
+    return (email or "").strip().lower()
+
+
+def _is_valid_email(email: str) -> bool:
+    return bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email or ""))
+
+
+def _hash_password(password: str, salt_b64: str | None = None) -> str:
+    if salt_b64:
+        salt = base64.b64decode(salt_b64.encode("ascii"))
+    else:
+        salt = secrets.token_bytes(16)
+        salt_b64 = base64.b64encode(salt).decode("ascii")
+
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, PASSWORD_ITERATIONS)
+    digest_b64 = base64.b64encode(digest).decode("ascii")
+    return f"pbkdf2_sha256${PASSWORD_ITERATIONS}${salt_b64}${digest_b64}"
+
+
+def _verify_password(password: str, stored: str) -> bool:
+    try:
+        algo, iterations, salt_b64, digest_b64 = stored.split("$", 3)
+        if algo != "pbkdf2_sha256" or int(iterations) != PASSWORD_ITERATIONS:
+            return False
+        expected = _hash_password(password, salt_b64).split("$", 3)[3]
+        return hmac.compare_digest(expected, digest_b64)
+    except Exception:
+        return False
+
+
+def _hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _cookie_secure() -> bool:
+    if (os.getenv("COOKIE_SECURE") or "").strip().lower() in ("1", "true", "yes", "on"):
+        return True
+    return (os.getenv("PUBLIC_BASE_URL") or "").strip().lower().startswith("https://")
+
+
+def _week_start_ct_str(dt: datetime | None = None) -> str:
+    dt = dt or now_ct()
+    d = dt.date() - timedelta(days=dt.weekday())
+    return d.strftime("%Y-%m-%d")
+
+
+def _plan_for_user(user: dict[str, Any]) -> dict[str, Any]:
+    code = (user.get("plan_code") or "free_trial").strip()
+    plan = PLANS.get(code, PLANS["free_trial"])
+    return {"code": code if code in PLANS else "free_trial", **plan}
+
+
+def _public_user(user: dict[str, Any]) -> dict[str, Any]:
+    plan = _plan_for_user(user)
+    return {
+        "id": user.get("id"),
+        "email": user.get("email"),
+        "plan_code": plan["code"],
+        "plan_name": plan["name"],
+        "subscription_status": user.get("subscription_status") or "trial",
+        "lifetime_scans_used": int(user.get("lifetime_scans_used") or 0),
+    }
+
+
+def user_by_email(email: str) -> dict[str, Any] | None:
+    email = _normalize_email(email)
+    if using_postgres():
+        with pg_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT * FROM users WHERE email=%s", (email,))
+                row = cur.fetchone()
+                return dict(row) if row else None
+
+    conn = sqlite_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM users WHERE email=?", (email,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def user_by_id(user_id: str) -> dict[str, Any] | None:
+    if using_postgres():
+        with pg_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT * FROM users WHERE id=%s", (user_id,))
+                row = cur.fetchone()
+                return dict(row) if row else None
+
+    conn = sqlite_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM users WHERE id=?", (user_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def create_user(email: str, password: str) -> dict[str, Any]:
+    user = {
+        "id": str(uuid.uuid4()),
+        "email": _normalize_email(email),
+        "password_hash": _hash_password(password),
+        "plan_code": "free_trial",
+        "subscription_status": "trial",
+        "lifetime_scans_used": 0,
+        "created_at_utc": _utc_now_iso(),
+    }
+
+    if using_postgres():
+        with pg_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO users (
+                      id, email, password_hash, plan_code, subscription_status,
+                      lifetime_scans_used, created_at_utc
+                    ) VALUES (
+                      %(id)s, %(email)s, %(password_hash)s, %(plan_code)s,
+                      %(subscription_status)s, %(lifetime_scans_used)s, %(created_at_utc)s
+                    )
+                    """,
+                    user,
+                )
+            conn.commit()
+        return user
+
+    with DB_LOCK:
+        conn = sqlite_conn()
+        try:
+            conn.execute(
+                """
+                INSERT INTO users (
+                  id, email, password_hash, plan_code, subscription_status,
+                  lifetime_scans_used, created_at_utc
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    user["id"],
+                    user["email"],
+                    user["password_hash"],
+                    user["plan_code"],
+                    user["subscription_status"],
+                    user["lifetime_scans_used"],
+                    user["created_at_utc"],
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    return user
+
+
+def create_session(user_id: str) -> str:
+    token = secrets.token_urlsafe(32)
+    row = {
+        "id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "token_hash": _hash_token(token),
+        "created_at_utc": _utc_now_iso(),
+        "expires_at_utc": (_utc_now() + timedelta(days=SESSION_DAYS)).isoformat(),
+    }
+
+    if using_postgres():
+        with pg_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO sessions (
+                      id, user_id, token_hash, created_at_utc, expires_at_utc
+                    ) VALUES (
+                      %(id)s, %(user_id)s, %(token_hash)s,
+                      %(created_at_utc)s, %(expires_at_utc)s
+                    )
+                    """,
+                    row,
+                )
+            conn.commit()
+        return token
+
+    with DB_LOCK:
+        conn = sqlite_conn()
+        try:
+            conn.execute(
+                """
+                INSERT INTO sessions (
+                  id, user_id, token_hash, created_at_utc, expires_at_utc
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    row["id"],
+                    row["user_id"],
+                    row["token_hash"],
+                    row["created_at_utc"],
+                    row["expires_at_utc"],
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    return token
+
+
+def destroy_session(token: str | None):
+    if not token:
+        return
+    token_hash = _hash_token(token)
+    if using_postgres():
+        with pg_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM sessions WHERE token_hash=%s", (token_hash,))
+            conn.commit()
+        return
+
+    with DB_LOCK:
+        conn = sqlite_conn()
+        try:
+            conn.execute("DELETE FROM sessions WHERE token_hash=?", (token_hash,))
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def current_user_from_request(request: Request) -> dict[str, Any] | None:
+    token = request.cookies.get(SESSION_COOKIE_NAME)
+    if not token:
+        return None
+    token_hash = _hash_token(token)
+    now_iso = _utc_now_iso()
+
+    if using_postgres():
+        with pg_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT u.*
+                    FROM sessions s
+                    JOIN users u ON u.id = s.user_id
+                    WHERE s.token_hash=%s AND s.expires_at_utc > %s
+                    """,
+                    (token_hash, now_iso),
+                )
+                row = cur.fetchone()
+                return dict(row) if row else None
+
+    conn = sqlite_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT u.*
+            FROM sessions s
+            JOIN users u ON u.id = s.user_id
+            WHERE s.token_hash=? AND s.expires_at_utc > ?
+            """,
+            (token_hash, now_iso),
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def require_user(request: Request) -> dict[str, Any] | JSONResponse:
+    user = current_user_from_request(request)
+    if not user:
+        return JSONResponse({"ok": False, "error": "Authentication required"}, status_code=401)
+    return user
+
+
+def get_usage(user_id: str) -> dict[str, Any]:
+    week_start = _week_start_ct_str()
+    if using_postgres():
+        with pg_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT * FROM scan_usage WHERE user_id=%s AND week_start_ct=%s",
+                    (user_id, week_start),
+                )
+                row = cur.fetchone()
+                if row:
+                    return dict(row)
+    else:
+        conn = sqlite_conn()
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT * FROM scan_usage WHERE user_id=? AND week_start_ct=?",
+                (user_id, week_start),
+            )
+            row = cur.fetchone()
+            if row:
+                return dict(row)
+        finally:
+            conn.close()
+
+    return {"user_id": user_id, "week_start_ct": week_start, "scans_used": 0, "ortex_scans_used": 0}
+
+
+def usage_summary(user: dict[str, Any]) -> dict[str, Any]:
+    plan = _plan_for_user(user)
+    usage = get_usage(user["id"])
+    lifetime_used = int(user.get("lifetime_scans_used") or 0)
+    lifetime_limit = plan.get("lifetime_scan_limit")
+    return {
+        "plan": plan,
+        "week_start_ct": usage["week_start_ct"],
+        "scans_used": int(usage.get("scans_used") or 0),
+        "scan_limit_weekly": int(plan["scan_limit_weekly"]),
+        "ortex_scans_used": int(usage.get("ortex_scans_used") or 0),
+        "ortex_limit_weekly": int(plan["ortex_limit_weekly"]),
+        "lifetime_scans_used": lifetime_used,
+        "lifetime_scan_limit": lifetime_limit,
+    }
+
+
+def check_scan_allowed(user: dict[str, Any], wants_ortex: bool) -> tuple[bool, str | None]:
+    summary = usage_summary(user)
+    if summary["scans_used"] >= summary["scan_limit_weekly"]:
+        return False, "Weekly scan limit reached. Upgrade your plan or wait for the weekly reset."
+
+    lifetime_limit = summary.get("lifetime_scan_limit")
+    if lifetime_limit is not None and summary["lifetime_scans_used"] >= int(lifetime_limit):
+        return False, "Free trial scan already used. Choose a paid plan to keep scanning."
+
+    if wants_ortex and summary["ortex_scans_used"] >= summary["ortex_limit_weekly"]:
+        return False, "Weekly ORTEX scan limit reached. Run a Polygon-only scan or upgrade your plan."
+
+    return True, None
+
+
+def increment_scan_usage(user_id: str, used_ortex: bool):
+    week_start = _week_start_ct_str()
+    if using_postgres():
+        with pg_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO scan_usage (
+                      user_id, week_start_ct, scans_used, ortex_scans_used
+                    ) VALUES (
+                      %s, %s, 1, %s
+                    )
+                    ON CONFLICT (user_id, week_start_ct)
+                    DO UPDATE SET
+                      scans_used = scan_usage.scans_used + 1,
+                      ortex_scans_used = scan_usage.ortex_scans_used + EXCLUDED.ortex_scans_used
+                    """,
+                    (user_id, week_start, 1 if used_ortex else 0),
+                )
+                cur.execute(
+                    "UPDATE users SET lifetime_scans_used = lifetime_scans_used + 1 WHERE id=%s",
+                    (user_id,),
+                )
+            conn.commit()
+        return
+
+    with DB_LOCK:
+        conn = sqlite_conn()
+        try:
+            conn.execute(
+                """
+                INSERT INTO scan_usage (
+                  user_id, week_start_ct, scans_used, ortex_scans_used
+                ) VALUES (?, ?, 1, ?)
+                ON CONFLICT(user_id, week_start_ct)
+                DO UPDATE SET
+                  scans_used = scans_used + 1,
+                  ortex_scans_used = ortex_scans_used + excluded.ortex_scans_used
+                """,
+                (user_id, week_start, 1 if used_ortex else 0),
+            )
+            conn.execute(
+                "UPDATE users SET lifetime_scans_used = lifetime_scans_used + 1 WHERE id=?",
+                (user_id,),
+            )
             conn.commit()
         finally:
             conn.close()
@@ -1002,7 +1486,14 @@ def set_ortex(value: str = "off"):
 
 
 @app.post("/run_scan")
-def run_scan(mode: str = "auto", ortex: str = "off"):
+def run_scan(request: Request, mode: str = "auto", ortex: str = "off"):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    return _run_scan_for_user(auth_user, mode=mode, ortex=ortex)
+
+
+def _run_scan_for_user(user: dict[str, Any] | None, mode: str = "auto", ortex: str = "off"):
     try:
         mode = (mode or "auto").strip().lower()
         ortex = (ortex or "off").strip().lower()
@@ -1031,6 +1522,12 @@ def run_scan(mode: str = "auto", ortex: str = "off"):
             ortex_on, ortex_label = scanner.resolve_ortex_on(eff_mode, ortex, dt)
         except Exception:
             ortex_on, ortex_label = (False, "OFF (resolve err)")
+
+        wants_ortex = ortex_on and ortex == "on"
+        if user is not None:
+            ok_allowed, limit_error = check_scan_allowed(user, wants_ortex=wants_ortex)
+            if not ok_allowed:
+                return JSONResponse({"ok": False, "error": limit_error, "usage": usage_summary(user)}, status_code=402)
 
         ortex_for_worker = "on" if ortex_on else "off"
 
@@ -1065,6 +1562,12 @@ def run_scan(mode: str = "auto", ortex: str = "off"):
 
         th = threading.Thread(target=_scan_worker, args=(scan_id, eff_mode, ortex_for_worker), daemon=True)
         th.start()
+
+        if user is not None:
+            try:
+                increment_scan_usage(user["id"], used_ortex=wants_ortex)
+            except Exception as usage_err:
+                push_log(f"[USAGE WARNING] Could not record scan usage: {type(usage_err).__name__}")
 
         snap = _state_snapshot()
         return {
@@ -1191,10 +1694,14 @@ def cron_run_scan(token: str, mode: str = "auto", ortex: str = "off"):
     expected = (os.getenv("CRON_TOKEN") or "").strip()
     if not expected or token != expected:
         return JSONResponse({"ok": False, "error": "unauthorized"}, status_code=401)
-    return run_scan(mode=mode, ortex=ortex)
+    return _run_scan_for_user(None, mode=mode, ortex=ortex)
 
 @app.get("/stream/{scan_id}")
-def stream(scan_id: str):
+def stream(scan_id: str, request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+
     def event_gen() -> Generator[str, None, None]:
         last_log_seq = 0
         last_log_offset = 0
@@ -1255,9 +1762,116 @@ def _sse_response(gen_fn: Callable[[], Generator[str, None, None]]):
     return StreamingResponse(gen_fn(), media_type="text/event-stream")
 
 
+# -------------------- Auth APIs --------------------
+@app.get("/api/plans")
+def api_plans():
+    return {"ok": True, "plans": public_plans()}
+
+
+@app.get("/api/auth/me")
+def api_auth_me(request: Request):
+    user = current_user_from_request(request)
+    if not user:
+        return {"ok": True, "user": None, "usage": None, "plans": public_plans()}
+    return {
+        "ok": True,
+        "user": _public_user(user),
+        "usage": usage_summary(user),
+        "plans": public_plans(),
+    }
+
+
+@app.post("/api/auth/signup")
+async def api_auth_signup(request: Request):
+    payload = await request.json()
+    email = _normalize_email(payload.get("email") or "")
+    password = payload.get("password") or ""
+
+    if not _is_valid_email(email):
+        return JSONResponse({"ok": False, "error": "Enter a valid email address."}, status_code=400)
+    if len(password) < 8:
+        return JSONResponse({"ok": False, "error": "Password must be at least 8 characters."}, status_code=400)
+    if user_by_email(email):
+        return JSONResponse({"ok": False, "error": "An account already exists for that email."}, status_code=409)
+
+    try:
+        user = create_user(email, password)
+        token = create_session(user["id"])
+        resp = JSONResponse(
+            {
+                "ok": True,
+                "user": _public_user(user),
+                "usage": usage_summary(user),
+                "plans": public_plans(),
+            }
+        )
+        resp.set_cookie(
+            SESSION_COOKIE_NAME,
+            token,
+            max_age=SESSION_DAYS * 24 * 60 * 60,
+            httponly=True,
+            secure=_cookie_secure(),
+            samesite="lax",
+        )
+        return resp
+    except sqlite3.IntegrityError:
+        return JSONResponse({"ok": False, "error": "An account already exists for that email."}, status_code=409)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=500)
+
+
+@app.post("/api/auth/login")
+async def api_auth_login(request: Request):
+    payload = await request.json()
+    email = _normalize_email(payload.get("email") or "")
+    password = payload.get("password") or ""
+
+    user = user_by_email(email)
+    if not user or not _verify_password(password, user.get("password_hash") or ""):
+        return JSONResponse({"ok": False, "error": "Invalid email or password."}, status_code=401)
+
+    token = create_session(user["id"])
+    resp = JSONResponse(
+        {
+            "ok": True,
+            "user": _public_user(user),
+            "usage": usage_summary(user),
+            "plans": public_plans(),
+        }
+    )
+    resp.set_cookie(
+        SESSION_COOKIE_NAME,
+        token,
+        max_age=SESSION_DAYS * 24 * 60 * 60,
+        httponly=True,
+        secure=_cookie_secure(),
+        samesite="lax",
+    )
+    return resp
+
+
+@app.post("/api/auth/logout")
+def api_auth_logout(request: Request):
+    destroy_session(request.cookies.get(SESSION_COOKIE_NAME))
+    resp = JSONResponse({"ok": True})
+    resp.delete_cookie(SESSION_COOKIE_NAME)
+    return resp
+
+
+@app.get("/api/usage")
+def api_usage(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    return {"ok": True, "usage": usage_summary(auth_user), "user": _public_user(auth_user)}
+
+
 # -------------------- APIs --------------------
 @app.get("/api/scoreboard")
-def api_scoreboard():
+def api_scoreboard(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
     try:
         return scoreboard_all_time()
     except Exception as e:
@@ -1265,9 +1879,12 @@ def api_scoreboard():
 
 
 @app.get("/api/trades")
-def api_get_trades(view: str = "all", user_id: str | None = None):
+def api_get_trades(request: Request, view: str = "all"):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
     try:
-        rows = trades_select(view=view, user_id=user_id)
+        rows = trades_select(view=view, user_id=auth_user["id"])
         return {"ok": True, "trades": rows}
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=500)
@@ -1275,9 +1892,13 @@ def api_get_trades(view: str = "all", user_id: str | None = None):
 
 @app.post("/api/trades")
 async def api_create_trade(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+
     payload = await request.json()
 
-    user_id = payload.get("user_id") or "demo"
+    user_id = auth_user["id"]
     trade_id = str(uuid.uuid4())
 
     scan_date_ct = payload.get("scan_date_ct") or (STATE.get("meta", {}).get("date") if STATE else None) or ct_date()
@@ -1326,7 +1947,11 @@ async def api_create_trade(request: Request):
 
 
 @app.patch("/api/trades/{trade_id}")
-async def api_close_trade(trade_id: str, request: Request, user_id: str | None = None):
+async def api_close_trade(trade_id: str, request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+
     payload = await request.json()
     exit_price = payload.get("exit_price")
     if exit_price is None:
@@ -1335,20 +1960,24 @@ async def api_close_trade(trade_id: str, request: Request, user_id: str | None =
     exit_time_ct = payload.get("exit_time_ct") or now_ct_str()
 
     try:
-        trade_close(trade_id, float(exit_price), exit_time_ct, user_id=user_id)
+        trade_close(trade_id, float(exit_price), exit_time_ct, user_id=auth_user["id"])
         return {"ok": True}
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=500)
 
 
 @app.post("/api/trades/{trade_id}/review")
-async def api_review_trade(trade_id: str, request: Request, user_id: str | None = None):
+async def api_review_trade(trade_id: str, request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+
     payload = await request.json()
     note = (payload.get("note") or "").strip()
 
     # find trade
     try:
-        rows = trades_select(view="all", user_id=user_id or "demo")
+        rows = trades_select(view="all", user_id=auth_user["id"])
         t = next((x for x in rows if x.get("id") == trade_id), None)
         if not t:
             return JSONResponse({"ok": False, "error": "Trade not found"}, status_code=404)
@@ -1425,12 +2054,12 @@ async def api_review_trade(trade_id: str, request: Request, user_id: str | None 
     review_text = "\n".join(review_lines).strip()
 
     try:
-        trade_save_review(trade_id, review_text, user_id=user_id)
+        trade_save_review(trade_id, review_text, user_id=auth_user["id"])
     except Exception:
         pass
 
     try:
-        trade_save_flags(trade_id, review_flags, user_id=user_id)
+        trade_save_flags(trade_id, review_flags, user_id=auth_user["id"])
     except Exception:
         pass
 
