@@ -615,14 +615,23 @@
   function paintUsage(){
     const u = state.usage;
     if(!u) return;
-    $("planTitle").textContent = `${u.plan.name} - $${u.plan.price}/mo`;
+    const priceLabel = u.plan.code === "founder" ? "Owner access" : `$${u.plan.price}/mo`;
+    $("planTitle").textContent = `${u.plan.name} - ${priceLabel}`;
     $("scansUsed").textContent = u.scans_used;
-    $("scanLimit").textContent = u.scan_limit_weekly;
+    $("scanLimit").textContent = limitLabel(u.scan_limit_weekly);
     $("ortexUsed").textContent = u.ortex_scans_used;
-    $("ortexLimit").textContent = u.ortex_limit_weekly;
+    $("ortexLimit").textContent = limitLabel(u.ortex_limit_weekly);
     $("trialNote").textContent = u.lifetime_scan_limit
       ? `Free trial: ${u.lifetime_scans_used}/${u.lifetime_scan_limit} lifetime scan used.`
       : `Weekly reset starts ${u.week_start_ct}.`;
+  }
+
+  function limitLabel(value){
+    return value === null || value === undefined ? "Unlimited" : value;
+  }
+
+  function priceLabel(plan){
+    return plan.code === "founder" ? "Owner" : `$${plan.price}/mo`;
   }
 
   function paintPricing(targetId){
@@ -636,8 +645,8 @@
       div.innerHTML = `
         <div class="code">${p.code.replaceAll("_"," ")}</div>
         <h3>${p.name}</h3>
-        <p><strong>$${p.price}</strong><span class="muted">/mo</span></p>
-        <p>${p.scan_limit_weekly} scans/week<br>${p.ortex_limit_weekly} ORTEX scans/week</p>
+        <p><strong>${priceLabel(p)}</strong></p>
+        <p>${limitLabel(p.scan_limit_weekly)} scans/week<br>${limitLabel(p.ortex_limit_weekly)} ORTEX scans/week</p>
         <ul>${(p.features || []).map(f => `<li>${f}</li>`).join("")}</ul>
       `;
       root.appendChild(div);
