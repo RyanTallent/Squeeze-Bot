@@ -1200,7 +1200,7 @@ def trade_insert(row: dict):
                       trigger, stop, scan_close, move_pct, dollar_vol, range_pct, hold_pct, rel_vol, si_pct_ff, ctb, avail,
                       entry_price, entry_time_ct, exit_price, exit_time_ct, shares, review_flags
                     ) VALUES (
-                      %(id)s, %(user_id)s, NOW(),
+                      %(id)s, %(user_id)s, %(created_at_utc)s,
                       %(scan_id)s, %(scan_date_ct)s,
                       %(ticker)s, %(bucket)s, %(subtype)s, %(confidence)s, %(plan)s,
                       %(trigger)s, %(stop)s, %(scan_close)s, %(move_pct)s, %(dollar_vol)s, %(range_pct)s, %(hold_pct)s, %(rel_vol)s, %(si_pct_ff)s, %(ctb)s, %(avail)s,
@@ -1265,6 +1265,127 @@ def trade_insert(row: dict):
             conn.commit()
         finally:
             conn.close()
+
+
+PAST_TRADE_SEED: list[dict[str, Any]] = [
+    {"date": "2026-01-22", "ticker": "NAMM", "entry_price": 2.16, "exit_price": 3.69, "shares": 46},
+    {"date": "2026-01-22", "ticker": "MRNA", "entry_price": 49.53, "exit_price": 55.02, "shares": 3.5153},
+    {"date": "2026-01-26", "ticker": "APLD", "entry_price": 38.22, "exit_price": 40.22, "shares": 7.553316},
+    {"date": "2026-01-30", "ticker": "APRE", "entry_price": 0.86, "exit_price": 0.95, "shares": 116},
+    {"date": "2026-02-03", "ticker": "LIMN", "entry_price": 0.90, "exit_price": 1.04, "shares": 120},
+    {"date": "2026-02-03", "ticker": "LIMN", "entry_price": 1.24, "exit_price": 1.40, "shares": 200},
+    {"date": "2026-02-03", "ticker": "LIMN", "entry_price": 1.61, "exit_price": 1.80, "shares": 160},
+    {"date": "2026-02-09", "ticker": "UOKA", "entry_price": 2.13, "exit_price": 2.71, "shares": 46},
+    {"date": "2026-02-10", "ticker": "QNCX", "entry_price": 0.45, "exit_price": 0.62, "shares": 336},
+    {"date": "2026-02-12", "ticker": "CHOW", "entry_price": 0.81, "exit_price": 1.05, "shares": 287},
+    {"date": "2026-02-26", "ticker": "AEHL", "entry_price": 1.24, "exit_price": 1.32, "shares": 310},
+    {"date": "2026-01-23", "ticker": "MOVE", "entry_price": 21.90, "exit_price": 17.20, "shares": 16},
+    {"date": "2026-02-03", "ticker": "FUSE", "entry_price": 2.95, "exit_price": 2.71, "shares": 134.896434},
+    {"date": "2026-02-06", "ticker": "CCHH", "entry_price": 0.66, "exit_price": 0.59, "shares": 700},
+    {"date": "2026-05-12", "ticker": "UBXG", "entry_price": 0.46, "exit_price": 0.34, "shares": 380},
+]
+
+
+def _past_trade_id(user_id: str, trade: dict[str, Any]) -> str:
+    key = (
+        f"cardo-past-trade:{user_id}:"
+        f"{trade['date']}:{trade['ticker']}:{trade['entry_price']}:{trade['exit_price']}:{trade['shares']}"
+    )
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, key))
+
+
+def trade_exists(trade_id: str, user_id: str) -> bool:
+    if using_postgres():
+        with pg_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1 FROM trades WHERE id=%s AND user_id=%s", (trade_id, user_id))
+                return cur.fetchone() is not None
+
+    conn = sqlite_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT 1 FROM trades WHERE id=? AND user_id=?", (trade_id, user_id))
+        return cur.fetchone() is not None
+    finally:
+        conn.close()
+
+
+def past_trade_seed_summary() -> dict[str, Any]:
+    winners = 0
+    losers = 0
+    total_pnl = 0.0
+    rows: list[dict[str, Any]] = []
+    for t in PAST_TRADE_SEED:
+        pnl = (float(t["exit_price"]) - float(t["entry_price"])) * float(t["shares"])
+        total_pnl += pnl
+        winners += 1 if pnl > 0 else 0
+        losers += 1 if pnl < 0 else 0
+        rows.append({**t, "pnl_dollars": pnl, "pnl_pct": (float(t["exit_price"]) - float(t["entry_price"])) / float(t["entry_price"])})
+    return {
+        "count": len(PAST_TRADE_SEED),
+        "winners": winners,
+        "losers": losers,
+        "total_pnl_dollars": total_pnl,
+        "rows": rows,
+    }
+
+
+def import_past_trade_seed(user_id: str) -> dict[str, Any]:
+    inserted = 0
+    skipped = 0
+    imported_ids: list[str] = []
+
+    for t in PAST_TRADE_SEED:
+        trade_id = _past_trade_id(user_id, t)
+        if trade_exists(trade_id, user_id):
+            skipped += 1
+            continue
+
+        pnl = (float(t["exit_price"]) - float(t["entry_price"])) * float(t["shares"])
+        row = {
+            "id": trade_id,
+            "user_id": user_id,
+            "created_at_utc": f"{t['date']}T16:00:00+00:00",
+            "scan_id": None,
+            "scan_date_ct": t["date"],
+            "ticker": t["ticker"],
+            "bucket": "PAST",
+            "subtype": "imported past trade",
+            "confidence": None,
+            "plan": "Imported founder past trade. Original note: average entry and average exit supplied by Ryan.",
+            "trigger": None,
+            "stop": None,
+            "scan_close": None,
+            "move_pct": None,
+            "dollar_vol": None,
+            "range_pct": None,
+            "hold_pct": None,
+            "rel_vol": None,
+            "si_pct_ff": None,
+            "ctb": None,
+            "avail": None,
+            "entry_price": float(t["entry_price"]),
+            "entry_time_ct": "Imported",
+            "exit_price": float(t["exit_price"]),
+            "exit_time_ct": "Imported",
+            "shares": float(t["shares"]),
+            "review_flags": json.dumps([{"icon": "I", "label": "Imported past trade"}]),
+        }
+        trade_insert(row)
+        inserted += 1
+        imported_ids.append(trade_id)
+
+    summary = past_trade_seed_summary()
+    return {
+        "ok": True,
+        "inserted": inserted,
+        "skipped": skipped,
+        "total_seed_trades": summary["count"],
+        "seed_winners": summary["winners"],
+        "seed_losers": summary["losers"],
+        "seed_total_pnl_dollars": summary["total_pnl_dollars"],
+        "imported_ids": imported_ids,
+    }
 
 
 def trade_close(trade_id: str, exit_price: float, exit_time_ct: str, user_id: str | None = None):
@@ -1984,6 +2105,30 @@ def api_debug_ortex(ticker: str, request: Request):
 
     try:
         return scanner.ortex_debug_ticker(ticker)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=500)
+
+
+@app.get("/api/founder/past-trades/seed")
+def api_founder_past_trades_seed(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    if (auth_user.get("plan_code") or "") != "founder":
+        return JSONResponse({"ok": False, "error": "Founder access required"}, status_code=403)
+    return {"ok": True, "seed": past_trade_seed_summary()}
+
+
+@app.post("/api/founder/past-trades/import")
+def api_founder_import_past_trades(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    if (auth_user.get("plan_code") or "") != "founder":
+        return JSONResponse({"ok": False, "error": "Founder access required"}, status_code=403)
+
+    try:
+        return import_past_trade_seed(auth_user["id"])
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=500)
 
