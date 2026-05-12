@@ -35,8 +35,8 @@
     </g>
   </defs>
   <rect width="1024" height="1024" fill="url(#bgGlow)"/>
-  <circle cx="502" cy="470" r="360" fill="#07172b" opacity=".22"/>
-  <use href="#star" x="350" y="570" transform="scale(.78)"/>
-  <use href="#star" x="522" y="522" transform="scale(.82)"/>
-  <use href="#star" x="690" y="466" transform="scale(.9)"/>
+  <circle cx="512" cy="512" r="360" fill="#07172b" opacity=".22"/>
+  <use href="#star" x="348" y="628" transform="scale(.78)"/>
+  <use href="#star" x="512" y="464" transform="scale(.82)"/>
+  <use href="#star" x="676" y="300" transform="scale(.9)"/>
 </svg>
