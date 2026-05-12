@@ -500,7 +500,7 @@
     plans:[],
     authMode:"signup",
     theme:localStorage.getItem("cp_theme") || "light",
-    ortex:"off",
+    ortex:localStorage.getItem("cp_ortex") || "auto",
     scanId:null,
     es:null,
     showing:"SQUEEZE",
@@ -610,6 +610,7 @@
     document.querySelectorAll(".publicOnly").forEach(x => x.classList.toggle("hidden", authed));
     if(authed){
       $("userPill").textContent = `${state.user.email} - ${state.user.plan_name}`;
+      applyOrtexDefault();
       paintUsage();
     }
     paintPricing("publicPricing");
@@ -629,6 +630,20 @@
     $("trialNote").textContent = u.lifetime_scan_limit
       ? `Free trial: ${u.lifetime_scans_used}/${u.lifetime_scan_limit} lifetime scan used.`
       : `Weekly reset starts ${u.week_start_ct}.`;
+  }
+
+  function hasOrtexAllowance(){
+    const u = state.usage;
+    if(!u) return false;
+    if(u.ortex_limit_weekly === null || u.ortex_limit_weekly === undefined) return true;
+    return Number(u.ortex_limit_weekly || 0) > Number(u.ortex_scans_used || 0);
+  }
+
+  function applyOrtexDefault(){
+    if(state.ortex === "auto"){
+      state.ortex = hasOrtexAllowance() ? "on" : "off";
+    }
+    paintOrtex();
   }
 
   function limitLabel(value){
@@ -699,6 +714,9 @@
   }
 
   function paintOrtex(){
+    if(state.ortex === "auto"){
+      state.ortex = hasOrtexAllowance() ? "on" : "off";
+    }
     $("ortexToggle").textContent = `ORTEX: ${state.ortex.toUpperCase()}`;
     $("ortexToggle").classList.toggle("success", state.ortex === "on");
   }
@@ -941,7 +959,11 @@
     $("logoutBtn").addEventListener("click", logout);
     document.querySelectorAll("[data-page]").forEach(b => b.addEventListener("click", () => setPage(b.dataset.page)));
     document.querySelectorAll("[data-jump]").forEach(b => b.addEventListener("click", () => setPage(b.dataset.jump)));
-    $("ortexToggle").addEventListener("click", () => { state.ortex = state.ortex === "on" ? "off" : "on"; paintOrtex(); });
+    $("ortexToggle").addEventListener("click", () => {
+      state.ortex = state.ortex === "on" ? "off" : "on";
+      localStorage.setItem("cp_ortex", state.ortex);
+      paintOrtex();
+    });
     $("scanBtn").addEventListener("click", runScan);
     $("clearBtn").addEventListener("click", () => { $("logBox").textContent = ""; $("scanStatus").textContent = "Cleared"; });
     $("tabSqueeze").addEventListener("click", () => {
@@ -963,9 +985,9 @@
   async function boot(){
     setTheme(state.theme);
     bind();
-    paintOrtex();
     await loadMe();
     renderAll();
+    applyOrtexDefault();
     if(state.user) await loadNotebook();
   }
   boot();

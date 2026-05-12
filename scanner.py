@@ -21,7 +21,7 @@ DEEP_ANALYZE_TOP_DAY = 75
 ORTEX_FINALISTS_DAY = 25
 
 DEEP_ANALYZE_TOP_NIGHT = 35
-ORTEX_FINALISTS_NIGHT = 0
+ORTEX_FINALISTS_NIGHT = 15
 
 # Snapshot gate (proxy)
 MIN_DOLLAR_VOL_PROXY = 200_000
@@ -233,10 +233,10 @@ def resolve_ortex_on(mode: str, ortex_request: str, dt: datetime) -> Tuple[bool,
         return (False, "OFF (no key)")
 
     req = (ortex_request or "off").strip().lower()
-    if req not in ("on", "off"):
+    if req not in ("on", "off", "auto"):
         req = "off"
 
-    if req == "on":
+    if req in ("on", "auto"):
         return (True, "ON")
     return (False, "OFF")
 
@@ -726,6 +726,43 @@ def is_true_squeeze(feat: Dict[str, Any], ortex_on: bool) -> bool:
     return True
 
 
+def ortex_confirmation_status(feat: Dict[str, Any], ortex_on: bool) -> str:
+    if not ortex_on:
+        return "ORTEX not used for this scan"
+
+    issues: List[str] = []
+    si = feat.get("si_pct_ff")
+    ctb = feat.get("ctb")
+    avail = feat.get("avail")
+
+    if si is None:
+        issues.append("missing SI%")
+    elif si < 8.0:
+        issues.append(f"SI {si:.1f}% < 8.0%")
+
+    if ctb is None:
+        issues.append("missing CTB")
+
+    if avail is None:
+        issues.append("missing availability")
+    elif avail > 250_000:
+        issues.append(f"availability {avail:,.0f} > 250,000")
+
+    dollar_vol = feat.get("dollar_vol") or 0.0
+    if dollar_vol < 250_000:
+        issues.append(f"dollar volume {dollar_vol:,.0f} < 250,000")
+
+    hold_pct = feat.get("hold_pct") or 0.0
+    if hold_pct < 0.25:
+        issues.append(f"hold {hold_pct * 100:.1f}% < 25.0%")
+
+    range_pct = feat.get("range_pct") or 0.0
+    if range_pct < 0.02:
+        issues.append(f"range {range_pct * 100:.1f}% < 2.0%")
+
+    return "ORTEX confirmed squeeze pressure" if not issues else "ORTEX checked: " + "; ".join(issues)
+
+
 def setup_subtype(feat: Dict[str, Any], label: str) -> str:
     c = feat.get("close") or 0.0
     vwap = feat.get("vwap")
@@ -942,6 +979,11 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "off") ->
             feat["si_pct_chg"] = None
             feat["ctb"] = None
             feat["avail"] = None
+            feat["ortex_status"] = (
+                "ORTEX not checked for this ticker (outside ORTEX finalist set)"
+                if ortex_on
+                else "ORTEX not used for this scan"
+            )
 
             base_score, prob, pressure = compute_scores(feat)
             conf = confidence_1_to_10(prob, ortex_on=ortex_on, has_borrow=False)
@@ -968,6 +1010,7 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "off") ->
                 "si_pct_chg": None,
                 "ctb": None,
                 "avail": None,
+                "ortex_status": feat.get("ortex_status"),
                 "trigger": feat.get("trigger"),
                 "stop": feat.get("stop"),
                 "plan": trade_plan(feat),
@@ -1011,9 +1054,12 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "off") ->
         if log_fn:
             log_fn(f"ORTEX enrich: {len(finalists)} finalists selected.")
 
+        ortex_stats = {"checked": 0, "has_borrow": 0, "true_squeeze": 0, "missing_data": 0}
+
         for r in finalists:
             t = r["ticker"]
             try:
+                ortex_stats["checked"] += 1
                 si = ortex_short_interest_features(t, log_fn=log_fn) or {}
                 r["si_pct_ff"] = si.get("si_pct_ff")
                 r["si_pct_chg"] = si.get("si_pct_chg")
@@ -1030,21 +1076,44 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "off") ->
                 r["prob"] = round(prob, 4)
                 r["pressure_score"] = round(pressure, 2)
                 r["confidence"] = confidence_1_to_10(prob, ortex_on=True, has_borrow=has_borrow)
+                r["ortex_status"] = ortex_confirmation_status(feat, ortex_on=True)
+
+                if has_borrow:
+                    ortex_stats["has_borrow"] += 1
+                else:
+                    ortex_stats["missing_data"] += 1
 
                 if is_true_squeeze(feat, ortex_on=True):
                     r["bucket"] = "SQUEEZE"
                     r["subtype"] = setup_subtype(feat, label="TRUE_SQUEEZE")
+                    ortex_stats["true_squeeze"] += 1
                 else:
                     r["bucket"] = "MOMENTUM"
                     r["subtype"] = setup_subtype(feat, label="MOMENTUM")
 
                 r["plan"] = trade_plan(feat)
+                if log_fn:
+                    log_fn(f"[ORTEX] {t}: {r['ortex_status']}")
 
             except Exception as e:
                 if log_fn:
                     log_fn(f"[ERROR] ORTEX enrich failed for {t}: {type(e).__name__}: {e}")
                     log_fn(traceback.format_exc())
                 continue
+
+        if log_fn:
+            log_fn(
+                "[ORTEX] Summary: "
+                f"checked={ortex_stats['checked']} | "
+                f"borrow_data={ortex_stats['has_borrow']} | "
+                f"missing_borrow_data={ortex_stats['missing_data']} | "
+                f"true_squeeze={ortex_stats['true_squeeze']}"
+            )
+    elif log_fn:
+        if ortex_on:
+            log_fn("[ORTEX] Enabled, but no finalists were selected for ORTEX enrichment.")
+        else:
+            log_fn("[ORTEX] Not used. Turn ORTEX ON and confirm ORTEX_API_KEY is set to require short-data confirmation.")
 
     # Build SQUEEZE list
     squeezes_true = [r for r in analyzed if r.get("bucket") == "SQUEEZE"]
@@ -1066,7 +1135,13 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "off") ->
             rr["bucket"] = "SQUEEZE"
             rr["subtype"] = "squeeze watch"
             rr["confidence"] = min(int(rr.get("confidence") or 1), 7)
-            rr["plan"] = (rr.get("plan") or "") + " (Watchlist: ORTEX confirmation not present.)"
+            status = rr.get("ortex_status") or (
+                "ORTEX checked but did not confirm true squeeze pressure"
+                if ortex_on
+                else "ORTEX not used for this scan"
+            )
+            rr["ortex_status"] = status
+            rr["plan"] = (rr.get("plan") or "") + f" (Watchlist: {status}.)"
             squeezes.append(rr)
             if len(squeezes) >= TOP_N_PER_BUCKET:
                 break
