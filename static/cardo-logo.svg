@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">Cardo Praevisio logo</title>
+  <desc id="desc">Three ascending golden starbursts on a deep navy background.</desc>
+  <defs>
+    <radialGradient id="bgGlow" cx="50%" cy="45%" r="65%">
+      <stop offset="0%" stop-color="#061a35"/>
+      <stop offset="58%" stop-color="#020b1a"/>
+      <stop offset="100%" stop-color="#000611"/>
+    </radialGradient>
+    <radialGradient id="starCore" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#fff8d8"/>
+      <stop offset="38%" stop-color="#ffd66c"/>
+      <stop offset="72%" stop-color="#d89122"/>
+      <stop offset="100%" stop-color="#7f4c0f" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="halo" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffc84e" stop-opacity=".55"/>
+      <stop offset="46%" stop-color="#d88b20" stop-opacity=".16"/>
+      <stop offset="100%" stop-color="#d88b20" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="softGlow" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="9" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="1 0 0 0 1  0 .76 0 0 .62  0 0 .28 0 .12  0 0 0 .95 0" result="glow"/>
+      <feMerge>
+        <feMergeNode in="glow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <g id="star" filter="url(#softGlow)">
+      <circle cx="0" cy="0" r="78" fill="url(#halo)"/>
+      <path d="M0-94 L14-14 L94 0 L14 14 L0 94 L-14 14 L-94 0 L-14-14 Z" fill="url(#starCore)"/>
+      <path d="M0-55 L7-7 L55 0 L7 7 L0 55 L-7 7 L-55 0 L-7-7 Z" fill="#fff4bf"/>
+      <path d="M-36-36 L-7-4 L36 36 L4 7 Z" fill="#ffd66c" opacity=".9"/>
+      <path d="M36-36 L7-4 L-36 36 L-4 7 Z" fill="#ffd66c" opacity=".9"/>
+    </g>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bgGlow)"/>
+  <circle cx="502" cy="470" r="360" fill="#07172b" opacity=".22"/>
+  <use href="#star" x="350" y="570" transform="scale(.78)"/>
+  <use href="#star" x="522" y="522" transform="scale(.82)"/>
+  <use href="#star" x="690" y="466" transform="scale(.9)"/>
+</svg>
