@@ -427,7 +427,6 @@
                 <option value="yesterday">Yesterday</option>
               </select>
               <button class="btn" id="addPastBtn" type="button">Add past trade</button>
-              <button class="btn success founderOnly hidden" id="importSeedBtn" type="button">Import Ryan past trades</button>
               <span class="pill" id="noteMeta">-</span>
             </div>
             <div class="usageGrid" style="margin-bottom:14px">
@@ -952,25 +951,6 @@
     loadNotebook();
   }
 
-  async function importSeedTrades(){
-    if(!confirm("Import Ryan's 15 past trades into this journal? Running this again will skip duplicates.")){
-      return;
-    }
-    const resp = await fetch("/api/founder/past-trades/import", { method:"POST" }).catch(()=>null);
-    const data = resp ? await safeJson(resp) : { ok:false, error:"Could not reach server." };
-    if(!data.ok){
-      alert(data.error || "Import failed.");
-      return;
-    }
-    await loadNotebook();
-    alert(
-      `Past trades import complete.\n` +
-      `Inserted: ${data.inserted}\n` +
-      `Skipped duplicates: ${data.skipped}\n` +
-      `Seed P/L: ${fmtMoney(data.seed_total_pnl_dollars)}`
-    );
-  }
-
   function bind(){
     $("themeBtn").addEventListener("click", () => setTheme(state.theme === "dark" ? "light" : "dark"));
     ["loginTop","heroLogin"].forEach(id => $(id)?.addEventListener("click", () => openAuth("login")));
@@ -1003,7 +983,6 @@
     });
     $("noteView").addEventListener("change", loadNotebook);
     $("addPastBtn").addEventListener("click", addPastTrade);
-    $("importSeedBtn").addEventListener("click", importSeedTrades);
   }
 
   async function boot(){
