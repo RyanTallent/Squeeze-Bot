@@ -152,14 +152,34 @@
     .x{border:0;background:transparent;color:var(--muted);font-size:24px;cursor:pointer}
     .error{color:var(--danger);font-weight:850;font-size:13px;min-height:20px}
     .researchGrid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+    .researchForm{display:grid;grid-template-columns:1fr 1fr 1.4fr auto;gap:10px;align-items:end}
+    .researchChartWrap{position:relative;border:1px solid var(--line);border-radius:16px;background:var(--panel2);padding:12px;min-height:360px}
+    .researchChartWrap canvas{width:100%;height:320px}
+    .chartTip{
+      position:absolute;display:none;pointer-events:none;z-index:5;max-width:280px;
+      border:1px solid var(--line);border-radius:12px;background:var(--panel);box-shadow:var(--shadow);
+      padding:10px;font-size:12px;line-height:1.45;color:var(--text);
+    }
+    .metricGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:12px 0}
+    .metricBox{border:1px solid var(--line);background:var(--panel2);border-radius:14px;padding:12px}
+    .metricBox span{display:block;color:var(--muted);font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.08em}
+    .metricBox b{display:block;margin-top:4px;font-size:18px}
+    .reportSection{border:1px solid var(--line);border-radius:14px;background:var(--panel2);padding:14px;margin-top:10px}
+    .reportSection p{margin:0}
+    .portfolioForm{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+    details.explainer{border:1px solid var(--line);border-radius:12px;background:var(--panel2);padding:10px;margin-top:8px}
+    details.explainer summary{cursor:pointer;font-weight:900}
     .fineprint{font-size:12px;color:var(--muted);line-height:1.55}
     @media (max-width:1050px){
       .hero,.dashTop,.appLayout{grid-template-columns:1fr}
       .sidebar{position:static}
       .pricing,.grid4{grid-template-columns:repeat(2,1fr)}
+      .researchForm,.portfolioForm{grid-template-columns:1fr 1fr}
+      .metricGrid{grid-template-columns:1fr 1fr}
     }
     @media (max-width:760px){
       .grid3,.grid4,.pricing,.statGrid,.usageGrid,.researchGrid{grid-template-columns:1fr}
+      .researchForm,.portfolioForm,.metricGrid{grid-template-columns:1fr}
       .topbarInner{align-items:flex-start;flex-direction:column}
       .nav{width:100%}
     }
@@ -395,25 +415,101 @@
         <div class="page" id="pageResearch">
           <div class="card">
             <div class="eyebrow">Research suite</div>
-            <h2>Core research divisions.</h2>
+            <h2>Institutional research operating system.</h2>
+            <p>Start with the four research divisions, then run an any-ticker research workspace with price data, hover metrics, report modes, explanations, and portfolio construction.</p>
             <div class="researchGrid">
               <div class="card">
                 <h3>Fundamental Research Division</h3>
-                <p>DCF models, revenue decomposition, earnings quality, margin trends, balance-sheet stress, liquidity, and sector benchmarking.</p>
+                <p>DCF models, revenue decomposition, earnings quality, free cash flow, margin trends, guidance revisions, balance-sheet stress, liquidity, scenario forecasting, and sector benchmarking.</p>
               </div>
               <div class="card">
                 <h3>Alternative Data & Intelligence Division</h3>
-                <p>Options flow, dark pools, insider accumulation, sentiment, economic releases, transaction trends, shipping indicators, and liquidity flows.</p>
+                <p>Options flow, dark pools, insider accumulation, macro correlation mapping, sentiment, economic releases, transaction trends, freight/shipping indicators, and liquidity flows.</p>
               </div>
               <div class="card">
                 <h3>Quantitative Systems Division</h3>
-                <p>Factor models, relative strength, liquidity scoring, anomaly detection, regime detection, squeeze expansion, and breakout probability.</p>
+                <p>Factor models, momentum algorithms, relative strength, volatility, liquidity scoring, market regime detection, signal generation, anomaly detection, and AI-assisted pattern recognition.</p>
               </div>
               <div class="card">
                 <h3>Risk & Exposure Intelligence Division</h3>
-                <p>Drawdown probability, stress testing, correlation, beta, factor, sector, volatility, overnight, and derivatives exposure.</p>
+                <p>Drawdown probability, stress testing, correlation, sector concentration, beta, factor exposure, macro sensitivity, liquidity risk, event risk, tail risk, and derivatives exposure.</p>
               </div>
             </div>
+          </div>
+
+          <div class="card">
+            <div class="eyebrow">Ticker research workspace</div>
+            <h2>Generate research for any ticker.</h2>
+            <div class="researchForm">
+              <div class="field">
+                <label>Ticker</label>
+                <input id="researchTicker" placeholder="AAPL, NVDA, TSLA..." />
+              </div>
+              <div class="field">
+                <label>Range</label>
+                <select id="researchRange">
+                  <option value="3m">3 months</option>
+                  <option value="6m">6 months</option>
+                  <option value="1y" selected>1 year</option>
+                  <option value="2y">2 years</option>
+                  <option value="5y">5 years</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>Report type</label>
+                <select id="researchReportType">
+                  <option value="full">Full institutional report</option>
+                  <option value="quick">Quick research brief</option>
+                  <option value="trading">Trading-focused report</option>
+                  <option value="investor">Investor-focused report</option>
+                </select>
+              </div>
+              <button class="btn primary" id="researchRunBtn" type="button">Generate</button>
+            </div>
+            <div class="field">
+              <label>What are you looking for?</label>
+              <textarea id="researchObjective" placeholder="Example: I want longer-term growth ideas with manageable risk and strong trend confirmation."></textarea>
+            </div>
+
+            <div class="metricGrid" id="researchMetrics"></div>
+            <div class="researchChartWrap">
+              <canvas id="researchChart" width="1100" height="360"></canvas>
+              <div class="chartTip" id="researchChartTip"></div>
+            </div>
+            <div class="fineprint" id="researchStatus">Enter any ticker and generate research.</div>
+            <div id="researchReport"></div>
+
+            <details class="explainer" open>
+              <summary>Metric explanations</summary>
+              <div id="researchExplain"></div>
+            </details>
+          </div>
+
+          <div class="card">
+            <div class="eyebrow">Portfolio construction</div>
+            <h2>Personalized allocation planner.</h2>
+            <p>Describe the objective and constraints. The planner turns capital, risk, horizon, sectors, cash reserve, and current holdings into an allocation framework.</p>
+            <div class="portfolioForm">
+              <div class="field"><label>Total capital ($)</label><input id="pfCapital" type="number" min="0" step="1" placeholder="10000" /></div>
+              <div class="field"><label>Time horizon</label><input id="pfHorizon" placeholder="6 months, 3 years, retirement..." /></div>
+              <div class="field"><label>Risk tolerance</label><select id="pfRisk"><option value="conservative">Conservative</option><option value="moderate" selected>Moderate</option><option value="aggressive">Aggressive</option></select></div>
+              <div class="field"><label>Prefer sectors/themes</label><input id="pfPrefer" placeholder="AI, healthcare, energy..." /></div>
+              <div class="field"><label>Avoid sectors/themes</label><input id="pfAvoid" placeholder="China ADRs, biotech, banks..." /></div>
+              <div class="field"><label>Max position size (%)</label><input id="pfMaxPosition" type="number" min="1" max="50" value="10" /></div>
+              <div class="field"><label>Cash reserve (%)</label><input id="pfCashReserve" type="number" min="0" max="80" value="10" /></div>
+              <div class="field"><label>Trading vs investing</label><select id="pfPreference"><option value="mixed" selected>Mixed</option><option value="short-term trading">Short-term trading</option><option value="long-term investing">Long-term investing</option></select></div>
+              <div class="field"><label>Current holdings</label><input id="pfHoldings" placeholder="AAPL 20%, cash 30%, ..." /></div>
+            </div>
+            <div class="field">
+              <label>Objective in plain English</label>
+              <textarea id="pfObjective" placeholder="Tell the system what kind of portfolio you want and what you are trying to accomplish."></textarea>
+            </div>
+            <button class="btn primary" id="pfRunBtn" type="button">Build allocation plan</button>
+            <div id="portfolioPlan"></div>
+            <details class="explainer">
+              <summary>What these portfolio inputs mean</summary>
+              <p><b>Total capital</b> is the amount available to allocate. <b>Time horizon</b> is how long you expect to hold or evaluate. <b>Risk tolerance</b> controls concentration and volatility tolerance. <b>Max position size</b> limits single-name exposure. <b>Cash reserve</b> keeps dry powder. <b>Current holdings</b> helps identify concentration and overlap.</p>
+            </details>
           </div>
         </div>
 
@@ -505,7 +601,8 @@
     es:null,
     showing:"SQUEEZE",
     scanned:null,
-    results:{ SQUEEZE:[], MOMENTUM:[] }
+    results:{ SQUEEZE:[], MOMENTUM:[] },
+    researchProfile:null
   };
 
   function setTheme(theme){
@@ -704,6 +801,167 @@
   function fmtMoney(x){
     const n = Number(x);
     return Number.isFinite(n) ? `${n >= 0 ? "+" : ""}${n.toFixed(2)}` : "-";
+  }
+  function fmtDollar(x){
+    const n = Number(x);
+    return Number.isFinite(n) ? `$${n.toLocaleString(undefined,{maximumFractionDigits:2})}` : "-";
+  }
+
+  function metricCard(label, value){
+    return `<div class="metricBox"><span>${label}</span><b>${value}</b></div>`;
+  }
+
+  async function loadResearch(){
+    if(!state.user){ openAuth("login"); return; }
+    const ticker = ($("researchTicker").value || "").trim().toUpperCase();
+    if(!ticker){ alert("Enter a ticker first."); return; }
+    const range = $("researchRange").value || "1y";
+    const reportType = $("researchReportType").value || "full";
+    const objective = $("researchObjective").value || "";
+    $("researchStatus").textContent = "Loading research data...";
+    $("researchReport").innerHTML = "";
+
+    const profileResp = await fetch(`/api/research/${encodeURIComponent(ticker)}?range=${encodeURIComponent(range)}`).catch(()=>null);
+    const profile = profileResp ? await safeJson(profileResp) : {ok:false,error:"Could not reach server."};
+    if(!profile.ok){
+      $("researchStatus").textContent = profile.error || "Research failed.";
+      return;
+    }
+    state.researchProfile = profile;
+    renderResearch(profile);
+
+    const reportResp = await fetch("/api/research/report", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({ticker, range, report_type:reportType, objective})
+    }).catch(()=>null);
+    const report = reportResp ? await safeJson(reportResp) : {ok:false,error:"Could not generate report."};
+    renderResearchReport(report.ok ? report.report : null, report.error);
+  }
+
+  function renderResearch(profile){
+    const m = profile.metrics || {};
+    $("researchStatus").textContent = `${profile.ticker} research loaded. Hover the chart for date-level data.`;
+    $("researchMetrics").innerHTML = [
+      metricCard("Latest close", fmtDollar(m.latest_close)),
+      metricCard("Period return", fmtPct(m.period_return)),
+      metricCard("Volatility", fmtPct(m.annualized_volatility)),
+      metricCard("Max drawdown", fmtPct(m.max_drawdown)),
+      metricCard("20D average", fmtDollar(m.sma20)),
+      metricCard("50D average", fmtDollar(m.sma50)),
+      metricCard("200D average", fmtDollar(m.sma200)),
+      metricCard("Rel strength vs SPY", fmtPct(m.relative_strength_vs_spy))
+    ].join("");
+    $("researchExplain").innerHTML = Object.entries(profile.explanations || {}).map(([k,v]) => (
+      `<details class="explainer"><summary>${k.replaceAll("_"," ")}</summary><p>${v}</p></details>`
+    )).join("");
+    drawResearchChart();
+  }
+
+  function renderResearchReport(report, err){
+    if(!report){
+      $("researchReport").innerHTML = `<div class="reportSection"><b>Report error</b><p>${err || "Could not generate report."}</p></div>`;
+      return;
+    }
+    $("researchReport").innerHTML = `
+      <div class="reportSection"><h3>${report.type || "Research"} report</h3></div>
+      ${(report.sections || []).map(s => `<div class="reportSection"><h3>${s.title}</h3><p>${s.body}</p></div>`).join("")}
+      <details class="explainer" open><summary>Plain-English explanation</summary><ul>${(report.plain_english || []).map(x => `<li>${x}</li>`).join("")}</ul></details>
+    `;
+  }
+
+  function drawResearchChart(){
+    const c = $("researchChart");
+    if(!c || !state.researchProfile) return;
+    const ctx = c.getContext("2d");
+    const data = state.researchProfile.chart || [];
+    ctx.clearRect(0,0,c.width,c.height);
+    if(data.length < 2) return;
+    const pad = 34;
+    const closes = data.map(d => Number(d.close)).filter(Number.isFinite);
+    const min = Math.min(...closes);
+    const max = Math.max(...closes);
+    const span = (max - min) || 1;
+    const X = i => pad + (i/(data.length-1))*(c.width-pad*2);
+    const Y = v => pad + (1 - ((v-min)/span))*(c.height-pad*2);
+    ctx.strokeStyle = "rgba(155,122,47,.22)";
+    ctx.lineWidth = 1;
+    for(let i=0;i<5;i++){
+      const y = pad + i*((c.height-pad*2)/4);
+      ctx.beginPath(); ctx.moveTo(pad,y); ctx.lineTo(c.width-pad,y); ctx.stroke();
+    }
+    ctx.strokeStyle = "rgba(155,122,47,.95)";
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    data.forEach((d,i) => {
+      const x = X(i), y = Y(Number(d.close));
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+    ctx.fillStyle = "rgba(31,122,85,.9)";
+    const last = data[data.length-1];
+    ctx.beginPath(); ctx.arc(X(data.length-1), Y(Number(last.close)), 4, 0, Math.PI*2); ctx.fill();
+  }
+
+  function researchPointFromEvent(ev){
+    if(!state.researchProfile) return null;
+    const c = $("researchChart");
+    const rect = c.getBoundingClientRect();
+    const data = state.researchProfile.chart || [];
+    if(!data.length) return null;
+    const x = ev.clientX - rect.left;
+    const idx = Math.max(0, Math.min(data.length-1, Math.round((x / rect.width) * (data.length-1))));
+    return {point:data[idx], left:ev.clientX - rect.left, top:ev.clientY - rect.top};
+  }
+
+  function showResearchTip(ev){
+    const hit = researchPointFromEvent(ev);
+    const tip = $("researchChartTip");
+    if(!hit){ tip.style.display = "none"; return; }
+    const p = hit.point;
+    tip.innerHTML = `
+      <b>${p.date}</b><br>
+      Open ${fmtDollar(p.open)} | High ${fmtDollar(p.high)}<br>
+      Low ${fmtDollar(p.low)} | Close ${fmtDollar(p.close)}<br>
+      Volume ${fmtInt(p.volume)} | Change ${fmtPct(p.pct_change)}<br>
+      20D ${fmtDollar(p.sma20)} | 50D ${fmtDollar(p.sma50)} | 200D ${fmtDollar(p.sma200)}<br>
+      Drawdown ${fmtPct(p.drawdown)}<br>
+      Note: ${p.note || "-"}
+    `;
+    tip.style.display = "block";
+    tip.style.left = Math.min(hit.left + 14, $("researchChart").clientWidth - 295) + "px";
+    tip.style.top = Math.max(10, hit.top - 20) + "px";
+  }
+
+  async function buildPortfolioPlan(){
+    if(!state.user){ openAuth("login"); return; }
+    const payload = {
+      capital:$("pfCapital").value,
+      time_horizon:$("pfHorizon").value,
+      risk_tolerance:$("pfRisk").value,
+      sectors_prefer:$("pfPrefer").value,
+      sectors_avoid:$("pfAvoid").value,
+      max_position_pct:$("pfMaxPosition").value,
+      cash_reserve_pct:$("pfCashReserve").value,
+      trading_preference:$("pfPreference").value,
+      current_holdings:$("pfHoldings").value,
+      objective:$("pfObjective").value
+    };
+    $("portfolioPlan").innerHTML = `<div class="reportSection">Building allocation plan...</div>`;
+    const resp = await fetch("/api/research/portfolio", {
+      method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload)
+    }).catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false,error:"Could not reach server."};
+    if(!data.ok){
+      $("portfolioPlan").innerHTML = `<div class="reportSection"><b>Error</b><p>${data.error || "Portfolio plan failed."}</p></div>`;
+      return;
+    }
+    $("portfolioPlan").innerHTML = `
+      <div class="reportSection"><h3>Allocation framework</h3><p>Deployable capital: ${fmtDollar(data.deployable_capital)} | Max position: ${fmtDollar(data.max_position_dollars)}</p></div>
+      ${(data.buckets || []).map(b => `<div class="reportSection"><h3>${b.bucket}</h3><p>${fmtPct(b.weight)} / ${fmtDollar(b.dollars)}</p></div>`).join("")}
+      <details class="explainer" open><summary>Guardrails</summary><ul>${(data.guardrails || []).map(x => `<li>${x}</li>`).join("")}</ul></details>
+      <details class="explainer"><summary>Next steps</summary><ul>${(data.next_steps || []).map(x => `<li>${x}</li>`).join("")}</ul></details>
+    `;
   }
 
   function log(line){
@@ -983,6 +1241,12 @@
     });
     $("noteView").addEventListener("change", loadNotebook);
     $("addPastBtn").addEventListener("click", addPastTrade);
+    $("researchRunBtn").addEventListener("click", loadResearch);
+    $("researchTicker").addEventListener("keydown", e => { if(e.key === "Enter") loadResearch(); });
+    $("researchChart").addEventListener("mousemove", showResearchTip);
+    $("researchChart").addEventListener("mouseleave", () => { $("researchChartTip").style.display = "none"; });
+    $("pfRunBtn").addEventListener("click", buildPortfolioPlan);
+    window.addEventListener("resize", drawResearchChart);
   }
 
   async function boot(){
