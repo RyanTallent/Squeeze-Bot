@@ -9,6 +9,7 @@ import os
 import re
 import secrets
 import sqlite3
+import statistics
 import threading
 import time
 import traceback
@@ -1998,6 +1999,375 @@ def _sse_response(gen_fn: Callable[[], Generator[str, None, None]]):
     from starlette.responses import StreamingResponse
 
     return StreamingResponse(gen_fn(), media_type="text/event-stream")
+
+
+# -------------------- Research APIs/helpers --------------------
+RESEARCH_EXPLANATIONS = {
+    "open": "Opening price is where the stock started trading for that candle/day.",
+    "high": "High is the highest traded price during the candle/day.",
+    "low": "Low is the lowest traded price during the candle/day.",
+    "close": "Close is the final traded price for the candle/day and is usually the main reference price.",
+    "volume": "Volume is how many shares traded. Rising volume can confirm stronger institutional interest.",
+    "pct_change": "Percent change shows how much the stock moved versus the previous close.",
+    "sma20": "20-day moving average is a short-term trend line. Price above it often signals near-term strength.",
+    "sma50": "50-day moving average is an intermediate trend line watched by many funds.",
+    "sma200": "200-day moving average is a long-term trend line. Price above it usually means the long-term trend is healthier.",
+    "volatility": "Volatility estimates how much the stock tends to move. Higher volatility means larger opportunity and larger risk.",
+    "drawdown": "Drawdown measures how far price has fallen from a prior high. It helps identify risk and damage.",
+    "relative_strength": "Relative strength compares this ticker's return with SPY over the same period.",
+}
+
+
+def _research_range_days(range_name: str) -> int:
+    ranges = {"3m": 120, "6m": 210, "1y": 420, "2y": 760, "5y": 1900}
+    return ranges.get((range_name or "1y").lower(), 420)
+
+
+def _research_daily_aggs(ticker: str, range_name: str = "1y") -> list[dict[str, Any]]:
+    end_dt = datetime.now(timezone.utc).date()
+    start_dt = end_dt - timedelta(days=_research_range_days(range_name))
+    url = (
+        f"https://api.polygon.io/v2/aggs/ticker/{ticker.upper().strip()}"
+        f"/range/1/day/{start_dt.isoformat()}/{end_dt.isoformat()}"
+    )
+    data = scanner.polygon_get(url, {"adjusted": "true", "sort": "asc", "limit": 50000})
+    return data.get("results", []) or []
+
+
+def _sma(values: list[float], idx: int, window: int) -> float | None:
+    if idx + 1 < window:
+        return None
+    chunk = values[idx + 1 - window : idx + 1]
+    return sum(chunk) / len(chunk)
+
+
+def _max_drawdown(closes: list[float]) -> float | None:
+    if not closes:
+        return None
+    peak = closes[0]
+    worst = 0.0
+    for c in closes:
+        peak = max(peak, c)
+        if peak > 0:
+            worst = min(worst, (c - peak) / peak)
+    return worst
+
+
+def _annualized_volatility(returns: list[float]) -> float | None:
+    clean = [r for r in returns if r is not None]
+    if len(clean) < 2:
+        return None
+    return statistics.stdev(clean) * (252**0.5)
+
+
+def _fmt_pct(x: float | None) -> str:
+    if x is None:
+        return "n/a"
+    return f"{x * 100:.1f}%"
+
+
+def _fmt_money(x: float | None) -> str:
+    if x is None:
+        return "n/a"
+    return f"${x:,.2f}"
+
+
+def _research_note(close: float, sma20: float | None, sma50: float | None, sma200: float | None, pct_change: float | None) -> str:
+    notes = []
+    if pct_change is not None:
+        if pct_change >= 0.05:
+            notes.append("large upside day")
+        elif pct_change <= -0.05:
+            notes.append("large downside day")
+    if sma20 is not None and close >= sma20:
+        notes.append("above 20D trend")
+    if sma50 is not None and close >= sma50:
+        notes.append("above 50D trend")
+    if sma200 is not None and close >= sma200:
+        notes.append("above 200D trend")
+    return "; ".join(notes) if notes else "neutral candle"
+
+
+def build_research_profile(ticker: str, range_name: str = "1y") -> dict[str, Any]:
+    ticker = (ticker or "").upper().strip()
+    if not re.match(r"^[A-Z0-9.\-]{1,12}$", ticker):
+        raise ValueError("Enter a valid ticker symbol.")
+
+    bars = _research_daily_aggs(ticker, range_name)
+    if len(bars) < 2:
+        raise ValueError("Not enough price history returned for this ticker.")
+
+    closes = [float(b["c"]) for b in bars]
+    returns: list[float] = []
+    chart: list[dict[str, Any]] = []
+    running_high = closes[0]
+
+    for i, b in enumerate(bars):
+        close = float(b["c"])
+        prev = closes[i - 1] if i > 0 else None
+        pct_change = ((close - prev) / prev) if prev and prev > 0 else None
+        if pct_change is not None:
+            returns.append(pct_change)
+        running_high = max(running_high, close)
+        drawdown = ((close - running_high) / running_high) if running_high > 0 else None
+        sma20 = _sma(closes, i, 20)
+        sma50 = _sma(closes, i, 50)
+        sma200 = _sma(closes, i, 200)
+        dt = datetime.fromtimestamp(int(b["t"]) / 1000, tz=timezone.utc).date().isoformat()
+        chart.append(
+            {
+                "date": dt,
+                "open": float(b["o"]),
+                "high": float(b["h"]),
+                "low": float(b["l"]),
+                "close": close,
+                "volume": float(b.get("v") or 0),
+                "pct_change": pct_change,
+                "sma20": sma20,
+                "sma50": sma50,
+                "sma200": sma200,
+                "drawdown": drawdown,
+                "note": _research_note(close, sma20, sma50, sma200, pct_change),
+            }
+        )
+
+    latest = chart[-1]
+    first_close = closes[0]
+    latest_close = closes[-1]
+    period_return = ((latest_close - first_close) / first_close) if first_close > 0 else None
+    avg_volume_20 = sum(float(b.get("v") or 0) for b in bars[-20:]) / min(len(bars), 20)
+    high_52w = max(closes[-252:]) if closes else None
+    low_52w = min(closes[-252:]) if closes else None
+
+    relative_strength = None
+    try:
+        spy = _research_daily_aggs("SPY", range_name)
+        if len(spy) >= 2:
+            spy_ret = (float(spy[-1]["c"]) - float(spy[0]["c"])) / float(spy[0]["c"])
+            if period_return is not None:
+                relative_strength = period_return - spy_ret
+    except Exception:
+        relative_strength = None
+
+    metrics = {
+        "ticker": ticker,
+        "range": range_name,
+        "latest_close": latest_close,
+        "period_return": period_return,
+        "latest_pct_change": latest.get("pct_change"),
+        "sma20": latest.get("sma20"),
+        "sma50": latest.get("sma50"),
+        "sma200": latest.get("sma200"),
+        "annualized_volatility": _annualized_volatility(returns),
+        "max_drawdown": _max_drawdown(closes),
+        "latest_drawdown": latest.get("drawdown"),
+        "avg_volume_20": avg_volume_20,
+        "high_52w": high_52w,
+        "low_52w": low_52w,
+        "relative_strength_vs_spy": relative_strength,
+    }
+
+    return {
+        "ok": True,
+        "ticker": ticker,
+        "range": range_name,
+        "chart": chart,
+        "metrics": metrics,
+        "explanations": RESEARCH_EXPLANATIONS,
+    }
+
+
+def generate_research_report(profile: dict[str, Any], report_type: str, objective: str = "") -> dict[str, Any]:
+    m = profile["metrics"]
+    ticker = profile["ticker"]
+    report_type = (report_type or "full").lower()
+    objective = (objective or "User did not provide a specific objective.").strip()
+
+    trend = "constructive" if (m.get("sma50") and m["latest_close"] >= m["sma50"]) else "fragile"
+    long_trend = "above" if (m.get("sma200") and m["latest_close"] >= m["sma200"]) else "below or unavailable versus"
+    vol = m.get("annualized_volatility")
+    dd = m.get("max_drawdown")
+    rs = m.get("relative_strength_vs_spy")
+
+    sections = [
+        {
+            "title": "Executive view",
+            "body": (
+                f"{ticker} is trading at {_fmt_money(m.get('latest_close'))}. "
+                f"The period return is {_fmt_pct(m.get('period_return'))}, with annualized volatility near {_fmt_pct(vol)}. "
+                f"The intermediate trend currently looks {trend}, and price is {long_trend} the 200-day moving average."
+            ),
+        },
+        {
+            "title": "User objective fit",
+            "body": f"Stated objective: {objective} The research lens should compare expected upside, volatility, liquidity, and drawdown tolerance against that objective.",
+        },
+        {
+            "title": "Quantitative systems read",
+            "body": (
+                f"Relative strength versus SPY is {_fmt_pct(rs)} over the selected range. "
+                f"Maximum drawdown in the range is {_fmt_pct(dd)}. "
+                "A stronger quant profile would combine positive relative strength, price above the 50D/200D averages, controlled drawdown, and improving volume."
+            ),
+        },
+        {
+            "title": "Risk and exposure notes",
+            "body": (
+                f"Average 20-day volume is {m.get('avg_volume_20', 0):,.0f} shares. "
+                "Position sizing should account for volatility, liquidity, gap risk, and whether this name increases concentration in an existing sector/theme."
+            ),
+        },
+    ]
+
+    if report_type == "quick":
+        sections = sections[:3]
+    elif report_type == "trading":
+        sections.append(
+            {
+                "title": "Trading-focused interpretation",
+                "body": "For active trading, prioritize current trend alignment, volume confirmation, stop placement below a defensible technical level, and avoiding oversized exposure into high volatility.",
+            }
+        )
+    elif report_type == "investor":
+        sections.append(
+            {
+                "title": "Investor-focused interpretation",
+                "body": "For longer-term investing, this price/technical profile should be paired with fundamental work: revenue durability, margin quality, free cash flow, balance sheet strength, valuation, and sector comparison.",
+            }
+        )
+    else:
+        sections.extend(
+            [
+                {
+                    "title": "Fundamental research checklist",
+                    "body": "Next data layer: DCF assumptions, revenue decomposition, earnings quality, free cash flow, margin trend, balance sheet stress, guidance revisions, and sector benchmarking.",
+                },
+                {
+                    "title": "Alternative data checklist",
+                    "body": "Next data layer: options flow, dark-pool activity, insider accumulation, sentiment, macro correlations, volatility flow, supply-chain signals, and liquidity flows.",
+                },
+            ]
+        )
+
+    plain_english = [
+        "Moving averages help show whether buyers are supporting price over short, medium, and long timeframes.",
+        "Volatility tells you how violently the stock can move; high volatility can help returns but also increases position-size risk.",
+        "Drawdown tells you how much damage happened from a prior high; deep drawdowns need smaller sizing or stronger thesis evidence.",
+        "Relative strength shows whether this stock is outperforming or lagging the broad market.",
+    ]
+
+    return {"type": report_type, "sections": sections, "plain_english": plain_english}
+
+
+def build_portfolio_plan(payload: dict[str, Any]) -> dict[str, Any]:
+    capital = float(payload.get("capital") or 0)
+    if capital <= 0:
+        raise ValueError("Capital must be greater than 0.")
+    objective = (payload.get("objective") or "").strip() or "No objective provided."
+    risk = (payload.get("risk_tolerance") or "moderate").lower()
+    horizon = (payload.get("time_horizon") or "").strip() or "Not specified"
+    max_position_pct = max(1.0, min(float(payload.get("max_position_pct") or 10), 50.0))
+    cash_reserve_pct = max(0.0, min(float(payload.get("cash_reserve_pct") or 10), 80.0))
+    preference = (payload.get("trading_preference") or "mixed").lower()
+    prefer = (payload.get("sectors_prefer") or "").strip()
+    avoid = (payload.get("sectors_avoid") or "").strip()
+    holdings = (payload.get("current_holdings") or "").strip()
+
+    cash = capital * (cash_reserve_pct / 100)
+    deployable = capital - cash
+    max_position = capital * (max_position_pct / 100)
+
+    if risk in ("aggressive", "high"):
+        core, tactical, alternatives = 0.45, 0.40, 0.15
+    elif risk in ("conservative", "low"):
+        core, tactical, alternatives = 0.70, 0.15, 0.15
+    else:
+        core, tactical, alternatives = 0.58, 0.27, 0.15
+
+    if "trading" in preference or "short" in preference:
+        tactical += 0.10
+        core -= 0.10
+    elif "invest" in preference or "long" in preference:
+        core += 0.10
+        tactical -= 0.10
+
+    buckets = [
+        {"bucket": "Core compounders / broad exposure", "weight": core, "dollars": deployable * core},
+        {"bucket": "Active research ideas / tactical opportunities", "weight": tactical, "dollars": deployable * tactical},
+        {"bucket": "Hedges, cash-like assets, or diversifiers", "weight": alternatives, "dollars": deployable * alternatives},
+        {"bucket": "Cash reserve", "weight": cash_reserve_pct / 100, "dollars": cash},
+    ]
+
+    guardrails = [
+        f"Maximum single position: {max_position_pct:.1f}% or about {_fmt_money(max_position)}.",
+        f"Cash reserve target: {cash_reserve_pct:.1f}% or about {_fmt_money(cash)}.",
+        "Scale into positions rather than deploying all capital at one price when volatility is elevated.",
+        "Review sector and factor concentration before adding new names.",
+    ]
+    if prefer:
+        guardrails.append(f"Preferred sectors/themes to prioritize: {prefer}.")
+    if avoid:
+        guardrails.append(f"Sectors/themes to avoid or cap: {avoid}.")
+    if holdings:
+        guardrails.append(f"Current holdings to incorporate into exposure review: {holdings}.")
+
+    return {
+        "ok": True,
+        "capital": capital,
+        "objective": objective,
+        "time_horizon": horizon,
+        "risk_tolerance": risk,
+        "trading_preference": preference,
+        "deployable_capital": deployable,
+        "max_position_dollars": max_position,
+        "buckets": buckets,
+        "guardrails": guardrails,
+        "next_steps": [
+            "Generate research reports for candidate tickers.",
+            "Compare each candidate against the objective, risk tolerance, and max-position rule.",
+            "Build a watchlist ranked by thesis strength, relative strength, liquidity, volatility, and drawdown risk.",
+        ],
+    }
+
+
+@app.get("/api/research/{ticker}")
+def api_research_ticker(ticker: str, request: Request, range: str = "1y"):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    try:
+        return build_research_profile(ticker, range)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=500)
+
+
+@app.post("/api/research/report")
+async def api_research_report(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    payload = await request.json()
+    ticker = payload.get("ticker") or ""
+    range_name = payload.get("range") or "1y"
+    report_type = payload.get("report_type") or "full"
+    objective = payload.get("objective") or ""
+    try:
+        profile = build_research_profile(ticker, range_name)
+        return {"ok": True, "report": generate_research_report(profile, report_type, objective)}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=500)
+
+
+@app.post("/api/research/portfolio")
+async def api_research_portfolio(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    payload = await request.json()
+    try:
+        return build_portfolio_plan(payload)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=400)
 
 
 # -------------------- Auth APIs --------------------
