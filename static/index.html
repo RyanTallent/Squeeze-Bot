@@ -452,8 +452,35 @@
             </div>
           </div>
 
+          <div class="card researchPanel" id="researchPanelPortfolio">
+            <div class="eyebrow">Portfolio construction</div>
+            <h2>Personalized allocation planner.</h2>
+            <p>Describe the objective and constraints. The planner turns capital, risk, horizon, sectors, cash reserve, and current holdings into an allocation framework.</p>
+            <div class="portfolioForm">
+              <div class="field"><label>Total capital ($)</label><input id="pfCapital" type="number" min="0" step="1" placeholder="10000" /></div>
+              <div class="field"><label>Time horizon</label><input id="pfHorizon" placeholder="6 months, 3 years, retirement..." /></div>
+              <div class="field"><label>Risk tolerance</label><select id="pfRisk"><option value="conservative">Conservative</option><option value="moderate" selected>Moderate</option><option value="aggressive">Aggressive</option></select></div>
+              <div class="field"><label>Prefer sectors/themes</label><input id="pfPrefer" placeholder="AI, healthcare, energy..." /></div>
+              <div class="field"><label>Avoid sectors/themes</label><input id="pfAvoid" placeholder="China ADRs, biotech, banks..." /></div>
+              <div class="field"><label>Max position size (%)</label><input id="pfMaxPosition" type="number" min="1" max="50" value="10" /></div>
+              <div class="field"><label>Cash reserve (%)</label><input id="pfCashReserve" type="number" min="0" max="80" value="10" /></div>
+              <div class="field"><label>Trading vs investing</label><select id="pfPreference"><option value="mixed" selected>Mixed</option><option value="short-term trading">Short-term trading</option><option value="long-term investing">Long-term investing</option></select></div>
+              <div class="field"><label>Current holdings</label><input id="pfHoldings" placeholder="AAPL 20%, cash 30%, ..." /></div>
+            </div>
+            <div class="field">
+              <label>Objective in plain English</label>
+              <textarea id="pfObjective" placeholder="Tell the system what kind of portfolio you want and what you are trying to accomplish."></textarea>
+            </div>
+            <button class="btn primary" id="pfRunBtn" type="button">Build allocation plan</button>
+            <div id="portfolioPlan"></div>
+            <details class="explainer">
+              <summary>What these portfolio inputs mean</summary>
+              <p><b>Total capital</b> is the amount available to allocate. <b>Time horizon</b> is how long you expect to hold or evaluate. <b>Risk tolerance</b> controls concentration and volatility tolerance. <b>Max position size</b> limits single-name exposure. <b>Cash reserve</b> keeps dry powder. <b>Current holdings</b> helps identify concentration and overlap.</p>
+            </details>
+          </div>
+
           <div class="card researchPanel" id="researchPanelStock">
-            <div class="eyebrow">Ticker research workspace</div>
+            <div class="eyebrow">Stock analysis</div>
             <h2>Generate research for any ticker.</h2>
             <div class="researchForm">
               <div class="field">
@@ -497,33 +524,6 @@
             <details class="explainer" open>
               <summary>Metric explanations</summary>
               <div id="researchExplain"></div>
-            </details>
-          </div>
-
-          <div class="card researchPanel" id="researchPanelPortfolio">
-            <div class="eyebrow">Portfolio construction</div>
-            <h2>Personalized allocation planner.</h2>
-            <p>Describe the objective and constraints. The planner turns capital, risk, horizon, sectors, cash reserve, and current holdings into an allocation framework.</p>
-            <div class="portfolioForm">
-              <div class="field"><label>Total capital ($)</label><input id="pfCapital" type="number" min="0" step="1" placeholder="10000" /></div>
-              <div class="field"><label>Time horizon</label><input id="pfHorizon" placeholder="6 months, 3 years, retirement..." /></div>
-              <div class="field"><label>Risk tolerance</label><select id="pfRisk"><option value="conservative">Conservative</option><option value="moderate" selected>Moderate</option><option value="aggressive">Aggressive</option></select></div>
-              <div class="field"><label>Prefer sectors/themes</label><input id="pfPrefer" placeholder="AI, healthcare, energy..." /></div>
-              <div class="field"><label>Avoid sectors/themes</label><input id="pfAvoid" placeholder="China ADRs, biotech, banks..." /></div>
-              <div class="field"><label>Max position size (%)</label><input id="pfMaxPosition" type="number" min="1" max="50" value="10" /></div>
-              <div class="field"><label>Cash reserve (%)</label><input id="pfCashReserve" type="number" min="0" max="80" value="10" /></div>
-              <div class="field"><label>Trading vs investing</label><select id="pfPreference"><option value="mixed" selected>Mixed</option><option value="short-term trading">Short-term trading</option><option value="long-term investing">Long-term investing</option></select></div>
-              <div class="field"><label>Current holdings</label><input id="pfHoldings" placeholder="AAPL 20%, cash 30%, ..." /></div>
-            </div>
-            <div class="field">
-              <label>Objective in plain English</label>
-              <textarea id="pfObjective" placeholder="Tell the system what kind of portfolio you want and what you are trying to accomplish."></textarea>
-            </div>
-            <button class="btn primary" id="pfRunBtn" type="button">Build allocation plan</button>
-            <div id="portfolioPlan"></div>
-            <details class="explainer">
-              <summary>What these portfolio inputs mean</summary>
-              <p><b>Total capital</b> is the amount available to allocate. <b>Time horizon</b> is how long you expect to hold or evaluate. <b>Risk tolerance</b> controls concentration and volatility tolerance. <b>Max position size</b> limits single-name exposure. <b>Cash reserve</b> keeps dry powder. <b>Current holdings</b> helps identify concentration and overlap.</p>
             </details>
           </div>
         </div>
