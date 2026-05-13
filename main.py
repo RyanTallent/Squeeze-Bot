@@ -1388,6 +1388,15 @@ def import_past_trade_seed(user_id: str) -> dict[str, Any]:
     }
 
 
+def maybe_import_founder_past_trades(user: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not user or (user.get("plan_code") or "") != "founder":
+        return None
+    try:
+        return import_past_trade_seed(user["id"])
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:200]}
+
+
 def trade_close(trade_id: str, exit_price: float, exit_time_ct: str, user_id: str | None = None):
     if using_postgres():
         with pg_conn() as conn:
@@ -2002,11 +2011,13 @@ def api_auth_me(request: Request):
     user = current_user_from_request(request)
     if not user:
         return {"ok": True, "user": None, "usage": None, "plans": public_plans()}
+    past_trades_seed = maybe_import_founder_past_trades(user)
     return {
         "ok": True,
         "user": _public_user(user),
         "usage": usage_summary(user),
         "plans": public_plans(),
+        "past_trades_seed": past_trades_seed,
     }
 
 
@@ -2025,6 +2036,7 @@ async def api_auth_signup(request: Request):
 
     try:
         user = create_user(email, password)
+        past_trades_seed = maybe_import_founder_past_trades(user)
         token = create_session(user["id"])
         resp = JSONResponse(
             {
@@ -2032,6 +2044,7 @@ async def api_auth_signup(request: Request):
                 "user": _public_user(user),
                 "usage": usage_summary(user),
                 "plans": public_plans(),
+                "past_trades_seed": past_trades_seed,
             }
         )
         resp.set_cookie(
@@ -2060,12 +2073,14 @@ async def api_auth_login(request: Request):
         return JSONResponse({"ok": False, "error": "Invalid email or password."}, status_code=401)
 
     token = create_session(user["id"])
+    past_trades_seed = maybe_import_founder_past_trades(user)
     resp = JSONResponse(
         {
             "ok": True,
             "user": _public_user(user),
             "usage": usage_summary(user),
             "plans": public_plans(),
+            "past_trades_seed": past_trades_seed,
         }
     )
     resp.set_cookie(
@@ -2151,6 +2166,7 @@ def api_get_trades(request: Request, view: str = "all"):
     if isinstance(auth_user, JSONResponse):
         return auth_user
     try:
+        maybe_import_founder_past_trades(auth_user)
         rows = trades_select(view=view, user_id=auth_user["id"])
         return {"ok": True, "trades": rows}
     except Exception as e:
