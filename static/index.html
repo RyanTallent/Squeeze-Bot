@@ -145,6 +145,11 @@
     .tab.active{color:var(--text);border-color:var(--accent);background:color-mix(in srgb, var(--accent) 12%, var(--panel))}
     .tableWrap{overflow:auto;border:1px solid var(--line);border-radius:14px;background:var(--panel)}
     .planBox{white-space:pre-wrap;border:1px dashed var(--accent);border-radius:14px;background:color-mix(in srgb, var(--accent) 8%, var(--panel));padding:12px;margin-top:12px;color:var(--muted)}
+    .researchSubNav{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}
+    .researchSubBtn{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:9px 13px;font-weight:900;cursor:pointer;color:var(--muted)}
+    .researchSubBtn.active{color:var(--text);border-color:var(--accent);background:color-mix(in srgb, var(--accent) 12%, var(--panel))}
+    .researchPanel{display:none}
+    .researchPanel.active{display:block}
     .modal{position:fixed;inset:0;z-index:100;display:none;place-items:center;background:rgba(0,0,0,.45);padding:20px}
     .modal.open{display:grid}
     .modalCard{width:min(440px,100%);padding:22px;background:var(--panel)}
@@ -413,7 +418,13 @@
         </div>
 
         <div class="page" id="pageResearch">
-          <div class="card">
+          <div class="researchSubNav">
+            <button class="researchSubBtn active" type="button" data-research-page="overview">Research Suite</button>
+            <button class="researchSubBtn" type="button" data-research-page="portfolio">Portfolio Manager</button>
+            <button class="researchSubBtn" type="button" data-research-page="stock">Stock Analysis</button>
+          </div>
+
+          <div class="card researchPanel active" id="researchPanelOverview">
             <div class="eyebrow">Research suite</div>
             <h2>Institutional research operating system.</h2>
             <p>Start with the four research divisions, then run an any-ticker research workspace with price data, hover metrics, report modes, explanations, and portfolio construction.</p>
@@ -435,9 +446,13 @@
                 <p>Drawdown probability, stress testing, correlation, sector concentration, beta, factor exposure, macro sensitivity, liquidity risk, event risk, tail risk, and derivatives exposure.</p>
               </div>
             </div>
+            <div class="toolbar">
+              <button class="btn primary" type="button" data-research-page="portfolio">Start Portfolio Manager</button>
+              <button class="btn" type="button" data-research-page="stock">Open Stock Analysis</button>
+            </div>
           </div>
 
-          <div class="card">
+          <div class="card researchPanel" id="researchPanelStock">
             <div class="eyebrow">Ticker research workspace</div>
             <h2>Generate research for any ticker.</h2>
             <div class="researchForm">
@@ -485,7 +500,7 @@
             </details>
           </div>
 
-          <div class="card">
+          <div class="card researchPanel" id="researchPanelPortfolio">
             <div class="eyebrow">Portfolio construction</div>
             <h2>Personalized allocation planner.</h2>
             <p>Describe the objective and constraints. The planner turns capital, risk, horizon, sectors, cash reserve, and current holdings into an allocation framework.</p>
@@ -784,6 +799,24 @@
     document.querySelectorAll("[data-page]").forEach(b => b.classList.toggle("active", b.dataset.page === name));
     if(name === "Journal") loadNotebook();
     if(name === "Pricing") paintPricing("appPricing");
+  }
+
+  function setResearchPage(name){
+    const target = name || "overview";
+    const panels = {
+      overview: $("researchPanelOverview"),
+      portfolio: $("researchPanelPortfolio"),
+      stock: $("researchPanelStock"),
+    };
+    Object.entries(panels).forEach(([key, panel]) => {
+      panel?.classList.toggle("active", key === target);
+    });
+    document.querySelectorAll("[data-research-page]").forEach(btn => {
+      btn.classList.toggle("active", btn.dataset.researchPage === target);
+    });
+    if(target === "stock"){
+      setTimeout(drawResearchChart, 50);
+    }
   }
 
   function fmtNum(x, nd=2){
@@ -1238,6 +1271,9 @@
       $("tabMomentum").classList.add("active");
       $("tabSqueeze").classList.remove("active");
       renderResults();
+    });
+    document.querySelectorAll("[data-research-page]").forEach(btn => {
+      btn.addEventListener("click", () => setResearchPage(btn.dataset.researchPage));
     });
     $("noteView").addEventListener("change", loadNotebook);
     $("addPastBtn").addEventListener("click", addPastTrade);
