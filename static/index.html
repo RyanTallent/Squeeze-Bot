@@ -145,6 +145,26 @@
     .tab.active{color:var(--text);border-color:var(--accent);background:color-mix(in srgb, var(--accent) 12%, var(--panel))}
     .tableWrap{overflow:auto;border:1px solid var(--line);border-radius:14px;background:var(--panel)}
     .planBox{white-space:pre-wrap;border:1px dashed var(--accent);border-radius:14px;background:color-mix(in srgb, var(--accent) 8%, var(--panel));padding:12px;margin-top:12px;color:var(--muted)}
+    .scannerTable{min-width:1320px}
+    .gradeBadge,.riskBadge,.scoreBadge,.labelChip{
+      display:inline-flex;align-items:center;justify-content:center;border-radius:999px;
+      border:1px solid var(--line);padding:4px 8px;font-weight:950;font-size:12px;white-space:nowrap;
+      background:var(--panel2);color:var(--text);
+    }
+    .gradeBadge.grade-Ap,.gradeBadge.grade-A{border-color:rgba(31,122,85,.45);background:rgba(31,122,85,.12);color:var(--accent2)}
+    .gradeBadge.grade-B{border-color:rgba(155,122,47,.45);background:rgba(155,122,47,.12);color:var(--accent)}
+    .gradeBadge.grade-C{border-color:rgba(155,122,47,.25);color:var(--muted)}
+    .gradeBadge.grade-D,.riskBadge.risk-high,.riskBadge.risk-extreme{border-color:rgba(181,72,72,.45);background:rgba(181,72,72,.10);color:var(--danger)}
+    .riskBadge.risk-low{border-color:rgba(31,122,85,.45);background:rgba(31,122,85,.10);color:var(--accent2)}
+    .riskBadge.risk-medium{border-color:rgba(155,122,47,.45);background:rgba(155,122,47,.10);color:var(--accent)}
+    .intelPanel{border:1px solid var(--line);border-radius:16px;background:var(--panel);box-shadow:var(--shadow);padding:16px;margin-top:12px;white-space:normal;color:var(--text)}
+    .intelHeader{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:12px}
+    .intelSubgrid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+    .intelSubscore{border:1px solid var(--line);border-radius:14px;background:var(--panel2);padding:10px}
+    .intelSubscore b{font-size:20px}
+    .intelSubscore span{display:block;color:var(--muted);font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.08em}
+    .intelLists{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:12px}
+    .showMoreRow{display:flex;justify-content:center;padding:10px;border-top:1px solid var(--line)}
     .researchSubNav{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}
     .researchSubBtn{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:9px 13px;font-weight:900;cursor:pointer;color:var(--muted)}
     .researchSubBtn.active{color:var(--text);border-color:var(--accent);background:color-mix(in srgb, var(--accent) 12%, var(--panel))}
@@ -181,10 +201,13 @@
       .pricing,.grid4{grid-template-columns:repeat(2,1fr)}
       .researchForm,.portfolioForm{grid-template-columns:1fr 1fr}
       .metricGrid{grid-template-columns:1fr 1fr}
+      .intelSubgrid{grid-template-columns:1fr 1fr}
+      .intelLists{grid-template-columns:1fr}
     }
     @media (max-width:760px){
       .grid3,.grid4,.pricing,.statGrid,.usageGrid,.researchGrid{grid-template-columns:1fr}
       .researchForm,.portfolioForm,.metricGrid{grid-template-columns:1fr}
+      .intelSubgrid{grid-template-columns:1fr}
       .topbarInner{align-items:flex-start;flex-direction:column}
       .nav{width:100%}
     }
@@ -394,15 +417,16 @@
                   <button class="tab" id="tabMomentum" type="button">Momentum</button>
                 </div>
                 <div class="tableWrap">
-                  <table>
+                  <table class="scannerTable">
                     <thead>
                       <tr>
-                        <th>Ticker</th><th>Conf</th><th>Setup</th><th class="right">Price</th><th class="right">Move</th><th class="right">Float</th><th class="right">Action</th>
+                        <th>Ticker</th><th>Grade</th><th>Setup</th><th>Conf</th><th>Risk</th><th class="right">Price</th><th class="right">Move</th><th class="right">RelVol</th><th class="right">$Vol</th><th class="right">Float</th><th>ORTEX</th><th>Sector / Industry</th><th>Trend</th><th>Session</th><th>Action</th>
                       </tr>
                     </thead>
                     <tbody id="resultsBody"></tbody>
                   </table>
                 </div>
+                <div class="showMoreRow"><button class="ghost" id="showMoreBtn" type="button">Show more</button></div>
                 <div class="planBox hidden" id="planBox"></div>
               </div>
             </div>
@@ -617,7 +641,8 @@
     showing:"SQUEEZE",
     scanned:null,
     results:{ SQUEEZE:[], MOMENTUM:[] },
-    researchProfile:null
+    researchProfile:null,
+    resultLimit:5
   };
 
   function setTheme(theme){
@@ -835,6 +860,29 @@
     const n = Number(x);
     return Number.isFinite(n) ? `${n >= 0 ? "+" : ""}${n.toFixed(2)}` : "-";
   }
+  function fmtCompactMoney(x){
+    const n = Number(x);
+    if(!Number.isFinite(n)) return "-";
+    if(Math.abs(n) >= 1_000_000) return `$${(n/1_000_000).toFixed(1)}M`;
+    if(Math.abs(n) >= 1_000) return `$${(n/1_000).toFixed(0)}K`;
+    return `$${n.toFixed(0)}`;
+  }
+  function gradeClass(grade){
+    return `grade-${String(grade || "D").replace("+","p")}`;
+  }
+  function riskClass(flag){
+    const f = String(flag || "").toLowerCase();
+    if(f.includes("extreme")) return "risk-extreme";
+    if(f.includes("high")) return "risk-high";
+    if(f.includes("medium")) return "risk-medium";
+    return "risk-low";
+  }
+  function intel(r){
+    return r.intelligence || {};
+  }
+  function escHtml(s){
+    return String(s ?? "").replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  }
   function fmtDollar(x){
     const n = Number(x);
     return Number.isFinite(n) ? `$${n.toLocaleString(undefined,{maximumFractionDigits:2})}` : "-";
@@ -1020,6 +1068,7 @@
     state.results = {SQUEEZE:[], MOMENTUM:[]};
     state.scanned = null;
     state.showing = "SQUEEZE";
+    state.resultLimit = 5;
     renderResults();
     $("logBox").textContent = "";
     $("scanStatus").textContent = "Starting...";
@@ -1064,7 +1113,7 @@
         const r = JSON.parse(ev.data);
         const b = (r.bucket || "").toUpperCase() === "SQUEEZE" ? "SQUEEZE" : "MOMENTUM";
         state.results[b].push(r);
-        state.results[b].sort((a,b) => Number(b.confidence||0)-Number(a.confidence||0));
+        state.results[b].sort((a,b) => Number(b.intelligence?.confluence_score || b.confidence || 0)-Number(a.intelligence?.confluence_score || a.confidence || 0));
         renderResults();
       }catch(e){}
     });
@@ -1080,26 +1129,37 @@
     const body = $("resultsBody");
     if(!body) return;
     body.innerHTML = "";
-    const list = (state.results[state.showing] || []).slice(0,8);
+    const all = state.results[state.showing] || [];
+    const list = all.slice(0,state.resultLimit);
     for(const r of list){
+      const i = intel(r);
       const tr = document.createElement("tr");
       const mv = Number(r.move_pct);
       tr.innerHTML = `
-        <td><b>${r.ticker || ""}</b></td>
-        <td>${r.confidence ?? ""}</td>
-        <td>${r.subtype || ""}</td>
+        <td><b>${r.ticker || ""}</b><br><span class="muted">${escHtml(r.company_name || "")}</span></td>
+        <td><span class="gradeBadge ${gradeClass(i.setup_grade)}">${i.setup_grade || "D"}</span></td>
+        <td>${escHtml(i.setup_type || r.subtype || "")}</td>
+        <td><span class="scoreBadge">${i.confluence_score ?? r.confidence ?? "-"}</span></td>
+        <td><span class="riskBadge ${riskClass(i.risk_flag)}">${i.risk_flag || "Medium Risk"}</span></td>
         <td class="right">${fmtNum(r.close,2)}</td>
         <td class="right ${mv > 0 ? "good" : mv < 0 ? "bad" : ""}">${fmtPct(r.move_pct)}</td>
+        <td class="right">${fmtNum(r.rel_vol,2)}</td>
+        <td class="right">${fmtCompactMoney(r.dollar_vol)}</td>
         <td class="right">${fmtInt(r.float_shares)}</td>
-        <td class="right"><button class="ghost" data-add="${r.ticker}">Journal</button></td>
+        <td>${escHtml(r.ortex_status || "-")}</td>
+        <td>${escHtml(r.sector || "Unknown Sector")}<br><span class="muted">${escHtml(r.industry || "Unknown Industry")}</span></td>
+        <td>${escHtml(i.trend_alignment || "-")}</td>
+        <td>${escHtml(i.session_status || "-")}</td>
+        <td><button class="ghost" data-expand="${r.ticker}">Expand</button></td>
       `;
       tr.addEventListener("click", e => {
-        if(e.target.closest("button")) return;
-        $("planBox").classList.remove("hidden");
-        $("planBox").textContent = `${r.ticker} - ${r.subtype || "setup"}\n\n${r.plan || "No plan text available."}`;
+        if(e.target.closest("[data-add]")) return;
+        renderIntelPanel(r);
       });
       body.appendChild(tr);
     }
+    $("showMoreBtn").classList.toggle("hidden", all.length <= state.resultLimit);
+    $("showMoreBtn").textContent = `Show more (${Math.max(0, all.length - state.resultLimit)} hidden)`;
     body.querySelectorAll("[data-add]").forEach(btn => {
       btn.addEventListener("click", async e => {
         e.stopPropagation();
@@ -1108,6 +1168,56 @@
         if(row) await addTradeFromScan(row);
       });
     });
+    body.querySelectorAll("[data-expand]").forEach(btn => {
+      btn.addEventListener("click", e => {
+        e.stopPropagation();
+        const ticker = btn.getAttribute("data-expand");
+        const row = state.results.SQUEEZE.concat(state.results.MOMENTUM).find(r => r.ticker === ticker);
+        if(row) renderIntelPanel(row);
+      });
+    });
+  }
+
+  function renderIntelPanel(r){
+    const i = intel(r);
+    const subs = i.subscores || {};
+    const subNames = [
+      ["momentum","Momentum Quality"],
+      ["liquidity","Liquidity Quality"],
+      ["structure","Structure Quality"],
+      ["squeeze","Squeeze Potential"],
+      ["risk","Risk Quality"]
+    ];
+    $("planBox").classList.remove("hidden");
+    $("planBox").innerHTML = `
+      <div class="intelPanel">
+        <div class="intelHeader">
+          <div>
+            <h3>${escHtml(r.ticker)} - ${escHtml(r.company_name || r.ticker)}</h3>
+            <div class="muted">${escHtml(r.sector || "Unknown Sector")} / ${escHtml(r.industry || "Unknown Industry")} | ${escHtml(i.session_status || "")}</div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+            <span class="gradeBadge ${gradeClass(i.setup_grade)}">${i.setup_grade || "D"}</span>
+            <span class="scoreBadge">Conf ${i.confluence_score ?? "-"}</span>
+            <span class="riskBadge ${riskClass(i.risk_flag)}">${i.risk_flag || "Medium Risk"}</span>
+            <span class="scoreBadge">${fmtNum(r.close,2)} / ${fmtPct(r.move_pct)}</span>
+          </div>
+        </div>
+        <div class="reportSection"><h3>Intelligence brief</h3><p>${escHtml(i.intelligence_brief || r.plan || "No brief available.")}</p></div>
+        <div class="intelSubgrid">
+          ${subNames.map(([key,label]) => `<div class="intelSubscore"><span>${label}</span><b>${subs[key]?.score ?? "-"}</b><p>${escHtml(subs[key]?.explanation || "")}</p></div>`).join("")}
+        </div>
+        <div style="margin-top:12px">${(i.context_labels || []).map(x => `<span class="labelChip">${escHtml(x)}</span>`).join(" ")}</div>
+        <div class="intelLists">
+          <div class="reportSection"><h3>Strengths</h3><ul>${(i.strengths || []).map(x => `<li>${escHtml(x)}</li>`).join("")}</ul></div>
+          <div class="reportSection"><h3>Weaknesses / Risk warnings</h3><ul>${(i.weaknesses || []).map(x => `<li>${escHtml(x)}</li>`).join("")}</ul></div>
+        </div>
+        <div class="reportSection"><h3>Execution notes</h3><ul>${(i.execution_notes || []).map(x => `<li>${escHtml(x)}</li>`).join("")}</ul></div>
+        <div class="reportSection"><h3>ORTEX / Catalyst context</h3><p>${escHtml(r.ortex_status || "ORTEX not available.")}</p><p>${escHtml(r.catalyst_label || "Catalyst Not Verified")}: ${escHtml(r.catalyst_summary || "No verified catalyst summary available.")}</p></div>
+        <button class="btn primary" data-add="${escHtml(r.ticker)}" type="button">Save to Journal</button>
+      </div>
+    `;
+    $("planBox").querySelector("[data-add]")?.addEventListener("click", () => addTradeFromScan(r));
   }
 
   async function addTradeFromScan(row){
@@ -1262,14 +1372,23 @@
     $("clearBtn").addEventListener("click", () => { $("logBox").textContent = ""; $("scanStatus").textContent = "Cleared"; });
     $("tabSqueeze").addEventListener("click", () => {
       state.showing = "SQUEEZE";
+      state.resultLimit = 5;
       $("tabSqueeze").classList.add("active");
       $("tabMomentum").classList.remove("active");
+      $("planBox").classList.add("hidden");
       renderResults();
     });
     $("tabMomentum").addEventListener("click", () => {
       state.showing = "MOMENTUM";
+      state.resultLimit = 5;
       $("tabMomentum").classList.add("active");
       $("tabSqueeze").classList.remove("active");
+      $("planBox").classList.add("hidden");
+      renderResults();
+    });
+    $("showMoreBtn").addEventListener("click", () => {
+      const all = state.results[state.showing] || [];
+      state.resultLimit = Math.min(all.length, state.resultLimit + 10);
       renderResults();
     });
     document.querySelectorAll("[data-research-page]").forEach(btn => {
