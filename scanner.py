@@ -12,10 +12,13 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 
+import scanner_intelligence
+
 # ============================================================
 # Config
 # ============================================================
 TOP_N_PER_BUCKET = 5
+FEED_N_PER_BUCKET = 15
 
 DEEP_ANALYZE_TOP_DAY = 75
 ORTEX_FINALISTS_DAY = 25
@@ -331,6 +334,75 @@ def polygon_reference(ticker: str, log_fn=None) -> Optional[Dict[str, Any]]:
     except Exception:
         _REF_CACHE[ticker] = None
         return None
+
+
+def polygon_news(ticker: str, log_fn=None, limit: int = 3) -> List[Dict[str, Any]]:
+    try:
+        data = polygon_get(
+            "https://api.polygon.io/v2/reference/news",
+            {"ticker": ticker.upper().strip(), "limit": limit, "sort": "published_utc", "order": "desc"},
+            log_fn=log_fn,
+        )
+        return data.get("results", []) or []
+    except Exception as e:
+        if log_fn:
+            log_fn(f"[NEWS] {ticker}: unavailable ({type(e).__name__})")
+        return []
+
+
+def classify_catalyst(news_items: List[Dict[str, Any]]) -> Dict[str, Any]:
+    if not news_items:
+        return {"label": "Catalyst Not Verified", "summary": "No recent Polygon news returned for this ticker.", "confidence": "low"}
+
+    latest = news_items[0] or {}
+    title = (latest.get("title") or "").strip()
+    desc = (latest.get("description") or latest.get("amp_url") or "").strip()
+    text = f"{title} {desc}".lower()
+
+    label = "News Driven"
+    if any(x in text for x in ("earnings", "revenue", "eps", "guidance")):
+        label = "Earnings Catalyst"
+    elif any(x in text for x in ("fda", "trial", "clinical", "drug", "biotech")):
+        label = "FDA/Biotech Catalyst"
+    elif any(x in text for x in ("upgrade", "downgrade", "price target", "analyst")):
+        label = "Analyst Action"
+    elif any(x in text for x in ("offering", "dilution", "warrant", "atm", "registered direct")):
+        label = "Offering/Dilution Risk"
+    elif any(x in text for x in ("merger", "acquisition", "partnership", "contract")):
+        label = "Corporate Catalyst"
+
+    return {
+        "label": label,
+        "summary": title[:220] if title else "Recent news item found; title unavailable.",
+        "confidence": "medium",
+        "published_utc": latest.get("published_utc"),
+        "article_url": latest.get("article_url"),
+    }
+
+
+def enrich_selected_rows(rows: List[Dict[str, Any]], window: str, log_fn=None) -> List[Dict[str, Any]]:
+    enriched: List[Dict[str, Any]] = []
+    for row in rows:
+        r = dict(row)
+        ticker = (r.get("ticker") or "").upper().strip()
+        ref = polygon_reference(ticker, log_fn=log_fn) or {}
+        news = polygon_news(ticker, log_fn=log_fn, limit=3)
+        catalyst = classify_catalyst(news)
+
+        r["company_name"] = ref.get("name") or ticker
+        r["sector"] = ref.get("sector") or ref.get("sic_description") or "Unknown Sector"
+        r["industry"] = ref.get("industry") or ref.get("sic_description") or "Unknown Industry"
+        r["primary_exchange"] = ref.get("primary_exchange")
+        r["window"] = window
+        r["catalyst_label"] = catalyst.get("label")
+        r["catalyst_summary"] = catalyst.get("summary")
+        r["catalyst_confidence"] = catalyst.get("confidence")
+        r["latest_news_url"] = catalyst.get("article_url")
+        r["latest_news_published_utc"] = catalyst.get("published_utc")
+        r["news_count"] = len(news)
+        r["intelligence"] = scanner_intelligence.enrich_row(r)
+        enriched.append(r)
+    return enriched
 
 
 def ortex_get_with_status(url: str) -> Tuple[Optional[Dict[str, Any]], int | None, str | None]:
@@ -1287,7 +1359,7 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "off") ->
             squeezes_true,
             key=lambda r: (r.get("confidence", 0), r.get("base_score", 0)),
             reverse=True,
-        )[:TOP_N_PER_BUCKET]
+        )[:FEED_N_PER_BUCKET]
     else:
         watch_sorted = sorted(
             analyzed,
@@ -1308,7 +1380,7 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "off") ->
             rr["ortex_status"] = status
             rr["plan"] = (rr.get("plan") or "") + f" (Watchlist: {status}.)"
             squeezes.append(rr)
-            if len(squeezes) >= TOP_N_PER_BUCKET:
+            if len(squeezes) >= FEED_N_PER_BUCKET:
                 break
 
     # Build MOMENTUM list (gainers only)
@@ -1321,7 +1393,21 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "off") ->
         momentum,
         key=lambda r: (r.get("confidence", 0), r.get("base_score", 0)),
         reverse=True,
-    )[:TOP_N_PER_BUCKET]
+    )[:FEED_N_PER_BUCKET]
+
+    # Enrich only the final displayed rows to preserve scan speed.
+    squeezes = enrich_selected_rows(squeezes, window=window, log_fn=log_fn)
+    momentum = enrich_selected_rows(momentum, window=window, log_fn=log_fn)
+    squeezes = sorted(
+        squeezes,
+        key=lambda r: (r.get("intelligence", {}).get("confluence_score", 0), r.get("confidence", 0)),
+        reverse=True,
+    )
+    momentum = sorted(
+        momentum,
+        key=lambda r: (r.get("intelligence", {}).get("confluence_score", 0), r.get("confidence", 0)),
+        reverse=True,
+    )
 
     if row_fn:
         for r in squeezes + momentum:
