@@ -378,6 +378,7 @@
         <button class="sideBtn" data-page="Scanner">Scanner</button>
         <button class="sideBtn" data-page="Signals">Signals</button>
         <button class="sideBtn" data-page="Research">Research</button>
+        <button class="sideBtn" data-page="Portfolio">Portfolio</button>
         <button class="sideBtn" data-page="Playbook">Playbook</button>
         <button class="sideBtn" data-page="Alerts">Alerts</button>
         <button class="sideBtn" data-page="Briefings">Briefings</button>
@@ -432,6 +433,7 @@
             <div class="card"><h3>Latest Briefing</h3><div id="ccBriefing" class="fineprint">Loading...</div></div>
             <div class="card"><h3>Highest Priority Alert</h3><div id="ccAlert" class="fineprint">Loading...</div></div>
             <div class="card"><h3>Recent Journal Lesson</h3><div id="ccJournalLesson" class="fineprint">Loading...</div></div>
+            <div class="card"><h3>Portfolio Overview</h3><div id="ccPortfolio" class="fineprint">Loading...</div></div>
           </div>
           <div class="card">
             <div class="eyebrow">Monitoring Overview</div>
@@ -615,6 +617,40 @@
               <summary>Metric explanations</summary>
               <div id="researchExplain"></div>
             </details>
+          </div>
+        </div>
+
+        <div class="page" id="pagePortfolio">
+          <div class="card">
+            <div class="eyebrow">Portfolio Intelligence</div>
+            <h2>Holdings, exposure, and risk foundation.</h2>
+            <p>This is the portfolio intelligence base layer for future Wealth AI, Portfolio Committee, retirement planning, allocation engine, and tax-aware analysis.</p>
+            <div class="portfolioForm">
+              <div class="field"><label>Ticker</label><input id="holdingTicker" placeholder="AAPL" /></div>
+              <div class="field"><label>Shares</label><input id="holdingShares" type="number" step="0.000001" placeholder="10" /></div>
+              <div class="field"><label>Average cost</label><input id="holdingAvgCost" type="number" step="0.0001" placeholder="150.00" /></div>
+              <div class="field"><label>Current price</label><input id="holdingCurrentPrice" type="number" step="0.0001" placeholder="175.00" /></div>
+              <div class="field"><label>Sector</label><input id="holdingSector" placeholder="Technology" /></div>
+              <div class="field"><label>Industry</label><input id="holdingIndustry" placeholder="Consumer Electronics" /></div>
+              <div class="field"><label>Theme</label><input id="holdingTheme" placeholder="AI, Semis, Healthcare..." /></div>
+              <div class="field"><label>&nbsp;</label><button class="btn primary" id="saveHoldingBtn" type="button">Save Holding</button></div>
+            </div>
+          </div>
+          <div class="usageGrid" style="margin-top:14px">
+            <div class="usageBox"><b id="portfolioValue">-</b><span>Portfolio Value</span></div>
+            <div class="usageBox"><b id="portfolioPnl">-</b><span>Unrealized P/L</span></div>
+            <div class="usageBox"><b id="portfolioRisk">-</b><span>Risk</span></div>
+            <div class="usageBox"><b id="portfolioConfidence">-</b><span>Confidence</span></div>
+          </div>
+          <div class="researchGrid">
+            <div class="card"><h3>Exposure Summary</h3><div id="portfolioExposure" class="fineprint">No exposure data yet.</div></div>
+            <div class="card"><h3>Risk Summary</h3><div id="portfolioRiskSummary" class="fineprint">No risk data yet.</div></div>
+            <div class="card"><h3>Praetor Portfolio Notes</h3><div id="portfolioNotes" class="fineprint">No notes yet.</div></div>
+            <div class="card"><h3>Allocation Chart Placeholder</h3><div id="portfolioChartPlaceholder" class="fineprint">Chart hooks ready: sector exposure, allocation, concentration, correlation later.</div></div>
+          </div>
+          <div class="card">
+            <div class="eyebrow">Holdings</div>
+            <div class="tableWrap"><table><thead><tr><th>Ticker</th><th>Shares</th><th>Avg Cost</th><th>Price</th><th>Value</th><th>Alloc</th><th>Unrealized P/L</th><th>Sector</th><th>Industry</th></tr></thead><tbody id="portfolioHoldingsBody"></tbody></table></div>
           </div>
         </div>
 
@@ -1093,6 +1129,8 @@
     $("ccBriefing").innerHTML = data.latest_briefing ? `<b>${escHtml(data.latest_briefing.title || "")}</b><br>${escHtml(data.latest_briefing.summary || "")}` : "No briefing yet.";
     $("ccAlert").innerHTML = briefLine(data.highest_priority_alert, "No active alert.");
     $("ccJournalLesson").innerHTML = data.recent_journal_lesson ? `<b>${escHtml(data.recent_journal_lesson.ticker || "")}</b><br>${escHtml(data.recent_journal_lesson.lesson || "")}` : "No recent lesson.";
+    const po = data.portfolio_overview || {};
+    $("ccPortfolio").innerHTML = po.portfolio_value ? `<b>${fmtDollar(po.portfolio_value)}</b><br>Risk: ${escHtml(po.risk?.label || "n/a")}<br>Top: ${escHtml(po.top_holding?.ticker || "none")}` : "No portfolio holdings yet.";
     $("ccMonitoredPlans").textContent = data.monitoring_summary?.monitored_plans ?? 0;
     $("ccTriggeredPlans").textContent = data.monitoring_summary?.triggered_plans ?? 0;
     $("ccActiveAlerts").textContent = data.monitoring_summary?.active_alerts ?? 0;
@@ -1237,6 +1275,7 @@
     if(name === "Alerts") loadAlertCenter();
     if(name === "Briefings") loadBriefings();
     if(name === "Committee") loadCommittee();
+    if(name === "Portfolio") loadPortfolio();
     if(name === "Dashboard") loadCommandCenter();
     if(name === "Pricing") paintPricing("appPricing");
     updateCopilotContext();
@@ -1252,6 +1291,7 @@
     Scanner:["Analyze this setup.","Am I chasing?","Build a trade plan.","Compare this to my playbook."],
     Research:["Build a hedge-fund thesis.","Explain the bull/base/bear case.","What are the key risks?","Simplify this research."],
     Journal:["Review my recent trades.","What mistakes am I repeating?","What should I improve next?"],
+    Portfolio:["Where am I concentrated?","What is my biggest risk?","Does this portfolio fit my goals?","What position is oversized?","What should I review first?"],
     Playbook:["What are my strengths?","What are my weakest setups?","What hypotheses are forming?"],
     Alerts:["Which alert matters most?","Why did this alert fire?","What should I check before acting?"],
     Briefings:["Summarize today.","What changed since the last briefing?","What should I prepare for next?"],
@@ -1266,6 +1306,7 @@
     Scanner:["Build Trade Plan","Save to Playbook","Set Alert"],
     Research:["Generate Thesis","Run Committee","Simplify"],
     Journal:["Review Trade","Find Mistakes","Update Playbook"],
+    Portfolio:["Analyze Exposure","Check Allocation","Stress Test"],
     Playbook:["Refresh Playbook","Show Risk Breakdown","Run Committee"],
     Alerts:["Run Monitor Check","Dismiss Resolved","Open Playbook"],
     Briefings:["Generate Morning Briefing","Generate Weekly Briefing","Run Committee"],
@@ -1297,7 +1338,8 @@
       `Ticker: ${$("researchTicker")?.value || activeScannerTicker() || "none"}`,
       `Risk: ${snap.top_risk_warning?.warning ? "present" : "none"}`,
       `Discovery: ${snap.top_discovery?.title ? "present" : "none"}`,
-      `Plans: ${snap.monitoring_summary?.monitored_plans ?? "-"}`
+      `Plans: ${snap.monitoring_summary?.monitored_plans ?? "-"}`,
+      `Portfolio: ${snap.portfolio_overview?.portfolio_value ? fmtDollar(snap.portfolio_overview.portfolio_value) : "none"}`
     ];
     $("copilotChips").innerHTML = chips.map(c => `<span class="copilotChip">${escHtml(c)}</span>`).join("");
     renderCopilotActions(page);
@@ -1339,6 +1381,7 @@
     else if(action.includes("Risk")) setPage("Risk");
     else if(action.includes("Playbook")) setPage("Playbook");
     else if(action.includes("Thesis") || action.includes("Simplify")) setPage("Research");
+    else if(action.includes("Exposure") || action.includes("Allocation") || action.includes("Stress Test")) setPage("Portfolio");
     $("copilotInput").value = action;
   }
 
@@ -1559,6 +1602,57 @@
       <details class="explainer" open><summary>Guardrails</summary><ul>${(data.guardrails || []).map(x => `<li>${x}</li>`).join("")}</ul></details>
       <details class="explainer"><summary>Next steps</summary><ul>${(data.next_steps || []).map(x => `<li>${x}</li>`).join("")}</ul></details>
     `;
+  }
+
+  async function loadPortfolio(){
+    if(!state.user) return;
+    const resp = await fetch("/api/portfolio").catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false};
+    if(!data.ok) return;
+    renderPortfolio(data.analysis || {});
+  }
+
+  function renderPortfolio(analysis){
+    setText("portfolioValue", fmtDollar(analysis.portfolio_value));
+    setText("portfolioPnl", fmtMoney(analysis.total_unrealized_pnl));
+    setText("portfolioRisk", analysis.risk?.label || "-");
+    setText("portfolioConfidence", fmtPct(analysis.risk?.confidence));
+    $("portfolioHoldingsBody").innerHTML = (analysis.holdings || []).map(h => `
+      <tr>
+        <td><b>${escHtml(h.ticker)}</b></td>
+        <td>${fmtNum(h.shares,4)}</td>
+        <td>${fmtDollar(h.average_cost)}</td>
+        <td>${fmtDollar(h.current_price)}</td>
+        <td>${fmtDollar(h.market_value)}</td>
+        <td>${fmtPct(h.allocation_pct)}</td>
+        <td class="${Number(h.unrealized_pnl || 0) >= 0 ? "good" : "bad"}">${fmtMoney(h.unrealized_pnl)}</td>
+        <td>${escHtml(h.sector || "Unknown Sector")}</td>
+        <td>${escHtml(h.industry || "Unknown Industry")}</td>
+      </tr>
+    `).join("");
+    $("portfolioExposure").innerHTML = `<h4>Sector</h4>${simpleList((analysis.sector_exposure || []).map(x => ({title:x.name, description:`${fmtPct(x.allocation_pct)} / ${fmtDollar(x.market_value)}`})), "No sector exposure.")}<h4>Industry</h4>${simpleList((analysis.industry_exposure || []).map(x => ({title:x.name, description:`${fmtPct(x.allocation_pct)} / ${fmtDollar(x.market_value)}`})), "No industry exposure.")}`;
+    $("portfolioRiskSummary").innerHTML = simpleList((analysis.risk?.warnings || []).map(x => ({title:analysis.risk?.label || "Risk", description:x})), "No portfolio risk warnings.");
+    $("portfolioNotes").innerHTML = simpleList((analysis.portfolio_fit?.opportunities || []).map(x => ({title:"Praetor note", description:x})), "No portfolio notes.");
+  }
+
+  async function saveHolding(){
+    const payload = {
+      ticker:$("holdingTicker").value,
+      shares:$("holdingShares").value,
+      average_cost:$("holdingAvgCost").value,
+      current_price:$("holdingCurrentPrice").value,
+      sector:$("holdingSector").value,
+      industry:$("holdingIndustry").value,
+      theme:$("holdingTheme").value
+    };
+    const resp = await fetch("/api/portfolio/holdings", {
+      method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload)
+    }).catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false,error:"Could not save holding."};
+    if(!data.ok){ alert(data.error || "Save failed."); return; }
+    ["holdingTicker","holdingShares","holdingAvgCost","holdingCurrentPrice","holdingSector","holdingIndustry","holdingTheme"].forEach(id => $(id).value = "");
+    renderPortfolio(data.analysis || {});
+    await loadCommandCenter();
   }
 
   function log(line){
@@ -2439,6 +2533,7 @@
     $("researchChart").addEventListener("mousemove", showResearchTip);
     $("researchChart").addEventListener("mouseleave", () => { $("researchChartTip").style.display = "none"; });
     $("pfRunBtn").addEventListener("click", buildPortfolioPlan);
+    $("saveHoldingBtn").addEventListener("click", saveHolding);
     window.addEventListener("resize", drawResearchChart);
   }
 

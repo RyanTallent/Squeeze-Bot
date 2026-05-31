@@ -39,6 +39,7 @@ from briefing_engine import build_briefing
 from committee_engine import run_investment_committee
 from command_center_engine import build_command_center
 from monitor_scheduler import build_monitoring_health
+from portfolio_engine import analyze_portfolio
 from services.praetor_orchestrator import PraetorDataLoaders, PraetorOrchestrator, PraetorRepositories
 from repositories.alert_repository import AlertRepository
 from repositories.briefing_repository import BriefingRepository
@@ -46,6 +47,7 @@ from repositories.committee_repository import CommitteeRepository
 from repositories.discovery_repository import DiscoveryRepository
 from repositories.memory_repository import MemoryRepository
 from repositories.playbook_repository import PlaybookRepository
+from repositories.portfolio_repository import PortfolioRepository
 from repositories.trade_plan_repository import TradePlanRepository
 
 # Optional Postgres (only used if DATABASE_URL is set)
@@ -541,6 +543,50 @@ def db_init():
     );
     """
 
+    portfolios_sql = """
+    CREATE TABLE IF NOT EXISTS portfolios (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      base_currency TEXT NOT NULL DEFAULT 'USD',
+      goals_json TEXT,
+      created_at_utc TEXT NOT NULL,
+      updated_at_utc TEXT NOT NULL
+    );
+    """
+
+    portfolio_holdings_sql = """
+    CREATE TABLE IF NOT EXISTS portfolio_holdings (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      portfolio_id TEXT NOT NULL,
+      ticker TEXT NOT NULL,
+      shares REAL NOT NULL DEFAULT 0,
+      average_cost REAL NOT NULL DEFAULT 0,
+      current_price REAL NOT NULL DEFAULT 0,
+      sector TEXT,
+      industry TEXT,
+      theme TEXT,
+      realized_pnl REAL,
+      notes TEXT,
+      created_at_utc TEXT NOT NULL,
+      updated_at_utc TEXT NOT NULL,
+      UNIQUE(user_id, portfolio_id, ticker)
+    );
+    """
+
+    portfolio_snapshots_sql = """
+    CREATE TABLE IF NOT EXISTS portfolio_snapshots (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      portfolio_id TEXT NOT NULL,
+      total_value REAL NOT NULL DEFAULT 0,
+      risk_label TEXT,
+      snapshot_json TEXT NOT NULL,
+      created_at_utc TEXT NOT NULL
+    );
+    """
+
     if using_postgres():
         with pg_conn() as conn:
             with conn.cursor() as cur:
@@ -568,6 +614,9 @@ def db_init():
                 cur.execute(committee_runs_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ"))
                 cur.execute(monitoring_runs_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ"))
                 cur.execute(notification_preferences_sql.replace("updated_at_utc TEXT", "updated_at_utc TIMESTAMPTZ"))
+                cur.execute(portfolios_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ").replace("updated_at_utc TEXT", "updated_at_utc TIMESTAMPTZ"))
+                cur.execute(portfolio_holdings_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ").replace("updated_at_utc TEXT", "updated_at_utc TIMESTAMPTZ"))
+                cur.execute(portfolio_snapshots_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ"))
             conn.commit()
     else:
         with DB_LOCK:
@@ -589,6 +638,9 @@ def db_init():
                 conn.execute(committee_runs_sql)
                 conn.execute(monitoring_runs_sql)
                 conn.execute(notification_preferences_sql)
+                conn.execute(portfolios_sql)
+                conn.execute(portfolio_holdings_sql)
+                conn.execute(portfolio_snapshots_sql)
                 conn.commit()
             finally:
                 conn.close()
@@ -731,6 +783,10 @@ def briefing_repo() -> BriefingRepository:
 
 def committee_repo() -> CommitteeRepository:
     return CommitteeRepository(using_postgres, pg_conn, sqlite_conn, DB_LOCK)
+
+
+def portfolio_repo() -> PortfolioRepository:
+    return PortfolioRepository(using_postgres, pg_conn, sqlite_conn, DB_LOCK)
 
 
 def praetor_orchestrator() -> PraetorOrchestrator:
@@ -995,9 +1051,19 @@ def run_and_save_committee(user_id: str, committee_type: str = "general") -> dic
     return praetor_orchestrator().committee(user_id, committee_type)
 
 
+def get_portfolio_analysis(user_id: str) -> dict[str, Any]:
+    portfolio = portfolio_repo().get_or_create_default_portfolio(user_id)
+    holdings = portfolio_repo().list_holdings(user_id, portfolio_id=portfolio["id"])
+    goals = portfolio.get("goals_json") if isinstance(portfolio.get("goals_json"), dict) else {}
+    analysis = analyze_portfolio(holdings, goals=goals)
+    portfolio_repo().save_snapshot(user_id, portfolio["id"], analysis)
+    return {"ok": True, "portfolio": portfolio, "analysis": analysis}
+
+
 def build_command_center_context(user_id: str) -> dict[str, Any]:
     orchestrator = praetor_orchestrator()
     data = orchestrator.build_context(user_id)
+    data["portfolio"] = get_portfolio_analysis(user_id)["analysis"]
     return {"sources": data, "command_center": build_command_center(data)}
 
 
@@ -3048,6 +3114,31 @@ async def api_research_portfolio(request: Request):
     payload = await request.json()
     try:
         return build_portfolio_plan(payload)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=400)
+
+
+@app.get("/api/portfolio")
+def api_get_portfolio(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    try:
+        return get_portfolio_analysis(auth_user["id"])
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=500)
+
+
+@app.post("/api/portfolio/holdings")
+async def api_upsert_portfolio_holding(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    payload = await request.json()
+    try:
+        portfolio = portfolio_repo().get_or_create_default_portfolio(auth_user["id"])
+        holding_id = portfolio_repo().upsert_holding(auth_user["id"], portfolio["id"], payload)
+        return {"ok": True, "id": holding_id, **get_portfolio_analysis(auth_user["id"])}
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=400)
 

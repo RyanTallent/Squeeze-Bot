@@ -68,6 +68,7 @@ def build_command_center(data: dict[str, Any]) -> dict[str, Any]:
     risk = data.get("risk") or {}
     journal = data.get("journal") or {}
     memory = data.get("memory") or []
+    portfolio = data.get("portfolio") or {}
 
     highest_alert = _first(sorted(active_alerts, key=_priority_rank))
     top_discovery = _first(sorted(discoveries, key=lambda d: (d.get("priority") != "Critical", d.get("priority") != "High", -(d.get("impact_score") or 0))))
@@ -95,6 +96,8 @@ def build_command_center(data: dict[str, Any]) -> dict[str, Any]:
         feed.append(_feed_item("learning", "Playbook strength detected", strengths[0].get("description") or strengths[0].get("title") or "", "Medium"))
     if weaknesses:
         feed.append(_feed_item("learning", "Playbook weakness detected", weaknesses[0].get("description") or weaknesses[0].get("title") or "", "High"))
+    if portfolio.get("risk", {}).get("warnings"):
+        feed.append(_feed_item("portfolio", "Portfolio risk note", portfolio["risk"]["warnings"][0], "Medium"))
 
     if highest_alert:
         rec = f"Address the highest priority alert first: {highest_alert.get('message')}"
@@ -133,6 +136,12 @@ def build_command_center(data: dict[str, Any]) -> dict[str, Any]:
             "monitored_plans": len(active_plans),
             "active_alerts": len(active_alerts),
             "triggered_plans": len([p for p in active_plans if p.get("status") == "TRIGGERED"]),
+        },
+        "portfolio_overview": {
+            "portfolio_value": portfolio.get("portfolio_value"),
+            "top_holding": portfolio.get("top_holding"),
+            "sector_exposure": (portfolio.get("sector_exposure") or [])[:3],
+            "risk": portfolio.get("risk"),
         },
         "learning_progress": {
             "strengths": strengths[:3],
