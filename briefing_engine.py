@@ -109,6 +109,29 @@ def _research_bullets(reports: list[dict[str, Any]]) -> list[str]:
     return out
 
 
+def _portfolio_bullets(portfolio: dict[str, Any]) -> list[str]:
+    if not portfolio:
+        return ["Portfolio Intelligence unavailable."]
+    out = [
+        f"Risk-adjusted portfolio score: {portfolio.get('risk_adjusted_portfolio_score', 'n/a')}/100.",
+        f"Portfolio risk score: {portfolio.get('portfolio_risk_score', 'n/a')}/100.",
+        f"Portfolio conviction score: {portfolio.get('portfolio_conviction_score', 'n/a') if portfolio.get('portfolio_conviction_score') is not None else 'n/a'}.",
+    ]
+    strongest = portfolio.get("strongest_position") or {}
+    weakest = portfolio.get("weakest_position") or {}
+    if strongest:
+        out.append(f"Strongest position: {strongest.get('ticker')} ({(strongest.get('position_strength_score') or 0):.0f}/100).")
+    if weakest:
+        out.append(f"Weakest position: {weakest.get('ticker')} ({(weakest.get('position_strength_score') or 0):.0f}/100).")
+    for warning in _top(portfolio.get("concentration_warnings") or [], 3):
+        out.append(f"Concentration: {warning}")
+    for warning in _top(portfolio.get("diversification_warnings") or [], 2):
+        out.append(f"Diversification: {warning}")
+    for rec in _top(portfolio.get("portfolio_recommendations") or [], 3):
+        out.append(f"Recommendation: {rec}")
+    return out
+
+
 def build_briefing(briefing_type: str, context: dict[str, Any]) -> dict[str, Any]:
     briefing_type = (briefing_type or "morning").lower()
     if briefing_type not in BRIEFING_TYPES:
@@ -122,6 +145,7 @@ def build_briefing(briefing_type: str, context: dict[str, Any]) -> dict[str, Any
     learning = context.get("learning") or {}
     plans = context.get("trade_plans") or []
     research_reports = context.get("research_reports") or []
+    portfolio = context.get("portfolio") or {}
 
     priority = _priority_from_sources(open_alerts, risk, discoveries)
     generated_at = datetime.utcnow().isoformat()
@@ -136,6 +160,7 @@ def build_briefing(briefing_type: str, context: dict[str, Any]) -> dict[str, Any
             _section("Top discoveries", _discovery_bullets(discoveries), "High"),
             _section("Top risks", _risk_bullets(risk), "High"),
             _section("Research conviction", _research_bullets(research_reports), "High" if research_reports else "Low"),
+            _section("Portfolio system read", _portfolio_bullets(portfolio), "High" if (portfolio.get("portfolio_risk_score") or 100) < 55 else "Medium"),
             _section("Personalized coaching", _playbook_bullets(learning), "Medium"),
         ]
     elif briefing_type == "midday":
@@ -145,6 +170,7 @@ def build_briefing(briefing_type: str, context: dict[str, Any]) -> dict[str, Any
             _section("Triggered / open alerts", _alert_bullets(open_alerts), "High"),
             _section("Changing conditions", _risk_bullets(risk), "High"),
             _section("Active opportunities", _plan_bullets(plans), "Medium"),
+            _section("Portfolio impact", _portfolio_bullets(portfolio), "Medium"),
             _section("Research watchlist", _research_bullets(research_reports), "Medium"),
             _section("Discovery updates", _discovery_bullets(discoveries), "Medium"),
         ]
@@ -154,6 +180,7 @@ def build_briefing(briefing_type: str, context: dict[str, Any]) -> dict[str, Any
         sections = [
             _section("Trade review summary", _journal_bullets(journal), "High"),
             _section("Risk summary", _risk_bullets(risk), "High"),
+            _section("Portfolio review", _portfolio_bullets(portfolio), "High"),
             _section("Lessons learned", _playbook_bullets(learning), "Medium"),
             _section("Discoveries generated", _discovery_bullets(discoveries), "Medium"),
             _section("Research generated", _research_bullets(research_reports), "Medium"),
@@ -168,6 +195,7 @@ def build_briefing(briefing_type: str, context: dict[str, Any]) -> dict[str, Any
             _section("Strengths and weaknesses", _playbook_bullets(learning), "High"),
             _section("Highest impact discoveries", _discovery_bullets(discoveries), "High"),
             _section("Research conviction changes", _research_bullets(research_reports), "High"),
+            _section("Portfolio system review", _portfolio_bullets(portfolio), "High"),
             _section("Risk posture", _risk_bullets(risk), "High"),
         ]
 
@@ -193,6 +221,7 @@ def build_briefing(briefing_type: str, context: dict[str, Any]) -> dict[str, Any
             "trade_plans": len(plans),
             "memory_items": len(context.get("memory") or []),
             "research_reports": len(research_reports),
+            "portfolio_holdings": len(portfolio.get("holdings") or []),
         },
         "generated_at_utc": generated_at,
     }

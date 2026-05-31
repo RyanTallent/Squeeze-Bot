@@ -653,12 +653,18 @@
             <div class="usageBox"><b id="portfolioPnl">-</b><span>Unrealized P/L</span></div>
             <div class="usageBox"><b id="portfolioRisk">-</b><span>Risk</span></div>
             <div class="usageBox"><b id="portfolioConfidence">-</b><span>Confidence</span></div>
+            <div class="usageBox"><b id="portfolioConviction">-</b><span>Portfolio Conviction</span></div>
+            <div class="usageBox"><b id="portfolioRiskAdjusted">-</b><span>Risk-Adjusted Score</span></div>
           </div>
           <div class="researchGrid">
             <div class="card"><h3>Exposure Summary</h3><div id="portfolioExposure" class="fineprint">No exposure data yet.</div></div>
             <div class="card"><h3>Risk Summary</h3><div id="portfolioRiskSummary" class="fineprint">No risk data yet.</div></div>
             <div class="card"><h3>Praetor Portfolio Notes</h3><div id="portfolioNotes" class="fineprint">No notes yet.</div></div>
-            <div class="card"><h3>Allocation Chart Placeholder</h3><div id="portfolioChartPlaceholder" class="fineprint">Chart hooks ready: sector exposure, allocation, concentration, correlation later.</div></div>
+            <div class="card"><h3>Strongest / Weakest Positions</h3><div id="portfolioPositionSummary" class="fineprint">No position summary yet.</div></div>
+            <div class="card"><h3>Correlation Analysis</h3><div id="portfolioCorrelation" class="fineprint">No correlation data yet.</div></div>
+            <div class="card"><h3>Stress Testing</h3><div id="portfolioStress" class="fineprint">No stress tests yet.</div></div>
+            <div class="card"><h3>Buy/Sell Impact</h3><div id="portfolioImpact" class="fineprint">No impact analysis yet.</div></div>
+            <div class="card"><h3>Recommendations</h3><div id="portfolioRecommendations" class="fineprint">No recommendations yet.</div></div>
           </div>
           <div class="card">
             <div class="eyebrow">Holdings</div>
@@ -1867,6 +1873,8 @@
     setText("portfolioPnl", fmtMoney(analysis.total_unrealized_pnl));
     setText("portfolioRisk", analysis.risk?.label || "-");
     setText("portfolioConfidence", fmtPct(analysis.risk?.confidence));
+    setText("portfolioConviction", analysis.portfolio_conviction_score != null ? `${Math.round(analysis.portfolio_conviction_score)}/100` : "-");
+    setText("portfolioRiskAdjusted", analysis.risk_adjusted_portfolio_score != null ? `${analysis.risk_adjusted_portfolio_score}/100` : "-");
     $("portfolioHoldingsBody").innerHTML = (analysis.holdings || []).map(h => `
       <tr>
         <td><b>${escHtml(h.ticker)}</b></td>
@@ -1883,6 +1891,20 @@
     $("portfolioExposure").innerHTML = `<h4>Sector</h4>${simpleList((analysis.sector_exposure || []).map(x => ({title:x.name, description:`${fmtPct(x.allocation_pct)} / ${fmtDollar(x.market_value)}`})), "No sector exposure.")}<h4>Industry</h4>${simpleList((analysis.industry_exposure || []).map(x => ({title:x.name, description:`${fmtPct(x.allocation_pct)} / ${fmtDollar(x.market_value)}`})), "No industry exposure.")}`;
     $("portfolioRiskSummary").innerHTML = simpleList((analysis.risk?.warnings || []).map(x => ({title:analysis.risk?.label || "Risk", description:x})), "No portfolio risk warnings.");
     $("portfolioNotes").innerHTML = simpleList((analysis.portfolio_fit?.opportunities || []).map(x => ({title:"Praetor note", description:x})), "No portfolio notes.");
+    const strongest = analysis.strongest_position || {};
+    const weakest = analysis.weakest_position || {};
+    const overvalued = analysis.most_overvalued_holding || {};
+    const highConv = analysis.highest_conviction_holding || {};
+    $("portfolioPositionSummary").innerHTML = simpleList([
+      strongest.ticker ? {title:`Strongest: ${strongest.ticker}`, description:`Position strength ${fmtNum(strongest.position_strength_score,0)}/100`} : null,
+      weakest.ticker ? {title:`Weakest: ${weakest.ticker}`, description:`Position strength ${fmtNum(weakest.position_strength_score,0)}/100`} : null,
+      overvalued.ticker ? {title:`Most overvalued: ${overvalued.ticker}`, description:`${overvalued.research?.valuation_rating || "n/a"}`} : null,
+      highConv.ticker ? {title:`Highest conviction: ${highConv.ticker}`, description:`${highConv.research?.conviction_score ?? "n/a"}/100`} : null,
+    ].filter(Boolean), "No position intelligence yet.");
+    $("portfolioCorrelation").innerHTML = `<p>${escHtml(analysis.correlation_analysis?.summary || "Correlation analysis unavailable.")}</p>${simpleList((analysis.correlation_analysis?.high_correlation_pairs || []).map(p => ({title:p.pair?.join(" / "), description:`Correlation ${fmtNum(p.correlation,2)} | combined allocation ${fmtPct(p.combined_allocation_pct)}`})), "No high-correlation pairs flagged.")}`;
+    $("portfolioStress").innerHTML = simpleList((analysis.portfolio_stress_testing?.scenarios || []).map(s => ({title:s.name, description:`Estimated impact ${fmtPct(s.estimated_impact_pct)}. ${(s.notes || []).join(" ")}`})), "No stress testing available.");
+    $("portfolioImpact").innerHTML = `<h4>Add candidates</h4>${simpleList((analysis.buy_sell_impact_analysis?.best_add_candidates || []).map(x => ({title:x.ticker, description:`Buy impact ${x.buy_impact}/100 - ${x.interpretation}`})), "No add candidates.")}<h4>Trim/review candidates</h4>${simpleList((analysis.buy_sell_impact_analysis?.best_trim_candidates || []).map(x => ({title:x.ticker, description:`Trim impact ${x.trim_impact}/100 - ${x.interpretation}`})), "No trim candidates.")}`;
+    $("portfolioRecommendations").innerHTML = simpleList((analysis.portfolio_recommendations || []).map(x => ({title:"Recommendation", description:x})), "No recommendations yet.");
   }
 
   async function saveHolding(){

@@ -170,12 +170,30 @@ def risk_officer_vote(context: dict[str, Any]) -> CommitteeVote:
 
 
 def portfolio_manager_vote(context: dict[str, Any]) -> CommitteeVote:
+    portfolio = context.get("portfolio") or {}
     plans = _plans(context)
     active = [p for p in plans if p.get("status") in ("ACTIVE", "TRIGGERED")]
     tickers = {p.get("ticker") for p in active if p.get("ticker")}
     evidence = [f"{len(active)} active/triggered plan(s), {len(tickers)} unique ticker(s)."]
     concerns = []
     score = 0.15
+    if portfolio:
+        risk_score = portfolio.get("portfolio_risk_score")
+        ra_score = portfolio.get("risk_adjusted_portfolio_score")
+        conviction = portfolio.get("portfolio_conviction_score")
+        evidence.append(f"Portfolio risk-adjusted score: {ra_score if ra_score is not None else 'n/a'}; risk score: {risk_score if risk_score is not None else 'n/a'}; conviction: {conviction if conviction is not None else 'n/a'}.")
+        strongest = portfolio.get("strongest_position") or {}
+        weakest = portfolio.get("weakest_position") or {}
+        if strongest:
+            evidence.append(f"Strongest holding: {strongest.get('ticker')} ({(strongest.get('position_strength_score') or 0):.0f}/100).")
+        if weakest:
+            concerns.append(f"Weakest holding: {weakest.get('ticker')} ({(weakest.get('position_strength_score') or 0):.0f}/100).")
+        concerns.extend((portfolio.get("concentration_warnings") or [])[:2])
+        concerns.extend((portfolio.get("diversification_warnings") or [])[:2])
+        if risk_score is not None:
+            score += ((risk_score - 60) / 60) * 0.85
+        if ra_score is not None:
+            score += ((ra_score - 60) / 60) * 0.55
     if len(active) >= 8:
         score -= 1.0
         concerns.append("Many active plans may stretch attention and concentration.")

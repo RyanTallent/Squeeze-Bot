@@ -24,6 +24,7 @@ class PraetorRepositories:
 class PraetorDataLoaders:
     learning: Callable[[str], dict[str, Any]]
     journal: Callable[[str], dict[str, Any]]
+    portfolio: Callable[[str], dict[str, Any]] | None = None
 
 
 class PraetorOrchestrator:
@@ -47,6 +48,7 @@ class PraetorOrchestrator:
         briefings = self.repos.briefing_repo.list_briefings(user_id, limit=20)
         committee_runs = self.repos.committee_repo.list_runs(user_id, limit=10)
         research_reports = self.repos.research_repo.list_reports(user_id, limit=10)
+        portfolio = (self.loaders.portfolio(user_id).get("analysis") if self.loaders.portfolio else {}) or {}
         return {
             "learning": learning,
             "journal": journal.get("journal"),
@@ -58,6 +60,7 @@ class PraetorOrchestrator:
             "briefings": briefings,
             "committee_runs": committee_runs,
             "research_reports": research_reports,
+            "portfolio": portfolio,
         }
 
     def command_center(self, user_id: str) -> dict[str, Any]:

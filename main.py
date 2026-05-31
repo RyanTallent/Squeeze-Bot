@@ -954,6 +954,7 @@ def praetor_orchestrator() -> PraetorOrchestrator:
         PraetorDataLoaders(
             learning=run_praetor_learning_update,
             journal=run_praetor_journal_update,
+            portfolio=get_portfolio_analysis,
         ),
     )
 
@@ -1218,7 +1219,8 @@ def get_portfolio_analysis(user_id: str) -> dict[str, Any]:
 def build_command_center_context(user_id: str) -> dict[str, Any]:
     orchestrator = praetor_orchestrator()
     data = orchestrator.build_context(user_id)
-    data["portfolio"] = get_portfolio_analysis(user_id)["analysis"]
+    if not data.get("portfolio"):
+        data["portfolio"] = get_portfolio_analysis(user_id)["analysis"]
     data["research_reports"] = research_repo().list_reports(user_id, limit=10)
     return {"sources": data, "command_center": build_command_center(data)}
 
@@ -3605,6 +3607,8 @@ async def api_praetor_ask(request: Request):
     context.extra["client_context"] = payload.get("client_context") or {}
     if page == "command_center":
         context.extra["command_center"] = build_command_center_context(auth_user["id"])["command_center"]
+    if page == "portfolio":
+        context.extra["portfolio"] = get_portfolio_analysis(auth_user["id"])["analysis"]
     service = PraetorService()
     result = service.ask(question or "Help me understand this page.", context)
     return response_to_dict(result)

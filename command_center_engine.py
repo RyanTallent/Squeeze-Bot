@@ -106,6 +106,15 @@ def build_command_center(data: dict[str, Any]) -> dict[str, Any]:
         feed.append(_feed_item("learning", "Playbook weakness detected", weaknesses[0].get("description") or weaknesses[0].get("title") or "", "High"))
     if portfolio.get("risk", {}).get("warnings"):
         feed.append(_feed_item("portfolio", "Portfolio risk note", portfolio["risk"]["warnings"][0], "Medium"))
+    if portfolio.get("risk_adjusted_portfolio_score") is not None:
+        feed.append(
+            _feed_item(
+                "portfolio",
+                "Portfolio system score",
+                f"Risk-adjusted portfolio score: {portfolio.get('risk_adjusted_portfolio_score')}/100. {((portfolio.get('portfolio_recommendations') or [''])[0])}",
+                "High" if (portfolio.get("portfolio_risk_score") or 100) < 55 else "Medium",
+            )
+        )
     if latest_research:
         report = latest_research.get("report_json") or {}
         conviction = report.get("conviction") or {}
@@ -123,6 +132,9 @@ def build_command_center(data: dict[str, Any]) -> dict[str, Any]:
         rec_priority = highest_alert.get("priority") or "High"
     elif top_risk:
         rec = f"Focus on risk control: {top_risk.get('warning')}"
+        rec_priority = "High"
+    elif portfolio.get("portfolio_risk_score") is not None and portfolio.get("portfolio_risk_score") < 55:
+        rec = f"Portfolio risk is elevated: {(portfolio.get('portfolio_recommendations') or ['Review concentration and position sizing.'])[0]}"
         rec_priority = "High"
     elif latest_committee and latest_committee.get("consensus") in ("Bearish", "Strong Bearish"):
         rec = f"Committee is cautious: {latest_committee.get('final_recommendation')}"
@@ -165,6 +177,16 @@ def build_command_center(data: dict[str, Any]) -> dict[str, Any]:
             "top_holding": portfolio.get("top_holding"),
             "sector_exposure": (portfolio.get("sector_exposure") or [])[:3],
             "risk": portfolio.get("risk"),
+            "portfolio_conviction_score": portfolio.get("portfolio_conviction_score"),
+            "portfolio_risk_score": portfolio.get("portfolio_risk_score"),
+            "risk_adjusted_portfolio_score": portfolio.get("risk_adjusted_portfolio_score"),
+            "strongest_position": portfolio.get("strongest_position"),
+            "weakest_position": portfolio.get("weakest_position"),
+            "most_overvalued_holding": portfolio.get("most_overvalued_holding"),
+            "highest_conviction_holding": portfolio.get("highest_conviction_holding"),
+            "concentration_warnings": portfolio.get("concentration_warnings") or [],
+            "diversification_warnings": portfolio.get("diversification_warnings") or [],
+            "recommendations": portfolio.get("portfolio_recommendations") or [],
         },
         "research_overview": {
             "latest": latest_research,
