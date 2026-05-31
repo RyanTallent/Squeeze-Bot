@@ -42,7 +42,10 @@ from command_center_engine import build_command_center
 from monitor_scheduler import build_monitoring_health
 from portfolio_engine import analyze_portfolio
 from research_engine import build_institutional_research
+from fundamental_engine import build_fundamental_analysis
 from ai_synthesis_engine import synthesize as synthesize_ai
+from data_providers.fmp_provider import FMPProvider, fmp_status
+from data_providers.sec_provider import sec_status
 from services.praetor_orchestrator import PraetorDataLoaders, PraetorOrchestrator, PraetorRepositories
 from repositories.alert_repository import AlertRepository
 from repositories.briefing_repository import BriefingRepository
@@ -634,6 +637,16 @@ def db_init():
     );
     """
 
+    provider_cache_sql = """
+    CREATE TABLE IF NOT EXISTS provider_cache (
+      cache_key TEXT PRIMARY KEY,
+      provider TEXT NOT NULL,
+      response_json TEXT NOT NULL,
+      fetched_at_utc TEXT NOT NULL,
+      expires_at_utc TEXT NOT NULL
+    );
+    """
+
     if using_postgres():
         with pg_conn() as conn:
             with conn.cursor() as cur:
@@ -665,6 +678,9 @@ def db_init():
                 cur.execute(portfolio_holdings_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ").replace("updated_at_utc TEXT", "updated_at_utc TIMESTAMPTZ"))
                 cur.execute(portfolio_snapshots_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ"))
                 cur.execute(research_reports_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ"))
+                cur.execute(
+                    provider_cache_sql.replace("fetched_at_utc TEXT", "fetched_at_utc TIMESTAMPTZ").replace("expires_at_utc TEXT", "expires_at_utc TIMESTAMPTZ")
+                )
             conn.commit()
     else:
         with DB_LOCK:
@@ -690,6 +706,7 @@ def db_init():
                 conn.execute(portfolio_holdings_sql)
                 conn.execute(portfolio_snapshots_sql)
                 conn.execute(research_reports_sql)
+                conn.execute(provider_cache_sql)
                 conn.commit()
             finally:
                 conn.close()
@@ -840,6 +857,85 @@ def portfolio_repo() -> PortfolioRepository:
 
 def research_repo() -> ResearchRepository:
     return ResearchRepository(using_postgres, pg_conn, sqlite_conn, DB_LOCK)
+
+
+def provider_cache_get(cache_key: str) -> dict[str, Any] | None:
+    now = datetime.utcnow().isoformat()
+    if using_postgres():
+        with pg_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT response_json, fetched_at_utc, expires_at_utc FROM provider_cache WHERE cache_key=%s AND expires_at_utc>%s",
+                    (cache_key, now),
+                )
+                row = cur.fetchone()
+                if not row:
+                    return None
+                return {"data": json.loads(row["response_json"]), "fetched_at": str(row["fetched_at_utc"]), "expires_at": str(row["expires_at_utc"])}
+
+    conn = sqlite_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT response_json, fetched_at_utc, expires_at_utc FROM provider_cache WHERE cache_key=? AND expires_at_utc>?",
+            (cache_key, now),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        return {"data": json.loads(row["response_json"]), "fetched_at": row["fetched_at_utc"], "expires_at": row["expires_at_utc"]}
+    finally:
+        conn.close()
+
+
+def provider_cache_set(cache_key: str, provider: str, data: dict[str, Any] | list[Any], expires_at: datetime):
+    row = {
+        "cache_key": cache_key,
+        "provider": provider,
+        "response_json": json.dumps(data, default=str),
+        "fetched_at_utc": datetime.utcnow().isoformat(),
+        "expires_at_utc": expires_at.isoformat(),
+    }
+    if using_postgres():
+        with pg_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO provider_cache (cache_key, provider, response_json, fetched_at_utc, expires_at_utc)
+                    VALUES (%(cache_key)s, %(provider)s, %(response_json)s, %(fetched_at_utc)s, %(expires_at_utc)s)
+                    ON CONFLICT (cache_key) DO UPDATE SET
+                      provider=EXCLUDED.provider,
+                      response_json=EXCLUDED.response_json,
+                      fetched_at_utc=EXCLUDED.fetched_at_utc,
+                      expires_at_utc=EXCLUDED.expires_at_utc
+                    """,
+                    row,
+                )
+            conn.commit()
+        return
+
+    with DB_LOCK:
+        conn = sqlite_conn()
+        try:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO provider_cache (cache_key, provider, response_json, fetched_at_utc, expires_at_utc)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (row["cache_key"], row["provider"], row["response_json"], row["fetched_at_utc"], row["expires_at_utc"]),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def fmp_provider() -> FMPProvider:
+    return FMPProvider(cache_get=provider_cache_get, cache_set=provider_cache_set)
+
+
+def get_fundamental_analysis(ticker: str) -> dict[str, Any]:
+    bundle = fmp_provider().fundamentals_bundle(ticker)
+    return build_fundamental_analysis(bundle)
 
 
 def praetor_orchestrator() -> PraetorOrchestrator:
@@ -2495,6 +2591,22 @@ def debug_keys():
     }
 
 
+@app.get("/api/fundamentals/status")
+def api_fundamentals_status():
+    fmp = fmp_status()
+    sec = sec_status()
+    return {
+        "ok": True,
+        "fmp_configured": fmp["configured"],
+        "sec_available": sec["available"],
+        "cache_enabled": True,
+        "providers": {
+            "fmp": fmp,
+            "sec": sec,
+        },
+    }
+
+
 @app.post("/clear_log")
 def clear_log():
     with STATE_LOCK:
@@ -2981,7 +3093,7 @@ def build_research_profile(ticker: str, range_name: str = "1y") -> dict[str, Any
     }
 
 
-def generate_research_report(profile: dict[str, Any], report_type: str, objective: str = "") -> dict[str, Any]:
+def generate_research_report(profile: dict[str, Any], report_type: str, objective: str = "", fundamentals: dict[str, Any] | None = None) -> dict[str, Any]:
     m = profile["metrics"]
     ticker = profile["ticker"]
     report_type = (report_type or "full").lower()
@@ -3061,7 +3173,7 @@ def generate_research_report(profile: dict[str, Any], report_type: str, objectiv
     ]
 
     base = {"type": report_type, "sections": sections, "plain_english": plain_english}
-    return {**base, "institutional": build_institutional_research(profile, base, objective)}
+    return {**base, "institutional": build_institutional_research(profile, base, objective, fundamentals=fundamentals)}
 
 
 def build_portfolio_plan(payload: dict[str, Any]) -> dict[str, Any]:
@@ -3158,7 +3270,8 @@ async def api_research_report(request: Request):
     objective = payload.get("objective") or ""
     try:
         profile = build_research_profile(ticker, range_name)
-        report = generate_research_report(profile, report_type, objective)
+        fundamentals = get_fundamental_analysis(ticker)
+        report = generate_research_report(profile, report_type, objective, fundamentals=fundamentals)
         research_repo().save_report(auth_user["id"], report.get("institutional") or {}, profile=profile)
         return {"ok": True, "report": report}
     except Exception as e:
@@ -3177,7 +3290,8 @@ async def api_praetor_ai_research(request: Request):
     objective = payload.get("objective") or ""
     try:
         profile = build_research_profile(ticker, range_name)
-        deterministic_report = generate_research_report(profile, report_type, objective)
+        fundamentals = get_fundamental_analysis(ticker)
+        deterministic_report = generate_research_report(profile, report_type, objective, fundamentals=fundamentals)
         institutional = deterministic_report.get("institutional") or {}
         ai = synthesize_ai(
             "research",
@@ -3187,6 +3301,7 @@ async def api_praetor_ai_research(request: Request):
                 "profile": profile,
                 "deterministic_report": deterministic_report,
                 "institutional_report": institutional,
+                "fundamentals": fundamentals,
                 "user": _public_user(auth_user),
             },
         )
