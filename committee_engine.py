@@ -211,6 +211,46 @@ def portfolio_manager_vote(context: dict[str, Any]) -> CommitteeVote:
     )
 
 
+def wealth_allocator_vote(context: dict[str, Any]) -> CommitteeVote:
+    wealth = context.get("wealth") or {}
+    scores = wealth.get("scores") or {}
+    holding_recs = wealth.get("holding_recommendations") or []
+    cash = wealth.get("cash_recommendations") or {}
+    evidence = [
+        f"Wealth health score: {scores.get('health_score', 'n/a')}/100.",
+        f"Diversification score: {scores.get('diversification_score', 'n/a')}/100.",
+        f"Conviction score: {scores.get('conviction_score', 'n/a')}/100.",
+        f"Best use of cash: {cash.get('best_use_of_capital', 'n/a')}",
+    ]
+    concerns = []
+    score = 0.0
+    health = scores.get("health_score")
+    concentration = scores.get("concentration_score")
+    conviction = scores.get("conviction_score")
+    if health is not None:
+        score += ((health - 55) / 55) * 0.9
+    if concentration is not None:
+        score += ((concentration - 55) / 55) * 0.45
+    if conviction is not None:
+        score += ((conviction - 55) / 55) * 0.55
+    for rec in holding_recs[:5]:
+        action = rec.get("action")
+        if action in ("Reduce", "Avoid"):
+            concerns.append(f"{rec.get('ticker')}: {action} - {rec.get('reasoning')}")
+        elif action == "Buy":
+            evidence.append(f"{rec.get('ticker')}: Buy - {rec.get('reasoning')}")
+    concerns.extend((wealth.get("missing_data") or [])[:3])
+    return CommitteeVote(
+        member="Wealth Allocator",
+        role="Capital allocation, cash deployment, and portfolio health",
+        stance=_stance_from_score(score),
+        confidence=wealth.get("confidence") or _confidence(len(evidence) + len(concerns), 0.2),
+        supporting_evidence=evidence,
+        concerns=concerns or ["No major wealth-allocation concern detected from connected data."],
+        recommendation="Use Wealth outputs as allocation guidance only; no guarantees. Deploy cash gradually and respect missing-data warnings.",
+    )
+
+
 def macro_strategist_vote(context: dict[str, Any]) -> CommitteeVote:
     briefings = _briefings(context)
     risk = _risk(context)
@@ -260,6 +300,7 @@ COMMITTEE_MEMBERS = (
     momentum_trader_vote,
     risk_officer_vote,
     portfolio_manager_vote,
+    wealth_allocator_vote,
     macro_strategist_vote,
     behavioral_coach_vote,
 )

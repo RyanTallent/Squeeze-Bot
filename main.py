@@ -41,6 +41,7 @@ from committee_engine import run_investment_committee
 from command_center_engine import build_command_center
 from monitor_scheduler import build_monitoring_health
 from portfolio_engine import analyze_portfolio
+from wealth_engine import build_wealth_plan
 from research_engine import build_institutional_research
 from fundamental_engine import build_fundamental_analysis
 from ai_synthesis_engine import synthesize as synthesize_ai
@@ -955,6 +956,7 @@ def praetor_orchestrator() -> PraetorOrchestrator:
             learning=run_praetor_learning_update,
             journal=run_praetor_journal_update,
             portfolio=get_portfolio_analysis,
+            wealth=get_wealth_analysis,
         ),
     )
 
@@ -1216,11 +1218,25 @@ def get_portfolio_analysis(user_id: str) -> dict[str, Any]:
     return {"ok": True, "portfolio": portfolio, "analysis": analysis}
 
 
+def get_wealth_analysis(user_id: str, available_cash: float = 0, objective: str = "") -> dict[str, Any]:
+    portfolio_result = get_portfolio_analysis(user_id)
+    reports = research_repo().list_reports(user_id, limit=50)
+    wealth = build_wealth_plan(
+        portfolio_result.get("analysis") or {},
+        research_reports=reports,
+        available_cash=available_cash,
+        objective=objective,
+    )
+    return {"ok": True, "wealth": wealth, "portfolio": portfolio_result.get("analysis"), "research_report_count": len(reports)}
+
+
 def build_command_center_context(user_id: str) -> dict[str, Any]:
     orchestrator = praetor_orchestrator()
     data = orchestrator.build_context(user_id)
     if not data.get("portfolio"):
         data["portfolio"] = get_portfolio_analysis(user_id)["analysis"]
+    if not data.get("wealth"):
+        data["wealth"] = get_wealth_analysis(user_id)["wealth"]
     data["research_reports"] = research_repo().list_reports(user_id, limit=10)
     return {"sources": data, "command_center": build_command_center(data)}
 
@@ -3425,6 +3441,29 @@ def api_get_portfolio(request: Request):
         return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=500)
 
 
+@app.get("/api/wealth")
+def api_get_wealth(request: Request, available_cash: float = 0, objective: str = ""):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    try:
+        return get_wealth_analysis(auth_user["id"], available_cash=available_cash, objective=objective)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=500)
+
+
+@app.post("/api/wealth/allocate")
+async def api_wealth_allocate(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    payload = await request.json()
+    try:
+        return get_wealth_analysis(auth_user["id"], available_cash=float(payload.get("available_cash") or 0), objective=payload.get("objective") or "")
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=400)
+
+
 @app.post("/api/portfolio/holdings")
 async def api_upsert_portfolio_holding(request: Request):
     auth_user = require_user(request)
@@ -3609,6 +3648,8 @@ async def api_praetor_ask(request: Request):
         context.extra["command_center"] = build_command_center_context(auth_user["id"])["command_center"]
     if page == "portfolio":
         context.extra["portfolio"] = get_portfolio_analysis(auth_user["id"])["analysis"]
+    if page == "wealth":
+        context.extra["wealth"] = get_wealth_analysis(auth_user["id"])["wealth"]
     service = PraetorService()
     result = service.ask(question or "Help me understand this page.", context)
     return response_to_dict(result)

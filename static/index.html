@@ -259,6 +259,7 @@
           <button type="button" data-page="Dashboard" class="active">Dashboard</button>
           <button type="button" data-page="Scanner">Scanner</button>
           <button type="button" data-page="Research">Research</button>
+          <button type="button" data-page="Wealth">Wealth</button>
           <button type="button" data-page="ResearchValidation" class="founderOnly hidden">Research QA</button>
           <button type="button" data-page="Journal">Journal</button>
           <button type="button" data-page="Pricing">Pricing</button>
@@ -380,6 +381,7 @@
         <button class="sideBtn" data-page="Signals">Signals</button>
         <button class="sideBtn" data-page="Research">Research</button>
         <button class="sideBtn" data-page="Portfolio">Portfolio</button>
+        <button class="sideBtn" data-page="Wealth">Wealth</button>
         <button class="sideBtn" data-page="Playbook">Playbook</button>
         <button class="sideBtn" data-page="Alerts">Alerts</button>
         <button class="sideBtn" data-page="Briefings">Briefings</button>
@@ -669,6 +671,36 @@
           <div class="card">
             <div class="eyebrow">Holdings</div>
             <div class="tableWrap"><table><thead><tr><th>Ticker</th><th>Shares</th><th>Avg Cost</th><th>Price</th><th>Value</th><th>Alloc</th><th>Unrealized P/L</th><th>Sector</th><th>Industry</th></tr></thead><tbody id="portfolioHoldingsBody"></tbody></table></div>
+          </div>
+        </div>
+
+        <div class="page" id="pageWealth">
+          <div class="card">
+            <div class="eyebrow">Wealth AI v1</div>
+            <h2>Capital allocation and portfolio construction.</h2>
+            <p>Praetor uses Research, Conviction, Valuation, Data Coverage, and Portfolio Intelligence V2 as source of truth. No guarantees are provided.</p>
+            <div class="portfolioForm">
+              <div class="field"><label>Available cash ($)</label><input id="wealthCash" type="number" min="0" step="1" placeholder="5000" /></div>
+              <div class="field"><label>Objective</label><input id="wealthObjective" placeholder="What should I do with $5,000?" /></div>
+              <div class="field"><label>&nbsp;</label><button class="btn primary" id="wealthRunBtn" type="button">Run Wealth AI</button></div>
+            </div>
+            <div id="wealthDisclaimer" class="fineprint">Enter available cash to generate deployment recommendations.</div>
+          </div>
+          <div class="usageGrid" style="margin-top:14px">
+            <div class="usageBox"><b id="wealthHealth">-</b><span>Health Score</span></div>
+            <div class="usageBox"><b id="wealthDiversification">-</b><span>Diversification</span></div>
+            <div class="usageBox"><b id="wealthConviction">-</b><span>Conviction</span></div>
+            <div class="usageBox"><b id="wealthConcentration">-</b><span>Concentration</span></div>
+          </div>
+          <div class="researchGrid">
+            <div class="card"><h3>Best Use of Cash</h3><div id="wealthCashUse" class="fineprint">No cash analysis yet.</div></div>
+            <div class="card"><h3>Highest Conviction Opportunities</h3><div id="wealthOpportunities" class="fineprint">No opportunities yet.</div></div>
+            <div class="card"><h3>Portfolio Recommendations</h3><div id="wealthPortfolioRecs" class="fineprint">No recommendations yet.</div></div>
+            <div class="card"><h3>Missing Data</h3><div id="wealthMissing" class="fineprint">No missing data yet.</div></div>
+          </div>
+          <div class="card">
+            <div class="eyebrow">Holding recommendations</div>
+            <div class="tableWrap"><table><thead><tr><th>Ticker</th><th>Action</th><th>Score</th><th>Confidence</th><th>Reasoning</th><th>Evidence</th><th>Missing</th></tr></thead><tbody id="wealthHoldingsBody"></tbody></table></div>
           </div>
         </div>
 
@@ -1372,6 +1404,7 @@
     if(name === "Briefings") loadBriefings();
     if(name === "Committee") loadCommittee();
     if(name === "Portfolio") loadPortfolio();
+    if(name === "Wealth") loadWealth();
     if(name === "Dashboard") loadCommandCenter();
     if(name === "Risk") loadRiskAI();
     if(name === "ResearchValidation") loadResearchValidation();
@@ -1390,6 +1423,7 @@
     Research:["Build a hedge-fund thesis.","Explain the bull/base/bear case.","What are the key risks?","Simplify this research."],
     Journal:["Review my recent trades.","What mistakes am I repeating?","What should I improve next?"],
     Portfolio:["Where am I concentrated?","What is my biggest risk?","Does this portfolio fit my goals?","What position is oversized?","What should I review first?"],
+    Wealth:["I have $5,000. What should I do with it?","What should I buy, hold, reduce, or avoid?","Where should cash go first?","How healthy is my portfolio?"],
     Playbook:["What are my strengths?","What are my weakest setups?","What hypotheses are forming?"],
     Alerts:["Which alert matters most?","Why did this alert fire?","What should I check before acting?"],
     Briefings:["Summarize today.","What changed since the last briefing?","What should I prepare for next?"],
@@ -1406,6 +1440,7 @@
     Research:["Generate Thesis","Run Committee","Simplify"],
     Journal:["Review Trade","Find Mistakes","Update Playbook"],
     Portfolio:["Analyze Exposure","Check Allocation","Stress Test"],
+    Wealth:["Run Wealth AI","Open Portfolio","Run Committee"],
     Playbook:["Refresh Playbook","Show Risk Breakdown","Run Committee"],
     Alerts:["Run Monitor Check","Dismiss Resolved","Open Playbook"],
     Briefings:["Generate Morning Briefing","Generate Weekly Briefing","Run Committee"],
@@ -1905,6 +1940,47 @@
     $("portfolioStress").innerHTML = simpleList((analysis.portfolio_stress_testing?.scenarios || []).map(s => ({title:s.name, description:`Estimated impact ${fmtPct(s.estimated_impact_pct)}. ${(s.notes || []).join(" ")}`})), "No stress testing available.");
     $("portfolioImpact").innerHTML = `<h4>Add candidates</h4>${simpleList((analysis.buy_sell_impact_analysis?.best_add_candidates || []).map(x => ({title:x.ticker, description:`Buy impact ${x.buy_impact}/100 - ${x.interpretation}`})), "No add candidates.")}<h4>Trim/review candidates</h4>${simpleList((analysis.buy_sell_impact_analysis?.best_trim_candidates || []).map(x => ({title:x.ticker, description:`Trim impact ${x.trim_impact}/100 - ${x.interpretation}`})), "No trim candidates.")}`;
     $("portfolioRecommendations").innerHTML = simpleList((analysis.portfolio_recommendations || []).map(x => ({title:"Recommendation", description:x})), "No recommendations yet.");
+  }
+
+  async function loadWealth(){
+    if(!state.user) return;
+    const cash = $("wealthCash")?.value || "0";
+    const objective = $("wealthObjective")?.value || "";
+    const resp = await fetch(`/api/wealth?available_cash=${encodeURIComponent(cash)}&objective=${encodeURIComponent(objective)}`).catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false,error:"Wealth AI unavailable."};
+    if(!data.ok){
+      $("wealthDisclaimer").textContent = data.error || "Wealth AI unavailable.";
+      return;
+    }
+    renderWealth(data.wealth || {});
+  }
+
+  function renderWealth(wealth){
+    const scores = wealth.scores || {};
+    const cash = wealth.cash_recommendations || {};
+    $("wealthDisclaimer").textContent = wealth.disclaimer || "No guarantees. Review all evidence before acting.";
+    setText("wealthHealth", scores.health_score != null ? `${scores.health_score}/100` : "-");
+    setText("wealthDiversification", scores.diversification_score != null ? `${scores.diversification_score}/100` : "-");
+    setText("wealthConviction", scores.conviction_score != null ? `${scores.conviction_score}/100` : "-");
+    setText("wealthConcentration", scores.concentration_score != null ? `${scores.concentration_score}/100` : "-");
+    $("wealthCashUse").innerHTML = `
+      <p><b>Best use:</b> ${escHtml(cash.best_use_of_capital || "Enter cash amount to generate deployment guidance.")}</p>
+      ${simpleList((cash.cash_deployment_notes || []).map(x => ({title:"Note", description:x})), "")}
+    `;
+    $("wealthOpportunities").innerHTML = simpleList((cash.highest_conviction_opportunities || []).map(x => ({title:`${x.ticker}: ${x.recommendation}`, description:`Score ${x.score}/100 | confidence ${fmtPct(x.confidence)} | ${x.supporting_evidence?.join(" ") || ""}`})), "No opportunities available.");
+    $("wealthPortfolioRecs").innerHTML = simpleList((wealth.portfolio_recommendations || []).map(x => ({title:"Recommendation", description:x})), "No recommendations yet.");
+    $("wealthMissing").innerHTML = simpleList((wealth.missing_data || []).map(x => ({title:"Missing data", description:x})), "No major missing data flagged.");
+    $("wealthHoldingsBody").innerHTML = (wealth.holding_recommendations || []).map(row => `
+      <tr>
+        <td><b>${escHtml(row.ticker || "")}</b></td>
+        <td>${escHtml(row.action || "")}</td>
+        <td>${row.score ?? "-"}/100</td>
+        <td>${fmtPct(row.confidence)}</td>
+        <td>${escHtml(row.reasoning || "")}</td>
+        <td>${(row.supporting_evidence || []).map(escHtml).join("<br>")}</td>
+        <td>${(row.missing_data || []).map(escHtml).join(", ") || "None"}</td>
+      </tr>
+    `).join("") || `<tr><td colspan="7">No holdings found. Add holdings and generate Research reports first.</td></tr>`;
   }
 
   async function saveHolding(){
@@ -2813,6 +2889,7 @@
     $("researchChart").addEventListener("mousemove", showResearchTip);
     $("researchChart").addEventListener("mouseleave", () => { $("researchChartTip").style.display = "none"; });
     $("pfRunBtn").addEventListener("click", buildPortfolioPlan);
+    $("wealthRunBtn").addEventListener("click", loadWealth);
     $("saveHoldingBtn").addEventListener("click", saveHolding);
     window.addEventListener("resize", drawResearchChart);
   }

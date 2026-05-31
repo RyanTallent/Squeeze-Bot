@@ -75,6 +75,7 @@ def build_command_center(data: dict[str, Any]) -> dict[str, Any]:
     journal = data.get("journal") or {}
     memory = data.get("memory") or []
     portfolio = data.get("portfolio") or {}
+    wealth = data.get("wealth") or {}
     research_reports = data.get("research_reports") or []
 
     highest_alert = _first(sorted(active_alerts, key=_priority_rank))
@@ -115,6 +116,16 @@ def build_command_center(data: dict[str, Any]) -> dict[str, Any]:
                 "High" if (portfolio.get("portfolio_risk_score") or 100) < 55 else "Medium",
             )
         )
+    if wealth.get("scores"):
+        scores = wealth.get("scores") or {}
+        feed.append(
+            _feed_item(
+                "wealth",
+                "Wealth allocation read",
+                f"Health {scores.get('health_score', 'n/a')}/100. {(wealth.get('cash_recommendations') or {}).get('best_use_of_capital', 'Review Wealth dashboard.')}",
+                "High" if (scores.get("health_score") or 100) < 50 else "Medium",
+            )
+        )
     if latest_research:
         report = latest_research.get("report_json") or {}
         conviction = report.get("conviction") or {}
@@ -135,6 +146,9 @@ def build_command_center(data: dict[str, Any]) -> dict[str, Any]:
         rec_priority = "High"
     elif portfolio.get("portfolio_risk_score") is not None and portfolio.get("portfolio_risk_score") < 55:
         rec = f"Portfolio risk is elevated: {(portfolio.get('portfolio_recommendations') or ['Review concentration and position sizing.'])[0]}"
+        rec_priority = "High"
+    elif wealth.get("scores") and (wealth.get("scores") or {}).get("health_score", 100) < 50:
+        rec = f"Wealth health is weak: {(wealth.get('portfolio_recommendations') or ['Review allocation and missing research data.'])[0]}"
         rec_priority = "High"
     elif latest_committee and latest_committee.get("consensus") in ("Bearish", "Strong Bearish"):
         rec = f"Committee is cautious: {latest_committee.get('final_recommendation')}"
@@ -187,6 +201,15 @@ def build_command_center(data: dict[str, Any]) -> dict[str, Any]:
             "concentration_warnings": portfolio.get("concentration_warnings") or [],
             "diversification_warnings": portfolio.get("diversification_warnings") or [],
             "recommendations": portfolio.get("portfolio_recommendations") or [],
+        },
+        "wealth_overview": {
+            "scores": wealth.get("scores"),
+            "cash_recommendations": wealth.get("cash_recommendations"),
+            "holding_recommendations": wealth.get("holding_recommendations") or [],
+            "portfolio_recommendations": wealth.get("portfolio_recommendations") or [],
+            "confidence": wealth.get("confidence"),
+            "missing_data": wealth.get("missing_data") or [],
+            "disclaimer": wealth.get("disclaimer"),
         },
         "research_overview": {
             "latest": latest_research,
