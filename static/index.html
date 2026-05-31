@@ -165,6 +165,33 @@
     .intelSubscore span{display:block;color:var(--muted);font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.08em}
     .intelLists{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:12px}
     .showMoreRow{display:flex;justify-content:center;padding:10px;border-top:1px solid var(--line)}
+    .praetorBox{border:1px solid var(--line);border-radius:14px;background:var(--panel2);padding:12px;margin-top:12px;white-space:pre-wrap}
+    .praetorActions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+    .copilotFab{
+      position:fixed;right:22px;bottom:22px;z-index:90;width:58px;height:58px;border-radius:999px;
+      border:1px solid color-mix(in srgb, var(--accent) 55%, var(--line));background:#020b1a;color:#fff;
+      box-shadow:0 18px 45px rgba(0,0,0,.30);cursor:pointer;font-weight:950;display:none;place-items:center;
+    }
+    .copilotFab.visible{display:grid}
+    .copilotDrawer{
+      position:fixed;top:0;right:0;height:100vh;width:min(430px,100%);z-index:100;
+      background:var(--panel);border-left:1px solid var(--line);box-shadow:-18px 0 45px rgba(0,0,0,.22);
+      transform:translateX(105%);transition:transform .18s ease;display:flex;flex-direction:column;
+    }
+    .copilotDrawer.open{transform:translateX(0)}
+    .copilotHead{padding:16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+    .copilotBody{padding:16px;overflow:auto;display:grid;gap:14px}
+    .copilotChips{display:flex;gap:6px;flex-wrap:wrap}
+    .copilotChip{border:1px solid var(--line);background:var(--panel2);color:var(--muted);border-radius:999px;padding:5px 8px;font-size:11px;font-weight:850}
+    .copilotPromptGrid{display:flex;gap:8px;flex-wrap:wrap}
+    .copilotPrompt{border:1px solid var(--line);border-radius:999px;background:var(--panel2);padding:7px 10px;cursor:pointer;font-size:12px;font-weight:850;color:var(--muted)}
+    .copilotResponse{white-space:pre-wrap;border:1px solid var(--line);border-radius:14px;background:var(--panel2);padding:12px;min-height:90px}
+    .copilotHistory{display:grid;gap:10px}
+    .copilotTurn{border:1px solid var(--line);border-radius:14px;background:var(--panel2);padding:10px;white-space:pre-wrap}
+    .copilotTurn.user{background:color-mix(in srgb, var(--accent) 8%, var(--panel2))}
+    .copilotTurn .meta{display:block;color:var(--muted);font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px}
+    .copilotActionGrid{display:flex;gap:8px;flex-wrap:wrap}
+    .copilotAction{border:1px solid color-mix(in srgb, var(--accent) 40%, var(--line));border-radius:999px;background:color-mix(in srgb, var(--accent) 9%, var(--panel));padding:7px 10px;cursor:pointer;font-size:12px;font-weight:900}
     .researchSubNav{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}
     .researchSubBtn{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:9px 13px;font-weight:900;cursor:pointer;color:var(--muted)}
     .researchSubBtn.active{color:var(--text);border-color:var(--accent);background:color-mix(in srgb, var(--accent) 12%, var(--panel))}
@@ -210,6 +237,8 @@
       .intelSubgrid{grid-template-columns:1fr}
       .topbarInner{align-items:flex-start;flex-direction:column}
       .nav{width:100%}
+      .copilotDrawer{width:100%;height:100dvh}
+      .copilotFab{right:16px;bottom:16px}
     }
   </style>
 </head>
@@ -349,6 +378,11 @@
         <button class="sideBtn" data-page="Scanner">Scanner</button>
         <button class="sideBtn" data-page="Signals">Signals</button>
         <button class="sideBtn" data-page="Research">Research</button>
+        <button class="sideBtn" data-page="Portfolio">Portfolio</button>
+        <button class="sideBtn" data-page="Playbook">Playbook</button>
+        <button class="sideBtn" data-page="Alerts">Alerts</button>
+        <button class="sideBtn" data-page="Briefings">Briefings</button>
+        <button class="sideBtn" data-page="Committee">Committee</button>
         <button class="sideBtn" data-page="Journal">Journal</button>
         <button class="sideBtn" data-page="Risk">Risk</button>
         <button class="sideBtn" data-page="Pricing">Pricing</button>
@@ -356,18 +390,35 @@
 
       <section>
         <div class="page active" id="pageDashboard">
+          <div class="card">
+            <div class="eyebrow">Praetor Command Center</div>
+            <h2>What matters right now?</h2>
+            <p>The Command Center unifies risk, discoveries, alerts, briefings, committee consensus, trade plans, playbook learning, and journal lessons.</p>
+            <div class="toolbar">
+              <button class="btn primary" id="refreshCommandCenterBtn" type="button">Refresh Command Center</button>
+              <button class="btn" type="button" data-jump="Scanner">Run Scanner</button>
+              <button class="btn" type="button" data-jump="Alerts">Open Alerts</button>
+            </div>
+          </div>
+          <div class="card">
+            <div class="eyebrow">Recommendation of the Day</div>
+            <div class="pill" id="aiStatusPill">AI: checking...</div>
+            <h3 id="ccRecommendation">Loading...</h3>
+          </div>
+          <div class="researchGrid">
+            <div class="card"><h3>AI Recommendation</h3><div id="ccAiRecommendation" class="fineprint">Loading AI synthesis...</div></div>
+            <div class="card"><h3>AI Risk Insight</h3><div id="ccAiRisk" class="fineprint">Loading AI synthesis...</div></div>
+            <div class="card"><h3>AI Opportunity Insight</h3><div id="ccAiOpportunity" class="fineprint">Loading AI synthesis...</div></div>
+          </div>
           <div class="dashTop">
             <div class="card">
-              <div class="eyebrow">Command center</div>
-              <h2>Welcome to Cardo Praevisio.</h2>
-              <p>
-                Your account is active. The scanner is protected behind login, scan usage is tracked,
-                and ORTEX-backed scans are reserved for plans with weekly ORTEX credits.
-              </p>
+              <div class="eyebrow">Global Ask Praetor</div>
+              <h3>Ask with full command-center context.</h3>
+              <textarea id="commandAskInput" placeholder="Ask Praetor what matters most, what risk stands out, or what you should focus on today."></textarea>
               <div class="toolbar">
-                <button class="btn primary" type="button" data-jump="Scanner">Run scanner</button>
-                <button class="btn" type="button" data-jump="Research">View research suite</button>
+                <button class="btn primary" id="commandAskBtn" type="button">Ask Praetor</button>
               </div>
+              <div class="praetorBox hidden" id="commandAskResponse"></div>
             </div>
             <div class="card">
               <div class="eyebrow">Plan and usage</div>
@@ -381,10 +432,33 @@
               <p class="fineprint" id="trialNote"></p>
             </div>
           </div>
-          <div class="grid3">
-            <div class="card"><h3>Scanner</h3><p>Live momentum and short-pressure screens with entry, stop, target, and journal flow.</p></div>
-            <div class="card"><h3>Research</h3><p>Fundamental, alternative-data, quantitative, and risk divisions for institutional workflow.</p></div>
-            <div class="card"><h3>Execution</h3><p>Track actions, review mistakes, and build rules that improve repeatability.</p></div>
+          <div class="researchGrid">
+            <div class="card"><h3>Top Risk Warning</h3><div id="ccTopRisk" class="fineprint">Loading...</div></div>
+            <div class="card"><h3>Top Discovery</h3><div id="ccTopDiscovery" class="fineprint">Loading...</div></div>
+            <div class="card"><h3>Committee Consensus</h3><div id="ccCommittee" class="fineprint">Loading...</div></div>
+            <div class="card"><h3>Latest Briefing</h3><div id="ccBriefing" class="fineprint">Loading...</div></div>
+            <div class="card"><h3>Highest Priority Alert</h3><div id="ccAlert" class="fineprint">Loading...</div></div>
+            <div class="card"><h3>Recent Journal Lesson</h3><div id="ccJournalLesson" class="fineprint">Loading...</div></div>
+            <div class="card"><h3>Portfolio Overview</h3><div id="ccPortfolio" class="fineprint">Loading...</div></div>
+          </div>
+          <div class="card">
+            <div class="eyebrow">Monitoring Overview</div>
+            <div class="usageGrid">
+              <div class="usageBox"><b id="ccMonitoredPlans">-</b><span>Monitored Plans</span></div>
+              <div class="usageBox"><b id="ccTriggeredPlans">-</b><span>Triggered Plans</span></div>
+              <div class="usageBox"><b id="ccActiveAlerts">-</b><span>Active Alerts</span></div>
+              <div class="usageBox"><b id="ccMemoryCount">-</b><span>Memory Items</span></div>
+            </div>
+          </div>
+          <div class="researchGrid">
+            <div class="card"><h3>Learning Strengths</h3><div id="ccStrengths" class="fineprint">Loading...</div></div>
+            <div class="card"><h3>Learning Weaknesses</h3><div id="ccWeaknesses" class="fineprint">Loading...</div></div>
+            <div class="card"><h3>Emerging Hypotheses</h3><div id="ccHypotheses" class="fineprint">Loading...</div></div>
+            <div class="card"><h3>Active Trade Plans</h3><div id="ccActivePlans" class="fineprint">Loading...</div></div>
+          </div>
+          <div class="card">
+            <div class="eyebrow">Praetor Intelligence Feed</div>
+            <div id="ccFeed" class="fineprint">Loading...</div>
           </div>
         </div>
 
@@ -531,6 +605,8 @@
                 </select>
               </div>
               <button class="btn primary" id="researchRunBtn" type="button">Generate</button>
+              <button class="btn success" id="researchAiBtn" type="button">Generate AI Thesis</button>
+              <button class="btn" data-explain-page="Research" type="button">Explain This</button>
             </div>
             <div class="field">
               <label>What are you looking for?</label>
@@ -544,11 +620,47 @@
             </div>
             <div class="fineprint" id="researchStatus">Enter any ticker and generate research.</div>
             <div id="researchReport"></div>
+            <div id="researchAiReport"></div>
 
             <details class="explainer" open>
               <summary>Metric explanations</summary>
               <div id="researchExplain"></div>
             </details>
+          </div>
+        </div>
+
+        <div class="page" id="pagePortfolio">
+          <div class="card">
+            <div class="eyebrow">Portfolio Intelligence</div>
+            <h2>Holdings, exposure, and risk foundation.</h2>
+            <p>This is the portfolio intelligence base layer for future Wealth AI, Portfolio Committee, retirement planning, allocation engine, and tax-aware analysis.</p>
+            <div class="portfolioForm">
+              <div class="field"><label>Ticker</label><input id="holdingTicker" placeholder="AAPL" /></div>
+              <div class="field"><label>Shares</label><input id="holdingShares" type="number" step="0.000001" placeholder="10" /></div>
+              <div class="field"><label>Average cost</label><input id="holdingAvgCost" type="number" step="0.0001" placeholder="150.00" /></div>
+              <div class="field"><label>Current price</label><input id="holdingCurrentPrice" type="number" step="0.0001" placeholder="175.00" /></div>
+              <div class="field"><label>Sector</label><input id="holdingSector" placeholder="Technology" /></div>
+              <div class="field"><label>Industry</label><input id="holdingIndustry" placeholder="Consumer Electronics" /></div>
+              <div class="field"><label>Theme</label><input id="holdingTheme" placeholder="AI, Semis, Healthcare..." /></div>
+              <div class="field"><label>&nbsp;</label><button class="btn primary" id="saveHoldingBtn" type="button">Save Holding</button></div>
+            </div>
+            <div class="toolbar"><button class="btn" data-explain-page="Portfolio" type="button">Explain This</button></div>
+          </div>
+          <div class="usageGrid" style="margin-top:14px">
+            <div class="usageBox"><b id="portfolioValue">-</b><span>Portfolio Value</span></div>
+            <div class="usageBox"><b id="portfolioPnl">-</b><span>Unrealized P/L</span></div>
+            <div class="usageBox"><b id="portfolioRisk">-</b><span>Risk</span></div>
+            <div class="usageBox"><b id="portfolioConfidence">-</b><span>Confidence</span></div>
+          </div>
+          <div class="researchGrid">
+            <div class="card"><h3>Exposure Summary</h3><div id="portfolioExposure" class="fineprint">No exposure data yet.</div></div>
+            <div class="card"><h3>Risk Summary</h3><div id="portfolioRiskSummary" class="fineprint">No risk data yet.</div></div>
+            <div class="card"><h3>Praetor Portfolio Notes</h3><div id="portfolioNotes" class="fineprint">No notes yet.</div></div>
+            <div class="card"><h3>Allocation Chart Placeholder</h3><div id="portfolioChartPlaceholder" class="fineprint">Chart hooks ready: sector exposure, allocation, concentration, correlation later.</div></div>
+          </div>
+          <div class="card">
+            <div class="eyebrow">Holdings</div>
+            <div class="tableWrap"><table><thead><tr><th>Ticker</th><th>Shares</th><th>Avg Cost</th><th>Price</th><th>Value</th><th>Alloc</th><th>Unrealized P/L</th><th>Sector</th><th>Industry</th></tr></thead><tbody id="portfolioHoldingsBody"></tbody></table></div>
           </div>
         </div>
 
@@ -570,6 +682,39 @@
               <div class="usageBox"><b id="sumTotal">-</b><span>Total P/L</span></div>
               <div class="usageBox"><b id="sumAvg">-</b><span>Avg closed</span></div>
             </div>
+            <div class="card" style="margin-bottom:14px">
+              <div class="eyebrow">Journal AI v1</div>
+              <h3>Execution and behavior review</h3>
+              <div class="usageGrid" style="margin-bottom:14px">
+                <div class="usageBox"><b id="journalExecutionScore">-</b><span>Execution Score</span></div>
+                <div class="usageBox"><b id="journalDisciplineScore">-</b><span>Discipline Score</span></div>
+                <div class="usageBox"><b id="journalProcessScore">-</b><span>Process Score</span></div>
+                <div class="usageBox"><b id="journalEvidenceCount">-</b><span>Reviewed Trades</span></div>
+              </div>
+              <div class="researchGrid">
+                <div class="card">
+                  <h3>Recent Lessons</h3>
+                  <div id="journalLessons" class="fineprint">No journal lessons yet.</div>
+                </div>
+                <div class="card">
+                  <h3>Recurring Mistakes</h3>
+                  <div id="journalMistakes" class="fineprint">No recurring mistakes yet.</div>
+                </div>
+                <div class="card">
+                  <h3>Recurring Strengths</h3>
+                  <div id="journalStrengths" class="fineprint">No recurring strengths yet.</div>
+                </div>
+                <div class="card">
+                  <h3>Behavioral Observations</h3>
+                  <div id="journalBehavior" class="fineprint">No behavioral observations yet.</div>
+                </div>
+              </div>
+              <div class="toolbar">
+                <button class="btn" id="journalAiCoachBtn" type="button">Generate Praetor Coaching Notes</button>
+                <button class="btn" data-explain-page="Journal" type="button">Explain This</button>
+              </div>
+              <div class="praetorBox hidden" id="journalAiCoaching"></div>
+            </div>
             <div class="tableWrap">
               <table>
                 <thead>
@@ -581,11 +726,238 @@
           </div>
         </div>
 
+        <div class="page" id="pagePlaybook">
+          <div class="card">
+            <div class="eyebrow">Praetor Playbook</div>
+            <h2>Trade plans, outcomes, and in-app alerts.</h2>
+            <p>This is the first learning-loop dashboard: scanner setup -> trade plan -> user decision -> outcome -> playbook update.</p>
+            <div class="toolbar">
+              <button class="btn primary" id="refreshPlaybookBtn" type="button">Refresh Playbook</button>
+              <span class="pill" id="playbookMeta">No plans loaded.</span>
+            </div>
+            <div class="usageGrid" style="margin-bottom:14px">
+              <div class="usageBox"><b id="pbActive">-</b><span>Active</span></div>
+              <div class="usageBox"><b id="pbCompleted">-</b><span>Completed</span></div>
+              <div class="usageBox"><b id="pbSkipped">-</b><span>Skipped</span></div>
+              <div class="usageBox"><b id="pbTotal">-</b><span>Total Plans</span></div>
+            </div>
+            <div class="usageGrid" style="margin-bottom:14px">
+              <div class="usageBox"><b id="pbWinRate">-</b><span>Win Rate</span></div>
+              <div class="usageBox"><b id="pbExpectancy">-</b><span>Expectancy</span></div>
+              <div class="usageBox"><b id="pbEvidence">-</b><span>Evidence Count</span></div>
+              <div class="usageBox"><b id="pbMemoryCount">-</b><span>Memory Items</span></div>
+            </div>
+            <div class="researchGrid">
+              <div class="card">
+                <h3>Strengths</h3>
+                <div id="playbookStrengths" class="fineprint">No strengths learned yet.</div>
+              </div>
+              <div class="card">
+                <h3>Weaknesses</h3>
+                <div id="playbookWeaknesses" class="fineprint">No weaknesses learned yet.</div>
+              </div>
+              <div class="card">
+                <h3>Current Hypotheses</h3>
+                <div id="playbookHypotheses" class="fineprint">No hypotheses yet.</div>
+              </div>
+              <div class="card">
+                <h3>Setup Rankings</h3>
+                <div id="playbookRankings" class="fineprint">No setup rankings yet.</div>
+              </div>
+            </div>
+            <div class="card" style="margin-top:14px">
+              <div class="eyebrow">Risk AI v1</div>
+              <h3 id="riskOverall">Risk profile loading...</h3>
+              <div class="researchGrid">
+                <div class="card">
+                  <h3>Current Risks</h3>
+                  <div id="riskCurrent" class="fineprint">No risk analysis yet.</div>
+                </div>
+                <div class="card">
+                  <h3>Recurring Risks</h3>
+                  <div id="riskRecurring" class="fineprint">No recurring risks yet.</div>
+                </div>
+                <div class="card">
+                  <h3>Highest-Confidence Warnings</h3>
+                  <div id="riskWarnings" class="fineprint">No warnings yet.</div>
+                </div>
+                <div class="card">
+                  <h3>Intervention Levels</h3>
+                  <div class="fineprint">Level 1 = suggestion, Level 2 = professional disagreement, Level 3 = direct challenge, Level 4 = risk intervention.</div>
+                </div>
+              </div>
+            </div>
+            <div class="card" style="margin-top:14px">
+              <div class="eyebrow">Discovery Center</div>
+              <h3>Praetor is looking for hidden edges and hidden risks.</h3>
+              <div class="researchGrid">
+                <div class="card">
+                  <h3>Critical Discoveries</h3>
+                  <div id="discCritical" class="fineprint">No critical discoveries yet.</div>
+                </div>
+                <div class="card">
+                  <h3>High-Impact Discoveries</h3>
+                  <div id="discHighImpact" class="fineprint">No high-impact discoveries yet.</div>
+                </div>
+                <div class="card">
+                  <h3>Emerging Hypotheses</h3>
+                  <div id="discHypotheses" class="fineprint">No emerging hypotheses yet.</div>
+                </div>
+                <div class="card">
+                  <h3>Hidden Opportunities</h3>
+                  <div id="discOpportunities" class="fineprint">No hidden opportunities yet.</div>
+                </div>
+                <div class="card">
+                  <h3>Hidden Risks</h3>
+                  <div id="discRisks" class="fineprint">No hidden risks yet.</div>
+                </div>
+              </div>
+            </div>
+            <div class="tableWrap">
+              <table>
+                <thead>
+                  <tr><th>Ticker</th><th>Plan</th><th>Setup</th><th>Grade</th><th>Status</th><th>Decision</th><th>Outcome</th><th>Entry</th><th>Stop</th><th>Targets</th><th>Actions</th></tr>
+                </thead>
+                <tbody id="playbookBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="eyebrow">In-app alerts</div>
+            <h2>Manual alert foundation.</h2>
+            <div class="portfolioForm">
+              <div class="field"><label>Ticker</label><input id="alertTicker" placeholder="AAPL" /></div>
+              <div class="field"><label>Alert type</label><input id="alertType" placeholder="Entry Trigger Reached" /></div>
+              <div class="field"><label>Urgency</label><select id="alertUrgency"><option value="normal">Normal</option><option value="high">High</option><option value="immediate">Immediate</option><option value="low">Low</option></select></div>
+            </div>
+            <div class="field"><label>Message</label><textarea id="alertMessage" placeholder="What should Praetor remind you about?"></textarea></div>
+            <button class="btn primary" id="createAlertBtn" type="button">Create Alert</button>
+            <div class="tableWrap" style="margin-top:14px">
+              <table>
+                <thead><tr><th>Ticker</th><th>Type</th><th>Urgency</th><th>Status</th><th>Message</th><th>Actions</th></tr></thead>
+                <tbody id="alertsBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="page" id="pageAlerts">
+          <div class="card">
+            <div class="eyebrow">Alert Center</div>
+            <h2>Smart in-app alerts and monitoring checks.</h2>
+            <p>Praetor alerts include trade-plan context, playbook context, memory, discoveries, and risk context. This is the foundation for future SMS notifications.</p>
+            <div class="portfolioForm">
+              <div class="field"><label>Monitor ticker</label><input id="monitorTicker" placeholder="AAPL" /></div>
+              <div class="field"><label>Current price</label><input id="monitorPrice" type="number" step="0.0001" placeholder="123.45" /></div>
+              <div class="field"><label>&nbsp;</label><button class="btn primary" id="runMonitorBtn" type="button">Run Monitor Check</button></div>
+            </div>
+            <div class="fineprint" id="monitorStatus">Enter a ticker/current price to evaluate saved active trade plans.</div>
+          </div>
+          <div class="card">
+            <div class="eyebrow">Active alerts</div>
+            <div class="tableWrap"><table><thead><tr><th>Ticker</th><th>Category</th><th>Priority</th><th>Confidence</th><th>Message</th><th>Explanation</th><th>Actions</th></tr></thead><tbody id="alertCenterActive"></tbody></table></div>
+          </div>
+          <div class="card">
+            <div class="eyebrow">Dismissed alerts</div>
+            <div class="tableWrap"><table><thead><tr><th>Ticker</th><th>Category</th><th>Priority</th><th>Message</th><th>Status</th></tr></thead><tbody id="alertCenterDismissed"></tbody></table></div>
+          </div>
+          <div class="card">
+            <div class="eyebrow">Alert history</div>
+            <div class="tableWrap"><table><thead><tr><th>Ticker</th><th>Type</th><th>Priority</th><th>Urgency</th><th>Status</th><th>Created</th></tr></thead><tbody id="alertCenterHistory"></tbody></table></div>
+          </div>
+        </div>
+
+        <div class="page" id="pageBriefings">
+          <div class="card">
+            <div class="eyebrow">Daily Briefing Center</div>
+            <h2>Praetor's proactive financial intelligence briefing.</h2>
+            <p>Briefings synthesize playbook learning, memory, discoveries, risk, journal intelligence, trade plans, and alerts.</p>
+            <div class="toolbar">
+              <button class="btn primary" data-briefing-generate="morning" type="button">Morning Briefing</button>
+              <button class="btn" data-briefing-generate="midday" type="button">Midday Briefing</button>
+              <button class="btn" data-briefing-generate="end_of_day" type="button">End-of-Day Review</button>
+              <button class="btn" data-briefing-generate="weekly" type="button">Weekly Briefing</button>
+              <button class="ghost" id="refreshBriefingsBtn" type="button">Refresh</button>
+            </div>
+            <div class="fineprint" id="briefingStatus">Generate a briefing to answer: what is the most important thing I need to know right now?</div>
+          </div>
+          <div class="card">
+            <div class="eyebrow">Latest briefing</div>
+            <div id="latestBriefing">No briefing generated yet.</div>
+          </div>
+          <div class="card">
+            <div class="eyebrow">AI Executive Summary</div>
+            <div class="toolbar">
+              <button class="btn primary" id="briefingAiBtn" type="button">Generate Executive Summary</button>
+              <button class="btn" data-explain-page="Briefings" type="button">Explain This</button>
+            </div>
+            <div class="praetorBox" id="briefingAiSummary">AI executive summary has not been generated yet.</div>
+          </div>
+          <div class="researchGrid">
+            <div class="card">
+              <h3>Morning</h3>
+              <div id="morningBriefing">No morning briefing yet.</div>
+            </div>
+            <div class="card">
+              <h3>Midday</h3>
+              <div id="middayBriefing">No midday briefing yet.</div>
+            </div>
+            <div class="card">
+              <h3>End of Day</h3>
+              <div id="eodBriefing">No end-of-day briefing yet.</div>
+            </div>
+            <div class="card">
+              <h3>Weekly</h3>
+              <div id="weeklyBriefing">No weekly briefing yet.</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="eyebrow">Briefing history</div>
+            <div class="tableWrap"><table><thead><tr><th>Type</th><th>Priority</th><th>Title</th><th>Summary</th><th>Created</th></tr></thead><tbody id="briefingHistory"></tbody></table></div>
+          </div>
+        </div>
+
+        <div class="page" id="pageCommittee">
+          <div class="card">
+            <div class="eyebrow">Investment Committee</div>
+            <h2>Evidence-based committee review.</h2>
+            <p>Praetor's committee uses playbook learning, memory, discoveries, risk, journal AI, trade plans, and briefings. It is designed to reduce confirmation bias, not roleplay random opinions.</p>
+            <div class="toolbar">
+              <button class="btn primary" id="runCommitteeBtn" type="button">Run Committee</button>
+              <button class="ghost" id="refreshCommitteeBtn" type="button">Refresh</button>
+              <span class="pill" id="committeeStatus">No committee run loaded.</span>
+            </div>
+          </div>
+          <div class="card">
+            <div class="eyebrow">Praetor conclusion</div>
+            <div id="committeeConclusion">No committee run yet.</div>
+          </div>
+          <div class="card">
+            <div class="eyebrow">Praetor AI Committee Conclusion</div>
+            <div class="toolbar">
+              <button class="btn primary" id="committeeAiBtn" type="button">Generate AI Committee Conclusion</button>
+              <button class="btn" data-explain-page="Committee" type="button">Explain This</button>
+            </div>
+            <div class="praetorBox" id="committeeAiConclusion">AI committee synthesis has not been generated yet.</div>
+          </div>
+          <div class="researchGrid" id="committeeMembers"></div>
+          <div class="card">
+            <div class="eyebrow">Committee history</div>
+            <div class="tableWrap"><table><thead><tr><th>Consensus</th><th>Confidence</th><th>Recommendation</th><th>Created</th></tr></thead><tbody id="committeeHistory"></tbody></table></div>
+          </div>
+        </div>
+
         <div class="page" id="pageRisk">
           <div class="card">
             <div class="eyebrow">Risk architecture</div>
-            <h2>Exposure intelligence coming next.</h2>
-            <p>This area will track drawdown probability, gross/net exposure, sector concentration, beta, volatility exposure, event risk, liquidity risk, and tail-risk scenarios.</p>
+            <h2>Praetor Risk Officer Commentary</h2>
+            <p>This page surfaces AI explanation on top of deterministic Risk AI. The deterministic Playbook Risk section remains the source of truth.</p>
+            <div class="toolbar">
+              <button class="btn primary" id="riskAiBtn" type="button">Generate Risk Commentary</button>
+              <button class="btn" data-explain-page="Risk" type="button">Explain This</button>
+            </div>
+            <div class="praetorBox" id="riskAiCommentary">Risk commentary has not been generated yet.</div>
           </div>
         </div>
 
@@ -627,6 +999,52 @@
     </div>
   </div>
 
+  <button class="copilotFab" id="praetorCopilotBtn" type="button" title="Open Praetor">P</button>
+  <aside class="copilotDrawer" id="praetorCopilotDrawer" aria-label="Praetor Copilot">
+    <div class="copilotHead">
+      <div>
+        <div class="eyebrow">Praetor Copilot</div>
+        <h3 id="copilotTitle">Page-aware assistant</h3>
+        <p class="fineprint" id="copilotContext">Context: -</p>
+        <p class="fineprint" id="copilotAiStatus">AI: checking...</p>
+      </div>
+      <button class="x" id="closeCopilotBtn" type="button">&times;</button>
+    </div>
+    <div class="copilotBody">
+      <div class="card">
+        <h3>Current context</h3>
+        <div class="copilotChips" id="copilotChips"></div>
+        <p class="fineprint" id="copilotEmptyState">Praetor is online. I'm reading your current page context.</p>
+      </div>
+      <div class="card">
+        <h3>Ask Praetor</h3>
+        <textarea id="copilotInput" placeholder="Ask Praetor about this page, your risk, setup quality, research, or portfolio context."></textarea>
+        <div class="toolbar"><button class="btn primary" id="copilotAskBtn" type="button">Ask</button></div>
+      </div>
+      <div class="card">
+        <h3>Suggested questions</h3>
+        <div class="copilotPromptGrid" id="copilotPrompts"></div>
+      </div>
+      <div class="card">
+        <h3>Latest recommendation</h3>
+        <div class="fineprint" id="copilotRecommendation">Open Command Center for latest recommendation.</div>
+      </div>
+      <div class="card">
+        <h3>Top risk / discovery</h3>
+        <div class="fineprint" id="copilotSnapshot">No snapshot loaded yet.</div>
+      </div>
+      <div class="card">
+        <h3>Suggested actions</h3>
+        <div class="copilotActionGrid" id="copilotActions"></div>
+      </div>
+      <div class="card">
+        <h3>Conversation</h3>
+        <div class="copilotHistory" id="copilotHistory"></div>
+      </div>
+      <div class="copilotResponse" id="copilotResponse">Praetor responses will appear here.</div>
+    </div>
+  </aside>
+
 <script>
   const $ = (id) => document.getElementById(id);
   const state = {
@@ -642,8 +1060,22 @@
     scanned:null,
     results:{ SQUEEZE:[], MOMENTUM:[] },
     researchProfile:null,
-    resultLimit:5
+    resultLimit:5,
+    copilotHistory:[],
+    commandSnapshot:null
   };
+
+  async function loadAiStatus(){
+    if(!state.user) return null;
+    const resp = await fetch("/api/praetor/ai/status").catch(()=>null);
+    const data = resp ? await safeJson(resp) : null;
+    const label = data && data.openai_configured
+      ? `OpenAI Active (${data.model})`
+      : `Fallback Mode`;
+    if($("aiStatusPill")) $("aiStatusPill").textContent = `AI: ${label}`;
+    if($("copilotAiStatus")) $("copilotAiStatus").textContent = `AI: ${label}`;
+    return data;
+  }
 
   function setTheme(theme){
     state.theme = theme === "dark" ? "dark" : "light";
@@ -702,6 +1134,7 @@
     state.plans = data.plans || state.plans;
     closeAuth();
     renderAll();
+    await loadCommandCenter();
     await loadNotebook();
   }
 
@@ -714,6 +1147,84 @@
       state.usage = data.usage;
       state.plans = data.plans || [];
     }
+  }
+
+  function simpleList(items, emptyText){
+    if(!items || !items.length) return emptyText;
+    return `<ul>${items.map(x => `<li>${escHtml(x.title || x.statement || x.description || x.warning || x.lesson || String(x))}<br><span class="muted">${escHtml(x.description || "")}</span></li>`).join("")}</ul>`;
+  }
+
+  function briefLine(obj, emptyText){
+    if(!obj) return emptyText;
+    return `<b>${escHtml(obj.title || obj.consensus || obj.alert_type || obj.priority || "")}</b><br>${escHtml(obj.description || obj.summary || obj.final_recommendation || obj.message || obj.warning || obj.lead || "")}`;
+  }
+
+  async function loadCommandCenter(){
+    if(!state.user) return;
+    const resp = await fetch("/api/praetor/command-center").catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false,error:"Command Center unavailable."};
+    if(!data.ok){
+      $("ccRecommendation").textContent = data.error || "Command Center unavailable.";
+      return;
+    }
+    renderCommandCenter(data);
+    loadCommandCenterAI();
+  }
+
+  async function loadCommandCenterAI(){
+    if(!state.user) return;
+    const resp = await fetch("/api/praetor/ai/command-center").catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false};
+    if(!data.ok || !data.ai){
+      $("ccAiRecommendation").textContent = "AI command-center synthesis unavailable.";
+      return;
+    }
+    const text = data.ai.text || "";
+    const parts = text.split(/\n{2,}|(?=AI Risk|Risk Insight|Opportunity)/i).filter(Boolean);
+    $("ccAiRecommendation").textContent = parts[0] || text;
+    $("ccAiRisk").textContent = parts.find(p => /risk/i.test(p)) || "Review deterministic risk card.";
+    $("ccAiOpportunity").textContent = parts.find(p => /opportun|discovery|edge/i.test(p)) || "Review top discovery and active plans.";
+  }
+
+  function renderCommandCenter(data){
+    $("ccRecommendation").textContent = data.recommendation_of_day?.text || "No critical issue detected.";
+    $("ccTopRisk").innerHTML = data.top_risk_warning ? `${escHtml(data.top_risk_warning.warning || "")}<br><span class="muted">Intervention level ${data.top_risk_warning.intervention_level || 1}</span>` : "No top risk warning.";
+    $("ccTopDiscovery").innerHTML = briefLine(data.top_discovery, "No top discovery.");
+    $("ccCommittee").innerHTML = data.committee_overview?.consensus ? `<b>${escHtml(data.committee_overview.consensus)}</b><br>${escHtml(data.committee_overview.final_recommendation || "")}<br><span class="muted">Confidence ${fmtPct(data.committee_overview.confidence)}</span>` : "No committee run yet.";
+    $("ccBriefing").innerHTML = data.latest_briefing ? `<b>${escHtml(data.latest_briefing.title || "")}</b><br>${escHtml(data.latest_briefing.summary || "")}` : "No briefing yet.";
+    $("ccAlert").innerHTML = briefLine(data.highest_priority_alert, "No active alert.");
+    $("ccJournalLesson").innerHTML = data.recent_journal_lesson ? `<b>${escHtml(data.recent_journal_lesson.ticker || "")}</b><br>${escHtml(data.recent_journal_lesson.lesson || "")}` : "No recent lesson.";
+    const po = data.portfolio_overview || {};
+    $("ccPortfolio").innerHTML = po.portfolio_value ? `<b>${fmtDollar(po.portfolio_value)}</b><br>Risk: ${escHtml(po.risk?.label || "n/a")}<br>Top: ${escHtml(po.top_holding?.ticker || "none")}` : "No portfolio holdings yet.";
+    $("ccMonitoredPlans").textContent = data.monitoring_summary?.monitored_plans ?? 0;
+    $("ccTriggeredPlans").textContent = data.monitoring_summary?.triggered_plans ?? 0;
+    $("ccActiveAlerts").textContent = data.monitoring_summary?.active_alerts ?? 0;
+    $("ccMemoryCount").textContent = data.learning_progress?.memory_count ?? 0;
+    $("ccStrengths").innerHTML = simpleList(data.learning_progress?.strengths, "No strengths learned yet.");
+    $("ccWeaknesses").innerHTML = simpleList(data.learning_progress?.weaknesses, "No weaknesses learned yet.");
+    $("ccHypotheses").innerHTML = simpleList(data.learning_progress?.hypotheses, "No hypotheses yet.");
+    $("ccActivePlans").innerHTML = simpleList((data.active_trade_plans || []).map(p => ({title:`${p.ticker} ${p.plan_style}`, description:`${p.status} | trigger ${p.trigger_price} | stop ${p.stop_price}`})), "No active plans.");
+    $("ccFeed").innerHTML = simpleList(data.intelligence_feed, "No feed items yet.");
+    state.commandSnapshot = data;
+    updateCopilotContext(data);
+  }
+
+  async function askCommandPraetor(){
+    const question = ($("commandAskInput").value || "").trim() || "What is the most important thing I need to know right now?";
+    const box = $("commandAskResponse");
+    box.classList.remove("hidden");
+    box.textContent = "Praetor is reviewing command-center context...";
+    const resp = await fetch("/api/praetor/ask", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({page:"command_center", question})
+    }).catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false,error:"Praetor unavailable."};
+    if(!data.ok){
+      box.textContent = data.error || "Praetor unavailable.";
+      return;
+    }
+    box.textContent = `${data.fallback_used ? "Fallback Praetor" : "Praetor"}:\n\n${data.response}`;
   }
 
   async function refreshUsage(){
@@ -748,10 +1259,13 @@
     document.querySelectorAll(".founderOnly").forEach(x => {
       x.classList.toggle("hidden", !authed || state.user?.plan_code !== "founder");
     });
+    $("praetorCopilotBtn").classList.toggle("visible", authed);
+    if(!authed) $("praetorCopilotDrawer").classList.remove("open");
     if(authed){
       $("userPill").textContent = `${state.user.email} - ${state.user.plan_name}`;
       applyOrtexDefault();
       paintUsage();
+      loadAiStatus();
     }
     paintPricing("publicPricing");
     paintPricing("appPricing");
@@ -823,7 +1337,125 @@
     if(page) page.classList.add("active");
     document.querySelectorAll("[data-page]").forEach(b => b.classList.toggle("active", b.dataset.page === name));
     if(name === "Journal") loadNotebook();
+    if(name === "Playbook") loadPlaybook();
+    if(name === "Alerts") loadAlertCenter();
+    if(name === "Briefings") loadBriefings();
+    if(name === "Committee") loadCommittee();
+    if(name === "Portfolio") loadPortfolio();
+    if(name === "Dashboard") loadCommandCenter();
+    if(name === "Risk") loadRiskAI();
     if(name === "Pricing") paintPricing("appPricing");
+    updateCopilotContext();
+  }
+
+  function activePageName(){
+    const active = document.querySelector(".page.active");
+    return active ? active.id.replace("page","") : "Dashboard";
+  }
+
+  const COPILOT_PROMPTS = {
+    Dashboard:["What is the most important thing I need to know right now?","What risk should I address first?","What did Praetor learn recently?"],
+    Scanner:["Analyze this setup.","Am I chasing?","Build a trade plan.","Compare this to my playbook."],
+    Research:["Build a hedge-fund thesis.","Explain the bull/base/bear case.","What are the key risks?","Simplify this research."],
+    Journal:["Review my recent trades.","What mistakes am I repeating?","What should I improve next?"],
+    Portfolio:["Where am I concentrated?","What is my biggest risk?","Does this portfolio fit my goals?","What position is oversized?","What should I review first?"],
+    Playbook:["What are my strengths?","What are my weakest setups?","What hypotheses are forming?"],
+    Alerts:["Which alert matters most?","Why did this alert fire?","What should I check before acting?"],
+    Briefings:["Summarize today.","What changed since the last briefing?","What should I prepare for next?"],
+    Committee:["Where does the committee disagree?","What is the strongest bear case?","What is the strongest bull case?"],
+    Risk:["Analyze my current risk.","Where am I concentrated?","What risk limit matters most?"],
+    Signals:["What signals need review?","Which signal quality is strongest?"],
+    Pricing:["Which plan fits my usage?"]
+  };
+
+  const COPILOT_ACTIONS = {
+    Dashboard:["Open Alerts","Run Committee","Generate Morning Briefing"],
+    Scanner:["Build Trade Plan","Save to Playbook","Set Alert"],
+    Research:["Generate Thesis","Run Committee","Simplify"],
+    Journal:["Review Trade","Find Mistakes","Update Playbook"],
+    Portfolio:["Analyze Exposure","Check Allocation","Stress Test"],
+    Playbook:["Refresh Playbook","Show Risk Breakdown","Run Committee"],
+    Alerts:["Run Monitor Check","Dismiss Resolved","Open Playbook"],
+    Briefings:["Generate Morning Briefing","Generate Weekly Briefing","Run Committee"],
+    Committee:["Run Committee","Show Risk Breakdown","Open Briefings"],
+    Risk:["Show Risk Breakdown","Open Playbook","Open Alerts"],
+    Signals:["Open Scanner","Ask About Signals"],
+    Pricing:["Open Plans"]
+  };
+
+  function updateCopilotContext(snapshot){
+    const page = activePageName();
+    $("copilotTitle").textContent = `${page} Copilot`;
+    $("copilotContext").textContent = `Context: ${page}`;
+    const prompts = COPILOT_PROMPTS[page] || COPILOT_PROMPTS.Dashboard;
+    $("copilotPrompts").innerHTML = prompts.map(p => `<button class="copilotPrompt" type="button" data-copilot-prompt="${escHtml(p)}">${escHtml(p)}</button>`).join("");
+    document.querySelectorAll("[data-copilot-prompt]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        $("copilotInput").value = btn.dataset.copilotPrompt || "";
+        askCopilot();
+      });
+    });
+    if(snapshot){
+      $("copilotRecommendation").textContent = snapshot.recommendation_of_day?.text || "No recommendation loaded.";
+      $("copilotSnapshot").innerHTML = `Risk: ${escHtml(snapshot.top_risk_warning?.warning || "none")}<br>Discovery: ${escHtml(snapshot.top_discovery?.title || "none")}`;
+    }
+    const snap = snapshot || state.commandSnapshot || {};
+    const chips = [
+      `Page: ${page}`,
+      `Ticker: ${$("researchTicker")?.value || activeScannerTicker() || "none"}`,
+      `Risk: ${snap.top_risk_warning?.warning ? "present" : "none"}`,
+      `Discovery: ${snap.top_discovery?.title ? "present" : "none"}`,
+      `Plans: ${snap.monitoring_summary?.monitored_plans ?? "-"}`,
+      `Portfolio: ${snap.portfolio_overview?.portfolio_value ? fmtDollar(snap.portfolio_overview.portfolio_value) : "none"}`
+    ];
+    $("copilotChips").innerHTML = chips.map(c => `<span class="copilotChip">${escHtml(c)}</span>`).join("");
+    renderCopilotActions(page);
+    renderCopilotHistory();
+  }
+
+  function activeScannerTicker(){
+    const list = state.results[state.showing] || [];
+    return list[0]?.ticker || "";
+  }
+
+  function renderCopilotActions(page){
+    const actions = COPILOT_ACTIONS[page] || COPILOT_ACTIONS.Dashboard;
+    $("copilotActions").innerHTML = actions.map(a => `<button class="copilotAction" type="button" data-copilot-action="${escHtml(a)}">${escHtml(a)}</button>`).join("");
+    document.querySelectorAll("[data-copilot-action]").forEach(btn => {
+      btn.addEventListener("click", () => runCopilotAction(btn.dataset.copilotAction || ""));
+    });
+  }
+
+  function renderCopilotHistory(){
+    const history = state.copilotHistory.slice(-10);
+    $("copilotHistory").innerHTML = history.length ? history.map(turn => `
+      <div class="copilotTurn ${turn.role === "user" ? "user" : ""}">
+        <span class="meta">${turn.role} | ${turn.time}</span>${escHtml(turn.text)}
+      </div>
+    `).join("") : `<div class="fineprint">Praetor is online. I'm reading your current page context.</div>`;
+  }
+
+  function addCopilotTurn(role, text){
+    state.copilotHistory.push({role, text, time:new Date().toLocaleTimeString([], {hour:"numeric", minute:"2-digit"})});
+    renderCopilotHistory();
+  }
+
+  function runCopilotAction(action){
+    if(action.includes("Trade Plan")) setPage("Scanner");
+    else if(action.includes("Alert") || action.includes("Monitor")) setPage("Alerts");
+    else if(action.includes("Committee")) setPage("Committee");
+    else if(action.includes("Briefing")) setPage("Briefings");
+    else if(action.includes("Risk")) setPage("Risk");
+    else if(action.includes("Playbook")) setPage("Playbook");
+    else if(action.includes("Thesis") || action.includes("Simplify")) setPage("Research");
+    else if(action.includes("Exposure") || action.includes("Allocation") || action.includes("Stress Test")) setPage("Portfolio");
+    $("copilotInput").value = action;
+  }
+
+  function explainThis(page){
+    setPage(page);
+    openCopilot();
+    $("copilotInput").value = `Explain this ${page} page. Summarize what matters, what risk stands out, and what I should review first.`;
   }
 
   function setResearchPage(name){
@@ -901,6 +1533,7 @@
     const objective = $("researchObjective").value || "";
     $("researchStatus").textContent = "Loading research data...";
     $("researchReport").innerHTML = "";
+    $("researchAiReport").innerHTML = "";
 
     const profileResp = await fetch(`/api/research/${encodeURIComponent(ticker)}?range=${encodeURIComponent(range)}`).catch(()=>null);
     const profile = profileResp ? await safeJson(profileResp) : {ok:false,error:"Could not reach server."};
@@ -918,6 +1551,72 @@
     }).catch(()=>null);
     const report = reportResp ? await safeJson(reportResp) : {ok:false,error:"Could not generate report."};
     renderResearchReport(report.ok ? report.report : null, report.error);
+    loadResearchAI();
+  }
+
+  async function loadResearchAI(){
+    if(!state.user){ openAuth("login"); return; }
+    const ticker = ($("researchTicker").value || "").trim().toUpperCase();
+    if(!ticker){ alert("Enter a ticker first."); return; }
+    $("researchAiReport").innerHTML = `<div class="reportSection">Praetor AI is generating thesis synthesis...</div>`;
+    const payload = {
+      ticker,
+      range:$("researchRange").value || "1y",
+      report_type:$("researchReportType").value || "full",
+      objective:$("researchObjective").value || ""
+    };
+    const resp = await fetch("/api/praetor/ai/research", {
+      method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload)
+    }).catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false,error:"Research AI unavailable."};
+    if(!data.ok){
+      $("researchAiReport").innerHTML = `<div class="reportSection"><b>AI thesis error</b><p>${escHtml(data.error || "Research AI unavailable.")}</p></div>`;
+      return;
+    }
+    renderResearch(data.profile);
+    renderResearchReport(data.deterministic_report, null);
+    $("researchAiReport").innerHTML = `
+      <div class="reportSection">
+        <h3>Praetor AI Thesis <span class="scoreBadge">${data.ai?.fallback_used ? "Fallback" : "OpenAI"}</span></h3>
+        <p style="white-space:pre-wrap">${escHtml(data.ai?.text || "No AI synthesis returned.")}</p>
+      </div>
+    `;
+  }
+
+  function renderAiBox(id, data, label){
+    const el = $(id);
+    if(!el) return;
+    if(!data || !data.ok || !data.ai){
+      el.textContent = `${label || "AI synthesis"} unavailable.`;
+      return;
+    }
+    el.classList.remove("hidden");
+    el.textContent = `${data.ai.fallback_used ? "Fallback" : "OpenAI"} ${label || "AI synthesis"}:\n\n${data.ai.text || ""}`;
+  }
+
+  async function loadCommitteeAI(){
+    $("committeeAiConclusion").textContent = "Generating AI committee synthesis...";
+    const resp = await fetch("/api/praetor/ai/committee/latest").catch(()=>null);
+    renderAiBox("committeeAiConclusion", resp ? await safeJson(resp) : null, "Committee synthesis");
+  }
+
+  async function loadRiskAI(){
+    $("riskAiCommentary").textContent = "Generating risk officer commentary...";
+    const resp = await fetch("/api/praetor/ai/risk").catch(()=>null);
+    renderAiBox("riskAiCommentary", resp ? await safeJson(resp) : null, "Risk commentary");
+  }
+
+  async function loadJournalCoachingAI(){
+    $("journalAiCoaching").classList.remove("hidden");
+    $("journalAiCoaching").textContent = "Generating coaching notes...";
+    const resp = await fetch("/api/praetor/ai/journal").catch(()=>null);
+    renderAiBox("journalAiCoaching", resp ? await safeJson(resp) : null, "Journal coaching");
+  }
+
+  async function loadBriefingAI(){
+    $("briefingAiSummary").textContent = "Generating executive summary...";
+    const resp = await fetch("/api/praetor/ai/briefing/latest").catch(()=>null);
+    renderAiBox("briefingAiSummary", resp ? await safeJson(resp) : null, "Executive summary");
   }
 
   function renderResearch(profile){
@@ -944,9 +1643,38 @@
       $("researchReport").innerHTML = `<div class="reportSection"><b>Report error</b><p>${err || "Could not generate report."}</p></div>`;
       return;
     }
+    const inst = report.institutional || {};
+    const sections = inst.sections || {};
+    const frameworks = inst.frameworks || {};
+    const scores = inst.scores || {};
+    const scoreCards = Object.values(scores).map(s => metricCard(s.name || "Score", `${s.score ?? "-"} ${s.label ? "(" + s.label + ")" : ""}`)).join("");
+    const scenarios = (inst.scenarios || []).map(s => `
+      <div class="reportSection"><h3>${s.name} <span class="scoreBadge">${fmtPct(s.probability)}</span></h3>
+      <p><b>Range:</b> ${fmtDollar(s.price_range?.[0])} - ${fmtDollar(s.price_range?.[1])}</p>
+      <p><b>Assumptions:</b> ${(s.assumptions || []).map(escHtml).join("; ")}</p>
+      <p><b>Confirm:</b> ${escHtml(s.confirmation || "")}</p>
+      <p><b>Invalidate:</b> ${escHtml(s.invalidation || "")}</p></div>
+    `).join("");
+    const frameworkCards = Object.entries(frameworks).map(([key, f]) => `
+      <details class="explainer"><summary>${escHtml(key.replaceAll("_"," "))}: ${escHtml(f.rating || "")}</summary>
+      <ul>${(f.items || []).map(x => `<li>${escHtml(x)}</li>`).join("")}</ul>
+      <p class="fineprint">Data requirements: ${(f.data_requirements || []).map(escHtml).join(", ")}</p></details>
+    `).join("");
     $("researchReport").innerHTML = `
-      <div class="reportSection"><h3>${report.type || "Research"} report</h3></div>
+      <div class="reportSection"><h3>Executive View <span class="scoreBadge">${escHtml(inst.verdict || "Needs Confirmation")}</span></h3><p>${escHtml(sections.executive_view?.body || "No executive view available.")}</p></div>
+      <div class="metricGrid">${scoreCards}</div>
+      <div class="reportSection"><h3>Institutional View</h3><p>${escHtml(sections.institutional_view?.body || "")}</p></div>
+      <div class="researchGrid">
+        <div class="reportSection"><h3>Bull Case</h3><p>${escHtml(sections.bull_case?.body || "")}</p></div>
+        <div class="reportSection"><h3>Bear Case</h3><p>${escHtml(sections.bear_case?.body || "")}</p></div>
+        <div class="reportSection"><h3>Risks</h3><p>${escHtml(sections.risks?.body || "")}</p></div>
+        <div class="reportSection"><h3>Portfolio Fit</h3><p>${escHtml(sections.portfolio_fit?.body || "")}</p></div>
+      </div>
+      <div class="reportSection"><h3>Scenario Analysis</h3>${scenarios}</div>
+      <div class="reportSection"><h3>Research Frameworks</h3>${frameworkCards}</div>
       ${(report.sections || []).map(s => `<div class="reportSection"><h3>${s.title}</h3><p>${s.body}</p></div>`).join("")}
+      <div class="reportSection"><h3>Committee View</h3><p>Research reports now persist and feed Committee/Briefings/Command Center context. Run Committee for multi-role synthesis.</p></div>
+      <div class="reportSection"><h3>What Praetor Would Do</h3><p>${escHtml(sections.what_praetor_would_do?.body || "")}</p></div>
       <details class="explainer" open><summary>Plain-English explanation</summary><ul>${(report.plain_english || []).map(x => `<li>${x}</li>`).join("")}</ul></details>
     `;
   }
@@ -1045,6 +1773,57 @@
     `;
   }
 
+  async function loadPortfolio(){
+    if(!state.user) return;
+    const resp = await fetch("/api/portfolio").catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false};
+    if(!data.ok) return;
+    renderPortfolio(data.analysis || {});
+  }
+
+  function renderPortfolio(analysis){
+    setText("portfolioValue", fmtDollar(analysis.portfolio_value));
+    setText("portfolioPnl", fmtMoney(analysis.total_unrealized_pnl));
+    setText("portfolioRisk", analysis.risk?.label || "-");
+    setText("portfolioConfidence", fmtPct(analysis.risk?.confidence));
+    $("portfolioHoldingsBody").innerHTML = (analysis.holdings || []).map(h => `
+      <tr>
+        <td><b>${escHtml(h.ticker)}</b></td>
+        <td>${fmtNum(h.shares,4)}</td>
+        <td>${fmtDollar(h.average_cost)}</td>
+        <td>${fmtDollar(h.current_price)}</td>
+        <td>${fmtDollar(h.market_value)}</td>
+        <td>${fmtPct(h.allocation_pct)}</td>
+        <td class="${Number(h.unrealized_pnl || 0) >= 0 ? "good" : "bad"}">${fmtMoney(h.unrealized_pnl)}</td>
+        <td>${escHtml(h.sector || "Unknown Sector")}</td>
+        <td>${escHtml(h.industry || "Unknown Industry")}</td>
+      </tr>
+    `).join("");
+    $("portfolioExposure").innerHTML = `<h4>Sector</h4>${simpleList((analysis.sector_exposure || []).map(x => ({title:x.name, description:`${fmtPct(x.allocation_pct)} / ${fmtDollar(x.market_value)}`})), "No sector exposure.")}<h4>Industry</h4>${simpleList((analysis.industry_exposure || []).map(x => ({title:x.name, description:`${fmtPct(x.allocation_pct)} / ${fmtDollar(x.market_value)}`})), "No industry exposure.")}`;
+    $("portfolioRiskSummary").innerHTML = simpleList((analysis.risk?.warnings || []).map(x => ({title:analysis.risk?.label || "Risk", description:x})), "No portfolio risk warnings.");
+    $("portfolioNotes").innerHTML = simpleList((analysis.portfolio_fit?.opportunities || []).map(x => ({title:"Praetor note", description:x})), "No portfolio notes.");
+  }
+
+  async function saveHolding(){
+    const payload = {
+      ticker:$("holdingTicker").value,
+      shares:$("holdingShares").value,
+      average_cost:$("holdingAvgCost").value,
+      current_price:$("holdingCurrentPrice").value,
+      sector:$("holdingSector").value,
+      industry:$("holdingIndustry").value,
+      theme:$("holdingTheme").value
+    };
+    const resp = await fetch("/api/portfolio/holdings", {
+      method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload)
+    }).catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false,error:"Could not save holding."};
+    if(!data.ok){ alert(data.error || "Save failed."); return; }
+    ["holdingTicker","holdingShares","holdingAvgCost","holdingCurrentPrice","holdingSector","holdingIndustry","holdingTheme"].forEach(id => $(id).value = "");
+    renderPortfolio(data.analysis || {});
+    await loadCommandCenter();
+  }
+
   function log(line){
     $("logBox").textContent += line + "\n";
     $("logBox").scrollTop = $("logBox").scrollHeight;
@@ -1053,6 +1832,53 @@
       state.scanned = Number(m[1]);
       $("resultMeta").textContent = `Updated now - scanned ${state.scanned.toLocaleString()}`;
     }
+  }
+
+  function copilotClientContext(){
+    return {
+      active_page: activePageName(),
+      visible_bucket: state.showing,
+      scanner_result_count: (state.results.SQUEEZE.length + state.results.MOMENTUM.length),
+      selected_research_ticker: $("researchTicker")?.value || "",
+      playbook_meta: $("playbookMeta")?.textContent || "",
+      alert_status: $("monitorStatus")?.textContent || "",
+      committee_status: $("committeeStatus")?.textContent || "",
+      briefing_status: $("briefingStatus")?.textContent || ""
+    };
+  }
+
+  async function askCopilot(){
+    if(!state.user){ openAuth("login"); return; }
+    const question = ($("copilotInput").value || "").trim();
+    if(!question){ $("copilotResponse").textContent = "Ask Praetor a question first."; return; }
+    addCopilotTurn("user", question);
+    $("copilotResponse").textContent = "Praetor is thinking...";
+    const page = activePageName();
+    const resp = await fetch("/api/praetor/ask", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({page: page === "Dashboard" ? "command_center" : page.toLowerCase(), question, client_context: copilotClientContext()})
+    }).catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false,error:"Praetor unavailable."};
+    if(!data.ok){
+      $("copilotResponse").textContent = data.error || "Praetor unavailable.";
+      addCopilotTurn("praetor", data.error || "Praetor unavailable.");
+      return;
+    }
+    const responseText = `${data.fallback_used ? "Fallback Praetor" : "Praetor"}:\n\n${data.response}`;
+    $("copilotResponse").textContent = responseText;
+    addCopilotTurn("praetor", data.response);
+    renderCopilotActions(activePageName());
+  }
+
+  function openCopilot(){
+    updateCopilotContext();
+    loadAiStatus();
+    $("praetorCopilotDrawer").classList.add("open");
+  }
+
+  function closeCopilot(){
+    $("praetorCopilotDrawer").classList.remove("open");
   }
 
   function paintOrtex(){
@@ -1214,10 +2040,66 @@
         </div>
         <div class="reportSection"><h3>Execution notes</h3><ul>${(i.execution_notes || []).map(x => `<li>${escHtml(x)}</li>`).join("")}</ul></div>
         <div class="reportSection"><h3>ORTEX / Catalyst context</h3><p>${escHtml(r.ortex_status || "ORTEX not available.")}</p><p>${escHtml(r.catalyst_label || "Catalyst Not Verified")}: ${escHtml(r.catalyst_summary || "No verified catalyst summary available.")}</p></div>
-        <button class="btn primary" data-add="${escHtml(r.ticker)}" type="button">Save to Journal</button>
+        <div class="praetorActions">
+          <button class="btn primary" data-add="${escHtml(r.ticker)}" type="button">Save to Journal</button>
+          <button class="btn" data-praetor-ask="${escHtml(r.ticker)}" type="button">Ask Praetor</button>
+          <button class="btn success" data-praetor-plan="${escHtml(r.ticker)}" type="button">Save Trade Plan</button>
+        </div>
+        <div class="praetorBox hidden" id="praetorResponseBox"></div>
       </div>
     `;
     $("planBox").querySelector("[data-add]")?.addEventListener("click", () => addTradeFromScan(r));
+    $("planBox").querySelector("[data-praetor-ask]")?.addEventListener("click", () => askPraetorScanner(r));
+    $("planBox").querySelector("[data-praetor-plan]")?.addEventListener("click", () => savePraetorTradePlan(r));
+  }
+
+  function showPraetorResponse(text){
+    const box = $("praetorResponseBox");
+    if(!box) return;
+    box.classList.remove("hidden");
+    box.textContent = text;
+  }
+
+  async function askPraetorScanner(row){
+    showPraetorResponse("Praetor is reviewing the setup...");
+    const resp = await fetch("/api/praetor/scanner/ask", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({
+        scanner_row: row,
+        question: "Challenge or validate this scanner setup. Am I chasing? What matters most?"
+      })
+    }).catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false,error:"Could not reach Praetor."};
+    if(!data.ok){
+      showPraetorResponse(data.error || "Praetor unavailable.");
+      return;
+    }
+    showPraetorResponse(`${data.fallback_used ? "Fallback Praetor" : "Praetor"}:\n\n${data.response}`);
+  }
+
+  async function savePraetorTradePlan(row){
+    showPraetorResponse("Praetor is building aggressive, balanced, and conservative trade plans...");
+    const resp = await fetch("/api/praetor/trade-plan", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({scanner_row: row, style:"all"})
+    }).catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false,error:"Could not reach Praetor."};
+    if(!data.ok){
+      showPraetorResponse(data.error || "Trade plan failed.");
+      return;
+    }
+    const plans = data.structured?.trade_plans || [];
+    const plan = plans.find(p => p.plan_style === "balanced") || plans[0] || {};
+    showPraetorResponse(
+      `${data.response}\n\n` +
+      `Saved plans: ${(data.trade_plan_ids || []).length}\n` +
+      `Entry zone: ${fmtNum(plan.entry_zone_low,4)} - ${fmtNum(plan.entry_zone_high,4)}\n` +
+      `Trigger: ${fmtNum(plan.trigger_price,4)} | Stop: ${fmtNum(plan.stop_price,4)}\n` +
+      `Targets: ${fmtNum(plan.target_1,4)} / ${fmtNum(plan.target_2,4)} / ${fmtNum(plan.target_3,4)}\n` +
+      `Conviction: ${fmtNum(plan.conviction,0)}\n\nOpen Playbook to mark watched/traded/skipped and track outcome.`
+    );
   }
 
   async function addTradeFromScan(row){
@@ -1306,6 +2188,31 @@
       });
     });
     renderJournalSummary(rows);
+    loadJournalAI();
+  }
+
+  async function loadJournalAI(){
+    if(!state.user) return;
+    const resp = await fetch("/api/praetor/journal/learning").catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false};
+    if(!data.ok){
+      return;
+    }
+    renderJournalAI(data.journal || {});
+    loadJournalCoachingAI();
+  }
+
+  function renderJournalAI(report){
+    setText("journalExecutionScore", report.execution_score == null ? "-" : fmtNum(report.execution_score,0));
+    setText("journalDisciplineScore", report.discipline_score == null ? "-" : fmtNum(report.discipline_score,0));
+    setText("journalProcessScore", report.process_score == null ? "-" : fmtNum(report.process_score,0));
+    setText("journalEvidenceCount", String(report.sample_size || 0));
+    const lessons = [];
+    (report.recent_reviews || []).slice(-5).forEach(r => (r.lessons || []).forEach(x => lessons.push({title:r.ticker, description:x, confidence:report.confidence, evidence_count:1})));
+    renderLearningList("journalLessons", lessons, "No journal lessons yet.");
+    renderLearningList("journalMistakes", report.recurring_mistakes || [], "No recurring mistakes yet.");
+    renderLearningList("journalStrengths", report.recurring_strengths || [], "No recurring strengths yet.");
+    renderLearningList("journalBehavior", report.behavioral_observations || [], "No behavioral observations yet.");
   }
 
   function renderJournalSummary(rows){
@@ -1352,6 +2259,390 @@
     loadNotebook();
   }
 
+  async function loadPlaybook(){
+    if(!state.user) return;
+    const plansResp = await fetch("/api/praetor/trade-plans").catch(()=>null);
+    const plansData = plansResp ? await safeJson(plansResp) : {ok:false, trade_plans:[]};
+    renderPlaybook(plansData.trade_plans || []);
+
+    const learningResp = await fetch("/api/praetor/playbook/learning").catch(()=>null);
+    const learningData = learningResp ? await safeJson(learningResp) : {ok:false};
+    if(learningData.ok) renderPlaybookLearning(learningData);
+
+    const alertsResp = await fetch("/api/praetor/alerts").catch(()=>null);
+    const alertsData = alertsResp ? await safeJson(alertsResp) : {ok:false, alerts:[]};
+    renderAlerts(alertsData.alerts || []);
+
+    const discResp = await fetch("/api/praetor/discoveries").catch(()=>null);
+    const discData = discResp ? await safeJson(discResp) : {ok:false};
+    if(discData.ok) renderDiscoveryCenter(discData.summary || {});
+  }
+
+  function confidenceText(x){
+    const n = Number(x);
+    if(!Number.isFinite(n)) return "low";
+    if(n >= .75) return "high";
+    if(n >= .40) return "medium";
+    return "low";
+  }
+
+  function renderLearningList(targetId, rows, emptyText){
+    const el = $(targetId);
+    if(!el) return;
+    if(!rows || rows.length === 0){
+      el.innerHTML = emptyText;
+      return;
+    }
+    el.innerHTML = `<ul>${rows.map(r => `<li><b>${escHtml(r.title || r.topic || r.key || "")}</b><br>${escHtml(r.description || r.statement || "")}<br><span class="muted">Confidence: ${confidenceText(r.confidence)} | Evidence: ${r.evidence_count ?? r.sample_size ?? 0}</span></li>`).join("")}</ul>`;
+  }
+
+  function renderPlaybookLearning(data){
+    const stats = data.learning?.stats || {};
+    const memory = data.memory || [];
+    const risk = data.learning?.risk || {};
+    setText("pbWinRate", stats.win_rate == null ? "-" : fmtPct(stats.win_rate));
+    setText("pbExpectancy", stats.expectancy == null ? "-" : Number(stats.expectancy).toFixed(2));
+    setText("pbEvidence", String(stats.sample_size || 0));
+    setText("pbMemoryCount", String(memory.length));
+    renderLearningList("playbookStrengths", stats.strengths || [], "No strengths learned yet.");
+    renderLearningList("playbookWeaknesses", stats.weaknesses || [], "No weaknesses learned yet.");
+    renderLearningList("playbookHypotheses", memory.filter(m => m.belief_type === "hypothesis"), "No hypotheses yet.");
+    renderLearningList("playbookRankings", (stats.by_setup || []).slice(0,5).map(r => ({
+      title: r.key,
+      description: `Win rate ${fmtPct(r.win_rate)} | Expectancy ${Number(r.expectancy || 0).toFixed(2)}`,
+      confidence: r.confidence,
+      evidence_count: r.sample_size
+    })), "No setup rankings yet.");
+    renderRiskLearning(risk);
+  }
+
+  function renderRiskLearning(risk){
+    if(!risk || !risk.current_risks){
+      setText("riskOverall", "Risk profile unavailable.");
+      return;
+    }
+    setText("riskOverall", `${risk.overall_risk_label || "Medium Risk"} (${fmtNum(risk.overall_risk_score,0)})`);
+    renderLearningList("riskCurrent", (risk.current_risks || []).map(r => ({
+      title: `${r.title}: ${r.risk_label}`,
+      description: `${r.summary} ${(r.warnings || []).slice(0,2).join(" ")}`,
+      confidence: r.confidence,
+      evidence_count: (r.evidence || []).length
+    })), "No current risks.");
+    renderLearningList("riskRecurring", (risk.recurring_risks || []).map((x,idx) => ({
+      title: `Recurring risk ${idx+1}`,
+      description: x,
+      confidence: .45,
+      evidence_count: 1
+    })), "No recurring risks.");
+    renderLearningList("riskWarnings", (risk.highest_confidence_warnings || []).map(w => ({
+      title: `${w.source || "Risk"} - Level ${w.intervention_level || 1}`,
+      description: w.warning,
+      confidence: w.confidence,
+      evidence_count: w.intervention_level || 1
+    })), "No warnings yet.");
+  }
+
+  function discoveryRows(rows){
+    return (rows || []).map(d => ({
+      title: `${d.priority || d.importance || ""} ${d.category || ""}: ${d.title || ""}`,
+      description: `${d.description || ""} Impact ${fmtNum(d.impact_score,0)} | Urgency ${d.urgency || "n/a"}`,
+      confidence: d.confidence,
+      evidence_count: d.evidence_count
+    }));
+  }
+
+  function renderDiscoveryCenter(summary){
+    renderLearningList("discCritical", discoveryRows(summary.critical), "No critical discoveries yet.");
+    renderLearningList("discHighImpact", discoveryRows(summary.high_impact), "No high-impact discoveries yet.");
+    renderLearningList("discHypotheses", discoveryRows(summary.emerging_hypotheses), "No emerging hypotheses yet.");
+    renderLearningList("discOpportunities", discoveryRows(summary.hidden_opportunities), "No hidden opportunities yet.");
+    renderLearningList("discRisks", discoveryRows(summary.hidden_risks), "No hidden risks yet.");
+  }
+
+  function renderPlaybook(plans){
+    const body = $("playbookBody");
+    if(!body) return;
+    body.innerHTML = "";
+    const active = plans.filter(p => p.status === "ACTIVE" || p.status === "TRIGGERED").length;
+    const completed = plans.filter(p => p.status === "COMPLETED").length;
+    const skipped = plans.filter(p => p.status === "SKIPPED").length;
+    setText("pbActive", String(active));
+    setText("pbCompleted", String(completed));
+    setText("pbSkipped", String(skipped));
+    setText("pbTotal", String(plans.length));
+    setText("playbookMeta", `${plans.length} saved plans`);
+
+    for(const p of plans){
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td><b>${p.ticker || ""}</b></td>
+        <td>${p.plan_style || ""}</td>
+        <td>${p.setup_type || ""}</td>
+        <td>${p.setup_grade || ""}</td>
+        <td>${p.status || ""}</td>
+        <td>${p.decision_status || ""}</td>
+        <td>${p.outcome || ""}</td>
+        <td>${fmtNum(p.entry_zone_low,4)}-${fmtNum(p.entry_zone_high,4)}</td>
+        <td>${fmtNum(p.stop_price,4)}</td>
+        <td>${fmtNum(p.target_1,4)} / ${fmtNum(p.target_2,4)} / ${fmtNum(p.target_3,4)}</td>
+        <td>
+          <button class="ghost" data-decision="watched" data-plan="${p.id}">Watched</button>
+          <button class="ghost" data-decision="traded" data-plan="${p.id}">Traded</button>
+          <button class="ghost" data-decision="skipped" data-plan="${p.id}">Skipped</button>
+          <button class="ghost" data-outcome="winner" data-plan="${p.id}">Win</button>
+          <button class="ghost" data-outcome="loser" data-plan="${p.id}">Loss</button>
+          <button class="ghost" data-outcome="break_even" data-plan="${p.id}">BE</button>
+        </td>
+      `;
+      body.appendChild(tr);
+    }
+
+    body.querySelectorAll("[data-decision]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const notes = prompt("Decision notes? (optional)", "") || "";
+        await fetch(`/api/praetor/trade-plans/${btn.dataset.plan}/decision`, {
+          method:"PATCH", headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({decision_status:btn.dataset.decision, notes})
+        }).catch(()=>{});
+        loadPlaybook();
+      });
+    });
+    body.querySelectorAll("[data-outcome]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const notes = prompt("Outcome notes? (optional)", "") || "";
+        await fetch(`/api/praetor/trade-plans/${btn.dataset.plan}/outcome`, {
+          method:"PATCH", headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({outcome:btn.dataset.outcome, notes})
+        }).catch(()=>{});
+        loadPlaybook();
+      });
+    });
+  }
+
+  function renderAlerts(alerts){
+    const body = $("alertsBody");
+    if(!body) return;
+    body.innerHTML = "";
+    for(const a of alerts){
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td><b>${a.ticker || ""}</b></td>
+        <td>${a.alert_type || ""}</td>
+        <td>${a.urgency || ""}</td>
+        <td>${a.status || ""}</td>
+        <td>${a.message || ""}</td>
+        <td><button class="ghost" data-alert="${a.id}">Dismiss</button></td>
+      `;
+      body.appendChild(tr);
+    }
+    body.querySelectorAll("[data-alert]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        await fetch(`/api/praetor/alerts/${btn.dataset.alert}`, {
+          method:"PATCH", headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({status:"DISMISSED"})
+        }).catch(()=>{});
+        loadPlaybook();
+      });
+    });
+  }
+
+  async function loadAlertCenter(){
+    if(!state.user) return;
+    const resp = await fetch("/api/praetor/alerts").catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false, alerts:[]};
+    const alerts = data.alerts || [];
+    renderAlertCenter(alerts);
+  }
+
+  function renderAlertCenter(alerts){
+    const active = alerts.filter(a => a.status === "OPEN" || a.status === "ACKNOWLEDGED");
+    const dismissed = alerts.filter(a => a.status === "DISMISSED" || a.status === "RESOLVED");
+    const activeBody = $("alertCenterActive");
+    const dismissedBody = $("alertCenterDismissed");
+    const historyBody = $("alertCenterHistory");
+    if(activeBody){
+      activeBody.innerHTML = active.map(a => `
+        <tr>
+          <td><b>${escHtml(a.ticker || "")}</b></td>
+          <td>${escHtml(a.category || a.alert_type || "")}</td>
+          <td>${escHtml(a.priority || a.urgency || "")}</td>
+          <td>${fmtPct(a.confidence)}</td>
+          <td>${escHtml(a.message || "")}</td>
+          <td><pre style="white-space:pre-wrap;margin:0">${escHtml(a.explanation || "")}</pre></td>
+          <td><button class="ghost" data-alert-dismiss="${a.id}">Dismiss</button></td>
+        </tr>`).join("");
+    }
+    if(dismissedBody){
+      dismissedBody.innerHTML = dismissed.map(a => `<tr><td><b>${escHtml(a.ticker || "")}</b></td><td>${escHtml(a.category || a.alert_type || "")}</td><td>${escHtml(a.priority || a.urgency || "")}</td><td>${escHtml(a.message || "")}</td><td>${escHtml(a.status || "")}</td></tr>`).join("");
+    }
+    if(historyBody){
+      historyBody.innerHTML = alerts.map(a => `<tr><td><b>${escHtml(a.ticker || "")}</b></td><td>${escHtml(a.alert_type || "")}</td><td>${escHtml(a.priority || "")}</td><td>${escHtml(a.urgency || "")}</td><td>${escHtml(a.status || "")}</td><td>${escHtml(a.created_at_utc || "")}</td></tr>`).join("");
+    }
+    document.querySelectorAll("[data-alert-dismiss]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        await fetch(`/api/praetor/alerts/${btn.dataset.alertDismiss}`, {
+          method:"PATCH", headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({status:"DISMISSED"})
+        }).catch(()=>{});
+        loadAlertCenter();
+      });
+    });
+  }
+
+  async function runMonitorCheck(){
+    const ticker = ($("monitorTicker").value || "").toUpperCase().trim();
+    const price = Number($("monitorPrice").value);
+    if(!ticker || !Number.isFinite(price)){
+      alert("Enter ticker and current price.");
+      return;
+    }
+    $("monitorStatus").textContent = "Running monitor check...";
+    const resp = await fetch("/api/praetor/monitor/run", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({market_prices:{[ticker]:price}})
+    }).catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false,error:"Monitor unavailable."};
+    if(!data.ok){
+      $("monitorStatus").textContent = data.error || "Monitor failed.";
+      return;
+    }
+    $("monitorStatus").textContent = `Monitor created ${data.alert_count || 0} alert(s) from ${data.events?.length || 0} event(s).`;
+    loadAlertCenter();
+  }
+
+  function renderBriefingCard(briefing){
+    if(!briefing) return "No briefing generated yet.";
+    const content = briefing.content_json || briefing;
+    return `
+      <div class="reportSection">
+        <h3>${escHtml(content.title || briefing.title || "Briefing")} <span class="scoreBadge">${escHtml(content.priority || briefing.priority || "")}</span></h3>
+        <p>${escHtml(content.lead || briefing.summary || "")}</p>
+      </div>
+      ${(content.sections || []).map(s => `<div class="reportSection"><h3>${escHtml(s.title)} <span class="scoreBadge">${escHtml(s.priority || "")}</span></h3><ul>${(s.bullets || []).map(b => `<li>${escHtml(b)}</li>`).join("")}</ul></div>`).join("")}
+    `;
+  }
+
+  function renderBriefings(briefings){
+    const latest = briefings[0];
+    $("latestBriefing").innerHTML = renderBriefingCard(latest);
+    const byType = Object.fromEntries((briefings || []).map(b => [b.briefing_type, b]));
+    $("morningBriefing").innerHTML = renderBriefingCard(byType.morning);
+    $("middayBriefing").innerHTML = renderBriefingCard(byType.midday);
+    $("eodBriefing").innerHTML = renderBriefingCard(byType.end_of_day);
+    $("weeklyBriefing").innerHTML = renderBriefingCard(byType.weekly);
+    $("briefingHistory").innerHTML = (briefings || []).map(b => `
+      <tr><td>${escHtml(b.briefing_type || "")}</td><td>${escHtml(b.priority || "")}</td><td>${escHtml(b.title || "")}</td><td>${escHtml(b.summary || "")}</td><td>${escHtml(b.created_at_utc || "")}</td></tr>
+    `).join("");
+  }
+
+  async function loadBriefings(){
+    if(!state.user) return;
+    const resp = await fetch("/api/praetor/briefings").catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false, briefings:[]};
+    if(data.ok) renderBriefings(data.briefings || []);
+  }
+
+  async function generateBriefing(type){
+    $("briefingStatus").textContent = "Generating briefing...";
+    const resp = await fetch("/api/praetor/briefings/generate", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({briefing_type:type})
+    }).catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false,error:"Briefing unavailable."};
+    if(!data.ok){
+      $("briefingStatus").textContent = data.error || "Briefing failed.";
+      return;
+    }
+    $("briefingStatus").textContent = `${data.briefing?.title || "Briefing"} generated.`;
+    await loadBriefings();
+    loadBriefingAI();
+  }
+
+  function renderCommitteeRun(run){
+    const committee = run?.committee || run?.content_json || run;
+    if(!committee || !committee.synthesis){
+      $("committeeConclusion").innerHTML = "No committee run yet.";
+      $("committeeMembers").innerHTML = "";
+      return;
+    }
+    const s = committee.synthesis;
+    $("committeeConclusion").innerHTML = `
+      <div class="reportSection">
+        <h3>${escHtml(s.consensus || "Neutral")} <span class="scoreBadge">${fmtPct(s.confidence)}</span></h3>
+        <p><b>Final recommendation:</b> ${escHtml(s.final_recommendation || "")}</p>
+        <p><b>Disagreement:</b> ${escHtml(s.disagreement_summary || "")}</p>
+        <p><b>Strongest bullish argument:</b> ${escHtml(s.strongest_bullish_argument || "")}</p>
+        <p><b>Strongest bearish argument:</b> ${escHtml(s.strongest_bearish_argument || "")}</p>
+      </div>
+    `;
+    $("committeeMembers").innerHTML = (committee.votes || []).map(v => `
+      <div class="card">
+        <h3>${escHtml(v.member)} <span class="scoreBadge">${escHtml(v.stance)}</span></h3>
+        <p class="muted">${escHtml(v.role)} | Confidence ${fmtPct(v.confidence)}</p>
+        <h4>Evidence</h4>
+        <ul>${(v.supporting_evidence || []).map(x => `<li>${escHtml(x)}</li>`).join("")}</ul>
+        <h4>Concerns</h4>
+        <ul>${(v.concerns || []).map(x => `<li>${escHtml(x)}</li>`).join("")}</ul>
+        <p><b>Recommendation:</b> ${escHtml(v.recommendation || "")}</p>
+      </div>
+    `).join("");
+  }
+
+  function renderCommitteeHistory(runs){
+    $("committeeHistory").innerHTML = (runs || []).map(r => `
+      <tr><td>${escHtml(r.consensus || "")}</td><td>${fmtPct(r.confidence)}</td><td>${escHtml(r.final_recommendation || "")}</td><td>${escHtml(r.created_at_utc || "")}</td></tr>
+    `).join("");
+  }
+
+  async function loadCommittee(){
+    if(!state.user) return;
+    const resp = await fetch("/api/praetor/committee").catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false, committee_runs:[]};
+    const runs = data.committee_runs || [];
+    renderCommitteeHistory(runs);
+    renderCommitteeRun(runs[0]);
+    $("committeeStatus").textContent = runs.length ? `${runs.length} committee run(s)` : "No committee run loaded.";
+    if(runs.length) loadCommitteeAI();
+  }
+
+  async function runCommittee(){
+    $("committeeStatus").textContent = "Running committee...";
+    const resp = await fetch("/api/praetor/committee/run", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({committee_type:"general"})
+    }).catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false,error:"Committee unavailable."};
+    if(!data.ok){
+      $("committeeStatus").textContent = data.error || "Committee failed.";
+      return;
+    }
+    $("committeeStatus").textContent = "Committee run complete.";
+    renderCommitteeRun(data);
+    loadCommitteeAI();
+    await loadCommittee();
+  }
+
+  async function createManualAlert(){
+    const payload = {
+      ticker:$("alertTicker").value,
+      alert_type:$("alertType").value || "Manual Alert",
+      urgency:$("alertUrgency").value || "normal",
+      message:$("alertMessage").value
+    };
+    const resp = await fetch("/api/praetor/alerts", {
+      method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload)
+    }).catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false,error:"Could not create alert."};
+    if(!data.ok){ alert(data.error || "Alert failed."); return; }
+    $("alertTicker").value = "";
+    $("alertType").value = "";
+    $("alertMessage").value = "";
+    loadPlaybook();
+    loadAlertCenter();
+  }
+
   function bind(){
     $("themeBtn").addEventListener("click", () => setTheme(state.theme === "dark" ? "light" : "dark"));
     ["loginTop","heroLogin"].forEach(id => $(id)?.addEventListener("click", () => openAuth("login")));
@@ -1360,9 +2651,14 @@
     $("swapAuth").addEventListener("click", () => openAuth(state.authMode === "signup" ? "login" : "signup"));
     $("submitAuth").addEventListener("click", submitAuth);
     $("authPassword").addEventListener("keydown", e => { if(e.key === "Enter") submitAuth(); });
+    $("praetorCopilotBtn").addEventListener("click", openCopilot);
+    $("closeCopilotBtn").addEventListener("click", closeCopilot);
+    $("copilotAskBtn").addEventListener("click", askCopilot);
+    $("copilotInput").addEventListener("keydown", e => { if(e.key === "Enter" && (e.metaKey || e.ctrlKey)) askCopilot(); });
     $("logoutBtn").addEventListener("click", logout);
     document.querySelectorAll("[data-page]").forEach(b => b.addEventListener("click", () => setPage(b.dataset.page)));
     document.querySelectorAll("[data-jump]").forEach(b => b.addEventListener("click", () => setPage(b.dataset.jump)));
+    document.querySelectorAll("[data-explain-page]").forEach(b => b.addEventListener("click", () => explainThis(b.dataset.explainPage)));
     $("ortexToggle").addEventListener("click", () => {
       state.ortex = state.ortex === "on" ? "off" : "on";
       localStorage.setItem("cp_ortex", state.ortex);
@@ -1396,11 +2692,24 @@
     });
     $("noteView").addEventListener("change", loadNotebook);
     $("addPastBtn").addEventListener("click", addPastTrade);
+    $("refreshPlaybookBtn").addEventListener("click", loadPlaybook);
+    $("createAlertBtn").addEventListener("click", createManualAlert);
+    $("runMonitorBtn").addEventListener("click", runMonitorCheck);
+    document.querySelectorAll("[data-briefing-generate]").forEach(btn => {
+      btn.addEventListener("click", () => generateBriefing(btn.dataset.briefingGenerate));
+    });
+    $("refreshBriefingsBtn").addEventListener("click", loadBriefings);
+    $("runCommitteeBtn").addEventListener("click", runCommittee);
+    $("refreshCommitteeBtn").addEventListener("click", loadCommittee);
+    $("refreshCommandCenterBtn").addEventListener("click", loadCommandCenter);
+    $("commandAskBtn").addEventListener("click", askCommandPraetor);
     $("researchRunBtn").addEventListener("click", loadResearch);
+    $("researchAiBtn").addEventListener("click", loadResearchAI);
     $("researchTicker").addEventListener("keydown", e => { if(e.key === "Enter") loadResearch(); });
     $("researchChart").addEventListener("mousemove", showResearchTip);
     $("researchChart").addEventListener("mouseleave", () => { $("researchChartTip").style.display = "none"; });
     $("pfRunBtn").addEventListener("click", buildPortfolioPlan);
+    $("saveHoldingBtn").addEventListener("click", saveHolding);
     window.addEventListener("resize", drawResearchChart);
   }
 
@@ -1410,6 +2719,8 @@
     await loadMe();
     renderAll();
     applyOrtexDefault();
+    if(state.user) await loadAiStatus();
+    if(state.user) await loadCommandCenter();
     if(state.user) await loadNotebook();
   }
   boot();

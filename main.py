@@ -25,6 +25,34 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Res
 from fastapi.staticfiles import StaticFiles
 
 import scanner  # your scanner.py
+from praetor_context import build_scanner_context
+from praetor_service import PraetorService, response_to_dict
+from praetor_providers import ai_provider_status
+from playbook_engine import calculate_playbook_stats
+from memory_engine import build_memory_updates
+from discovery_engine import build_discovery_candidates, build_journal_discovery_candidates
+from discovery_engine_v2 import build_discovery_v2_candidates, summarize_discoveries
+from journal_engine import build_journal_memory_updates, build_journal_report
+from risk_engine import build_risk_report
+from monitoring_engine import monitor_trade_plans
+from alert_engine import build_smart_alert, smart_alert_to_repo_kwargs
+from briefing_engine import build_briefing
+from committee_engine import run_investment_committee
+from command_center_engine import build_command_center
+from monitor_scheduler import build_monitoring_health
+from portfolio_engine import analyze_portfolio
+from research_engine import build_institutional_research
+from ai_synthesis_engine import synthesize as synthesize_ai
+from services.praetor_orchestrator import PraetorDataLoaders, PraetorOrchestrator, PraetorRepositories
+from repositories.alert_repository import AlertRepository
+from repositories.briefing_repository import BriefingRepository
+from repositories.committee_repository import CommitteeRepository
+from repositories.discovery_repository import DiscoveryRepository
+from repositories.memory_repository import MemoryRepository
+from repositories.playbook_repository import PlaybookRepository
+from repositories.portfolio_repository import PortfolioRepository
+from repositories.research_repository import ResearchRepository
+from repositories.trade_plan_repository import TradePlanRepository
 
 # Optional Postgres (only used if DATABASE_URL is set)
 try:
@@ -137,6 +165,75 @@ def _ensure_schema_migrations():
                 pass
             finally:
                 conn.close()
+
+
+def _ensure_praetor_schema_migrations():
+    trade_plan_cols = {
+        "setup_grade": "TEXT",
+        "decision_status": "TEXT",
+        "outcome": "TEXT",
+        "user_notes": "TEXT",
+        "outcome_notes": "TEXT",
+    }
+
+    if using_postgres():
+        try:
+            with pg_conn() as conn:
+                with conn.cursor() as cur:
+                    for col, typ in trade_plan_cols.items():
+                        cur.execute(f"ALTER TABLE trade_plans ADD COLUMN IF NOT EXISTS {col} {typ};")
+                    discovery_cols = {
+                        "category": "TEXT",
+                        "impact_score": "REAL",
+                        "importance": "TEXT",
+                        "urgency": "TEXT",
+                        "priority": "TEXT",
+                    }
+                    for col, typ in discovery_cols.items():
+                        cur.execute(f"ALTER TABLE discoveries ADD COLUMN IF NOT EXISTS {col} {typ};")
+                    alert_cols = {
+                        "category": "TEXT",
+                        "priority": "TEXT",
+                        "source_modules": "TEXT",
+                        "explanation": "TEXT",
+                    }
+                    for col, typ in alert_cols.items():
+                        cur.execute(f"ALTER TABLE alerts ADD COLUMN IF NOT EXISTS {col} {typ};")
+                conn.commit()
+        except Exception:
+            pass
+        return
+
+    with DB_LOCK:
+        conn = sqlite_conn()
+        try:
+            for col, typ in trade_plan_cols.items():
+                if not _table_has_column_sqlite(conn, "trade_plans", col):
+                    conn.execute(f"ALTER TABLE trade_plans ADD COLUMN {col} {typ};")
+            discovery_cols = {
+                "category": "TEXT",
+                "impact_score": "REAL",
+                "importance": "TEXT",
+                "urgency": "TEXT",
+                "priority": "TEXT",
+            }
+            for col, typ in discovery_cols.items():
+                if not _table_has_column_sqlite(conn, "discoveries", col):
+                    conn.execute(f"ALTER TABLE discoveries ADD COLUMN {col} {typ};")
+            alert_cols = {
+                "category": "TEXT",
+                "priority": "TEXT",
+                "source_modules": "TEXT",
+                "explanation": "TEXT",
+            }
+            for col, typ in alert_cols.items():
+                if not _table_has_column_sqlite(conn, "alerts", col):
+                    conn.execute(f"ALTER TABLE alerts ADD COLUMN {col} {typ};")
+            conn.commit()
+        except Exception:
+            pass
+        finally:
+            conn.close()
 
 
 def db_init():
@@ -257,6 +354,257 @@ def db_init():
     );
     """
 
+    praetor_interactions_sql = """
+    CREATE TABLE IF NOT EXISTS praetor_interactions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      page_context TEXT,
+      module TEXT,
+      topic TEXT,
+      user_message TEXT,
+      praetor_response TEXT,
+      context_json TEXT,
+      tools_used TEXT,
+      created_at_utc TEXT NOT NULL
+    );
+    """
+
+    praetor_memory_sql = """
+    CREATE TABLE IF NOT EXISTS praetor_memory_items (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      memory_type TEXT NOT NULL,
+      belief_type TEXT NOT NULL,
+      topic TEXT,
+      statement TEXT NOT NULL,
+      confidence REAL NOT NULL DEFAULT 0,
+      evidence_count INTEGER NOT NULL DEFAULT 0,
+      source_module TEXT,
+      supporting_record_ids TEXT,
+      contradicting_record_ids TEXT,
+      created_at_utc TEXT NOT NULL,
+      updated_at_utc TEXT NOT NULL
+    );
+    """
+
+    playbook_rules_sql = """
+    CREATE TABLE IF NOT EXISTS playbook_rules (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      setup_type TEXT,
+      rule_text TEXT NOT NULL,
+      rule_category TEXT,
+      confidence REAL NOT NULL DEFAULT 0,
+      evidence_count INTEGER NOT NULL DEFAULT 0,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at_utc TEXT NOT NULL,
+      updated_at_utc TEXT NOT NULL
+    );
+    """
+
+    trade_plans_sql = """
+    CREATE TABLE IF NOT EXISTS trade_plans (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      ticker TEXT NOT NULL,
+      source_scan_id TEXT,
+      setup_type TEXT,
+      plan_style TEXT NOT NULL,
+      entry_zone_low REAL,
+      entry_zone_high REAL,
+      trigger_price REAL,
+      chase_threshold REAL,
+      stop_price REAL,
+      target_1 REAL,
+      target_2 REAL,
+      target_3 REAL,
+      risk_reward REAL,
+      confidence REAL,
+      conviction REAL,
+      status TEXT NOT NULL DEFAULT 'ACTIVE',
+      setup_grade TEXT,
+      decision_status TEXT,
+      outcome TEXT,
+      user_notes TEXT,
+      outcome_notes TEXT,
+      valid_conditions TEXT,
+      invalidation_conditions TEXT,
+      plan_json TEXT,
+      created_at_utc TEXT NOT NULL,
+      updated_at_utc TEXT NOT NULL
+    );
+    """
+
+    alerts_sql = """
+    CREATE TABLE IF NOT EXISTS alerts (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      alert_type TEXT NOT NULL,
+      ticker TEXT,
+      related_entity_type TEXT,
+      related_entity_id TEXT,
+      category TEXT,
+      priority TEXT,
+      urgency TEXT,
+      importance TEXT,
+      confidence REAL,
+      message TEXT NOT NULL,
+      explanation TEXT,
+      source_modules TEXT,
+      evidence TEXT,
+      status TEXT NOT NULL DEFAULT 'OPEN',
+      delivered_at_utc TEXT,
+      created_at_utc TEXT NOT NULL
+    );
+    """
+
+    playbook_snapshots_sql = """
+    CREATE TABLE IF NOT EXISTS playbook_snapshots (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      sample_size INTEGER NOT NULL DEFAULT 0,
+      win_rate REAL,
+      expectancy REAL,
+      snapshot_json TEXT NOT NULL,
+      created_at_utc TEXT NOT NULL
+    );
+    """
+
+    discoveries_sql = """
+    CREATE TABLE IF NOT EXISTS discoveries (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      discovery_type TEXT NOT NULL,
+      category TEXT,
+      title TEXT NOT NULL,
+      description TEXT,
+      confidence REAL NOT NULL DEFAULT 0,
+      evidence_count INTEGER NOT NULL DEFAULT 0,
+      impact_score REAL,
+      importance TEXT,
+      urgency TEXT,
+      priority TEXT,
+      source_module TEXT,
+      evidence_json TEXT,
+      status TEXT NOT NULL DEFAULT 'OPEN',
+      created_at_utc TEXT NOT NULL,
+      updated_at_utc TEXT NOT NULL
+    );
+    """
+
+    briefing_runs_sql = """
+    CREATE TABLE IF NOT EXISTS briefing_runs (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      briefing_type TEXT NOT NULL,
+      priority TEXT,
+      title TEXT,
+      summary TEXT,
+      content_json TEXT NOT NULL,
+      source_context_json TEXT,
+      created_at_utc TEXT NOT NULL
+    );
+    """
+
+    committee_runs_sql = """
+    CREATE TABLE IF NOT EXISTS committee_runs (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      committee_type TEXT NOT NULL,
+      consensus TEXT,
+      final_recommendation TEXT,
+      confidence REAL,
+      votes_json TEXT NOT NULL,
+      evidence_json TEXT,
+      synthesis_json TEXT,
+      created_at_utc TEXT NOT NULL
+    );
+    """
+
+    monitoring_runs_sql = """
+    CREATE TABLE IF NOT EXISTS monitoring_runs (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      active_plan_count INTEGER NOT NULL DEFAULT 0,
+      stale_plan_count INTEGER NOT NULL DEFAULT 0,
+      open_alert_count INTEGER NOT NULL DEFAULT 0,
+      failed_check_count INTEGER NOT NULL DEFAULT 0,
+      health_json TEXT NOT NULL,
+      created_at_utc TEXT NOT NULL
+    );
+    """
+
+    notification_preferences_sql = """
+    CREATE TABLE IF NOT EXISTS notification_preferences (
+      user_id TEXT PRIMARY KEY,
+      alert_level TEXT NOT NULL DEFAULT 'high_and_critical',
+      cooldown_minutes INTEGER NOT NULL DEFAULT 20,
+      email_enabled INTEGER NOT NULL DEFAULT 0,
+      sms_enabled INTEGER NOT NULL DEFAULT 0,
+      push_enabled INTEGER NOT NULL DEFAULT 0,
+      quiet_hours_json TEXT,
+      updated_at_utc TEXT NOT NULL
+    );
+    """
+
+    portfolios_sql = """
+    CREATE TABLE IF NOT EXISTS portfolios (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      base_currency TEXT NOT NULL DEFAULT 'USD',
+      goals_json TEXT,
+      created_at_utc TEXT NOT NULL,
+      updated_at_utc TEXT NOT NULL
+    );
+    """
+
+    portfolio_holdings_sql = """
+    CREATE TABLE IF NOT EXISTS portfolio_holdings (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      portfolio_id TEXT NOT NULL,
+      ticker TEXT NOT NULL,
+      shares REAL NOT NULL DEFAULT 0,
+      average_cost REAL NOT NULL DEFAULT 0,
+      current_price REAL NOT NULL DEFAULT 0,
+      sector TEXT,
+      industry TEXT,
+      theme TEXT,
+      realized_pnl REAL,
+      notes TEXT,
+      created_at_utc TEXT NOT NULL,
+      updated_at_utc TEXT NOT NULL,
+      UNIQUE(user_id, portfolio_id, ticker)
+    );
+    """
+
+    portfolio_snapshots_sql = """
+    CREATE TABLE IF NOT EXISTS portfolio_snapshots (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      portfolio_id TEXT NOT NULL,
+      total_value REAL NOT NULL DEFAULT 0,
+      risk_label TEXT,
+      snapshot_json TEXT NOT NULL,
+      created_at_utc TEXT NOT NULL
+    );
+    """
+
+    research_reports_sql = """
+    CREATE TABLE IF NOT EXISTS research_reports (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      ticker TEXT NOT NULL,
+      verdict TEXT,
+      aggregate_score REAL,
+      report_json TEXT NOT NULL,
+      profile_json TEXT,
+      ai_json TEXT,
+      created_at_utc TEXT NOT NULL
+    );
+    """
+
     if using_postgres():
         with pg_conn() as conn:
             with conn.cursor() as cur:
@@ -265,6 +613,29 @@ def db_init():
                 cur.execute(users_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ"))
                 cur.execute(sessions_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ").replace("expires_at_utc TEXT", "expires_at_utc TIMESTAMPTZ"))
                 cur.execute(scan_usage_sql)
+                cur.execute(praetor_interactions_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ"))
+                cur.execute(
+                    praetor_memory_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ").replace("updated_at_utc TEXT", "updated_at_utc TIMESTAMPTZ")
+                )
+                cur.execute(
+                    playbook_rules_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ").replace("updated_at_utc TEXT", "updated_at_utc TIMESTAMPTZ")
+                )
+                cur.execute(
+                    trade_plans_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ").replace("updated_at_utc TEXT", "updated_at_utc TIMESTAMPTZ")
+                )
+                cur.execute(alerts_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ").replace("delivered_at_utc TEXT", "delivered_at_utc TIMESTAMPTZ"))
+                cur.execute(playbook_snapshots_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ"))
+                cur.execute(
+                    discoveries_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ").replace("updated_at_utc TEXT", "updated_at_utc TIMESTAMPTZ")
+                )
+                cur.execute(briefing_runs_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ"))
+                cur.execute(committee_runs_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ"))
+                cur.execute(monitoring_runs_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ"))
+                cur.execute(notification_preferences_sql.replace("updated_at_utc TEXT", "updated_at_utc TIMESTAMPTZ"))
+                cur.execute(portfolios_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ").replace("updated_at_utc TEXT", "updated_at_utc TIMESTAMPTZ"))
+                cur.execute(portfolio_holdings_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ").replace("updated_at_utc TEXT", "updated_at_utc TIMESTAMPTZ"))
+                cur.execute(portfolio_snapshots_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ"))
+                cur.execute(research_reports_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ"))
             conn.commit()
     else:
         with DB_LOCK:
@@ -275,9 +646,26 @@ def db_init():
                 conn.execute(users_sql)
                 conn.execute(sessions_sql)
                 conn.execute(scan_usage_sql)
+                conn.execute(praetor_interactions_sql)
+                conn.execute(praetor_memory_sql)
+                conn.execute(playbook_rules_sql)
+                conn.execute(trade_plans_sql)
+                conn.execute(alerts_sql)
+                conn.execute(playbook_snapshots_sql)
+                conn.execute(discoveries_sql)
+                conn.execute(briefing_runs_sql)
+                conn.execute(committee_runs_sql)
+                conn.execute(monitoring_runs_sql)
+                conn.execute(notification_preferences_sql)
+                conn.execute(portfolios_sql)
+                conn.execute(portfolio_holdings_sql)
+                conn.execute(portfolio_snapshots_sql)
+                conn.execute(research_reports_sql)
                 conn.commit()
             finally:
                 conn.close()
+
+    _ensure_praetor_schema_migrations()
 
 
 # -------------------- KV helpers --------------------
@@ -317,6 +705,393 @@ def kv_set(key: str, val: str):
             conn.commit()
         finally:
             conn.close()
+
+
+def praetor_log_interaction(
+    user_id: str,
+    page_context: str,
+    module: str,
+    topic: str,
+    user_message: str,
+    praetor_response: str,
+    context: dict[str, Any] | None = None,
+    tools_used: list[str] | None = None,
+) -> str:
+    row = {
+        "id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "page_context": page_context,
+        "module": module,
+        "topic": topic,
+        "user_message": user_message,
+        "praetor_response": praetor_response,
+        "context_json": json.dumps(context or {}, default=str),
+        "tools_used": json.dumps(tools_used or []),
+        "created_at_utc": datetime.utcnow().isoformat(),
+    }
+
+    if using_postgres():
+        with pg_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO praetor_interactions (
+                      id, user_id, page_context, module, topic, user_message,
+                      praetor_response, context_json, tools_used, created_at_utc
+                    ) VALUES (
+                      %(id)s, %(user_id)s, %(page_context)s, %(module)s, %(topic)s, %(user_message)s,
+                      %(praetor_response)s, %(context_json)s, %(tools_used)s, %(created_at_utc)s
+                    )
+                    """,
+                    row,
+                )
+            conn.commit()
+        return row["id"]
+
+    with DB_LOCK:
+        conn = sqlite_conn()
+        try:
+            conn.execute(
+                """
+                INSERT INTO praetor_interactions (
+                  id, user_id, page_context, module, topic, user_message,
+                  praetor_response, context_json, tools_used, created_at_utc
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    row["id"],
+                    row["user_id"],
+                    row["page_context"],
+                    row["module"],
+                    row["topic"],
+                    row["user_message"],
+                    row["praetor_response"],
+                    row["context_json"],
+                    row["tools_used"],
+                    row["created_at_utc"],
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    return row["id"]
+
+
+def trade_plan_repo() -> TradePlanRepository:
+    return TradePlanRepository(using_postgres, pg_conn, sqlite_conn, DB_LOCK)
+
+
+def alert_repo() -> AlertRepository:
+    return AlertRepository(using_postgres, pg_conn, sqlite_conn, DB_LOCK)
+
+
+def memory_repo() -> MemoryRepository:
+    return MemoryRepository(using_postgres, pg_conn, sqlite_conn, DB_LOCK)
+
+
+def playbook_repo() -> PlaybookRepository:
+    return PlaybookRepository(using_postgres, pg_conn, sqlite_conn, DB_LOCK)
+
+
+def discovery_repo() -> DiscoveryRepository:
+    return DiscoveryRepository(using_postgres, pg_conn, sqlite_conn, DB_LOCK)
+
+
+def briefing_repo() -> BriefingRepository:
+    return BriefingRepository(using_postgres, pg_conn, sqlite_conn, DB_LOCK)
+
+
+def committee_repo() -> CommitteeRepository:
+    return CommitteeRepository(using_postgres, pg_conn, sqlite_conn, DB_LOCK)
+
+
+def portfolio_repo() -> PortfolioRepository:
+    return PortfolioRepository(using_postgres, pg_conn, sqlite_conn, DB_LOCK)
+
+
+def research_repo() -> ResearchRepository:
+    return ResearchRepository(using_postgres, pg_conn, sqlite_conn, DB_LOCK)
+
+
+def praetor_orchestrator() -> PraetorOrchestrator:
+    return PraetorOrchestrator(
+        PraetorRepositories(
+            trade_plan_repo=trade_plan_repo(),
+            alert_repo=alert_repo(),
+            memory_repo=memory_repo(),
+            discovery_repo=discovery_repo(),
+            briefing_repo=briefing_repo(),
+            committee_repo=committee_repo(),
+        ),
+        PraetorDataLoaders(
+            learning=run_praetor_learning_update,
+            journal=run_praetor_journal_update,
+        ),
+    )
+
+
+def get_notification_preferences(user_id: str) -> dict[str, Any]:
+    sql = "SELECT * FROM notification_preferences WHERE user_id=%s"
+    if using_postgres():
+        with pg_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, (user_id,))
+                row = cur.fetchone()
+                return dict(row) if row else default_notification_preferences(user_id)
+    conn = sqlite_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(sql.replace("%s", "?"), (user_id,))
+        row = cur.fetchone()
+        return dict(row) if row else default_notification_preferences(user_id)
+    finally:
+        conn.close()
+
+
+def default_notification_preferences(user_id: str) -> dict[str, Any]:
+    return {
+        "user_id": user_id,
+        "alert_level": "high_and_critical",
+        "cooldown_minutes": 20,
+        "email_enabled": 0,
+        "sms_enabled": 0,
+        "push_enabled": 0,
+        "quiet_hours_json": None,
+        "updated_at_utc": datetime.utcnow().isoformat(),
+    }
+
+
+def save_notification_preferences(user_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    prefs = default_notification_preferences(user_id)
+    current = get_notification_preferences(user_id)
+    prefs.update(current)
+    if payload.get("alert_level") in ("critical", "high_and_critical", "all"):
+        prefs["alert_level"] = payload["alert_level"]
+    if payload.get("cooldown_minutes") is not None:
+        prefs["cooldown_minutes"] = max(1, min(int(payload["cooldown_minutes"]), 1440))
+    for key in ("email_enabled", "sms_enabled", "push_enabled"):
+        if key in payload:
+            prefs[key] = 1 if payload[key] else 0
+    prefs["updated_at_utc"] = datetime.utcnow().isoformat()
+
+    if using_postgres():
+        with pg_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO notification_preferences (
+                      user_id, alert_level, cooldown_minutes, email_enabled, sms_enabled, push_enabled, quiet_hours_json, updated_at_utc
+                    ) VALUES (
+                      %(user_id)s, %(alert_level)s, %(cooldown_minutes)s, %(email_enabled)s, %(sms_enabled)s, %(push_enabled)s, %(quiet_hours_json)s, %(updated_at_utc)s
+                    )
+                    ON CONFLICT (user_id) DO UPDATE SET
+                      alert_level=EXCLUDED.alert_level,
+                      cooldown_minutes=EXCLUDED.cooldown_minutes,
+                      email_enabled=EXCLUDED.email_enabled,
+                      sms_enabled=EXCLUDED.sms_enabled,
+                      push_enabled=EXCLUDED.push_enabled,
+                      quiet_hours_json=EXCLUDED.quiet_hours_json,
+                      updated_at_utc=EXCLUDED.updated_at_utc
+                    )
+                    """,
+                    prefs,
+                )
+            conn.commit()
+        return prefs
+
+    with DB_LOCK:
+        conn = sqlite_conn()
+        try:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO notification_preferences (
+                  user_id, alert_level, cooldown_minutes, email_enabled, sms_enabled, push_enabled, quiet_hours_json, updated_at_utc
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    prefs["user_id"],
+                    prefs["alert_level"],
+                    prefs["cooldown_minutes"],
+                    prefs["email_enabled"],
+                    prefs["sms_enabled"],
+                    prefs["push_enabled"],
+                    prefs["quiet_hours_json"],
+                    prefs["updated_at_utc"],
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    return prefs
+
+
+def save_monitoring_run(user_id: str, health: dict[str, Any]) -> str:
+    run_id = str(uuid.uuid4())
+    row = {
+        "id": run_id,
+        "user_id": user_id,
+        "active_plan_count": int(health.get("active_plan_count") or 0),
+        "stale_plan_count": int(health.get("stale_plan_count") or 0),
+        "open_alert_count": int(health.get("open_alert_count") or 0),
+        "failed_check_count": int(health.get("failed_check_count") or 0),
+        "health_json": json.dumps(health, default=str),
+        "created_at_utc": datetime.utcnow().isoformat(),
+    }
+    if using_postgres():
+        with pg_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO monitoring_runs (
+                      id, user_id, active_plan_count, stale_plan_count, open_alert_count,
+                      failed_check_count, health_json, created_at_utc
+                    ) VALUES (
+                      %(id)s, %(user_id)s, %(active_plan_count)s, %(stale_plan_count)s, %(open_alert_count)s,
+                      %(failed_check_count)s, %(health_json)s, %(created_at_utc)s
+                    )
+                    """,
+                    row,
+                )
+            conn.commit()
+        return run_id
+
+    with DB_LOCK:
+        conn = sqlite_conn()
+        try:
+            conn.execute(
+                """
+                INSERT INTO monitoring_runs (
+                  id, user_id, active_plan_count, stale_plan_count, open_alert_count,
+                  failed_check_count, health_json, created_at_utc
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    row["id"],
+                    row["user_id"],
+                    row["active_plan_count"],
+                    row["stale_plan_count"],
+                    row["open_alert_count"],
+                    row["failed_check_count"],
+                    row["health_json"],
+                    row["created_at_utc"],
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    return run_id
+
+
+def run_praetor_learning_update(user_id: str) -> dict[str, Any]:
+    plans = trade_plan_repo().list_plans(user_id, limit=1000)
+    stats = calculate_playbook_stats(plans)
+    snapshot_id = playbook_repo().save_snapshot(user_id, stats)
+
+    memory_ids: list[str] = []
+    for item in build_memory_updates(stats):
+        memory_ids.append(memory_repo().upsert_memory(user_id, item))
+
+    discovery_ids: list[str] = []
+    for discovery in build_discovery_candidates(stats):
+        discovery_ids.append(discovery_repo().save_discovery(user_id, discovery))
+
+    memory = memory_repo().list_memory(user_id)
+    discoveries = discovery_repo().list_discoveries(user_id)
+    risk = build_risk_report(plans, stats, memory, discoveries)
+    for discovery in build_discovery_v2_candidates(stats, risk_report=risk):
+        discovery_ids.append(discovery_repo().save_discovery(user_id, discovery))
+    discoveries = discovery_repo().list_discoveries(user_id)
+
+    return {
+        "ok": True,
+        "snapshot_id": snapshot_id,
+        "stats": stats,
+        "memory_ids": memory_ids,
+        "discovery_ids": discovery_ids,
+        "risk": risk,
+        "discovery_summary": summarize_discoveries(discoveries),
+    }
+
+
+def run_praetor_journal_update(user_id: str) -> dict[str, Any]:
+    maybe_import_founder_past_trades(user_by_id(user_id) or {"id": user_id})
+    trades = trades_select(view="all", user_id=user_id)
+    plans = trade_plan_repo().list_plans(user_id, limit=1000)
+    learning = run_praetor_learning_update(user_id)
+    memory = memory_repo().list_memory(user_id)
+    discoveries = discovery_repo().list_discoveries(user_id)
+    journal_report = build_journal_report(trades, plans, learning["stats"], memory, discoveries, learning["risk"])
+
+    memory_ids: list[str] = []
+    for item in build_journal_memory_updates(journal_report):
+        memory_ids.append(memory_repo().upsert_memory(user_id, item))
+
+    discovery_ids: list[str] = []
+    for discovery in build_journal_discovery_candidates(journal_report):
+        discovery_ids.append(discovery_repo().save_discovery(user_id, discovery))
+    for discovery in build_discovery_v2_candidates(learning["stats"], journal_report=journal_report, risk_report=learning["risk"]):
+        discovery_ids.append(discovery_repo().save_discovery(user_id, discovery))
+
+    return {
+        "ok": True,
+        "journal": journal_report,
+        "memory_ids": memory_ids,
+        "discovery_ids": discovery_ids,
+        "memory": memory_repo().list_memory(user_id),
+        "discoveries": discovery_repo().list_discoveries(user_id),
+        "discovery_summary": summarize_discoveries(discovery_repo().list_discoveries(user_id)),
+        "risk": learning["risk"],
+    }
+
+
+def run_praetor_monitoring(user_id: str, market_prices: dict[str, Any] | None = None) -> dict[str, Any]:
+    prefs = get_notification_preferences(user_id)
+    return praetor_orchestrator().monitoring_cycle(user_id, market_prices=market_prices or {**{}}, notification_preferences=prefs)
+
+
+def build_briefing_context(user_id: str) -> dict[str, Any]:
+    learning = run_praetor_learning_update(user_id)
+    journal = run_praetor_journal_update(user_id)
+    alerts = alert_repo().list_alerts(user_id, limit=100)
+    discoveries = discovery_repo().list_discoveries(user_id, limit=100)
+    plans = trade_plan_repo().list_plans(user_id, limit=1000)
+    memory = memory_repo().list_memory(user_id, limit=100)
+    research_reports = research_repo().list_reports(user_id, limit=10)
+    return {
+        "learning": learning,
+        "journal": journal.get("journal"),
+        "alerts": alerts,
+        "discoveries": discoveries,
+        "trade_plans": plans,
+        "memory": memory,
+        "risk": learning.get("risk"),
+        "research_reports": research_reports,
+    }
+
+
+def generate_and_save_briefing(user_id: str, briefing_type: str) -> dict[str, Any]:
+    return praetor_orchestrator().briefing(user_id, briefing_type)
+
+
+def run_and_save_committee(user_id: str, committee_type: str = "general") -> dict[str, Any]:
+    return praetor_orchestrator().committee(user_id, committee_type)
+
+
+def get_portfolio_analysis(user_id: str) -> dict[str, Any]:
+    portfolio = portfolio_repo().get_or_create_default_portfolio(user_id)
+    holdings = portfolio_repo().list_holdings(user_id, portfolio_id=portfolio["id"])
+    goals = portfolio.get("goals_json") if isinstance(portfolio.get("goals_json"), dict) else {}
+    analysis = analyze_portfolio(holdings, goals=goals)
+    portfolio_repo().save_snapshot(user_id, portfolio["id"], analysis)
+    return {"ok": True, "portfolio": portfolio, "analysis": analysis}
+
+
+def build_command_center_context(user_id: str) -> dict[str, Any]:
+    orchestrator = praetor_orchestrator()
+    data = orchestrator.build_context(user_id)
+    data["portfolio"] = get_portfolio_analysis(user_id)["analysis"]
+    data["research_reports"] = research_repo().list_reports(user_id, limit=10)
+    return {"sources": data, "command_center": build_command_center(data)}
 
 
 # -------------------- Auth + plans --------------------
@@ -2256,7 +3031,8 @@ def generate_research_report(profile: dict[str, Any], report_type: str, objectiv
         "Relative strength shows whether this stock is outperforming or lagging the broad market.",
     ]
 
-    return {"type": report_type, "sections": sections, "plain_english": plain_english}
+    base = {"type": report_type, "sections": sections, "plain_english": plain_english}
+    return {**base, "institutional": build_institutional_research(profile, base, objective)}
 
 
 def build_portfolio_plan(payload: dict[str, Any]) -> dict[str, Any]:
@@ -2353,7 +3129,46 @@ async def api_research_report(request: Request):
     objective = payload.get("objective") or ""
     try:
         profile = build_research_profile(ticker, range_name)
-        return {"ok": True, "report": generate_research_report(profile, report_type, objective)}
+        report = generate_research_report(profile, report_type, objective)
+        research_repo().save_report(auth_user["id"], report.get("institutional") or {}, profile=profile)
+        return {"ok": True, "report": report}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=500)
+
+
+@app.post("/api/praetor/ai/research")
+async def api_praetor_ai_research(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    payload = await request.json()
+    ticker = payload.get("ticker") or ""
+    range_name = payload.get("range") or "1y"
+    report_type = payload.get("report_type") or "full"
+    objective = payload.get("objective") or ""
+    try:
+        profile = build_research_profile(ticker, range_name)
+        deterministic_report = generate_research_report(profile, report_type, objective)
+        institutional = deterministic_report.get("institutional") or {}
+        ai = synthesize_ai(
+            "research",
+            {
+                "ticker": ticker,
+                "objective": objective,
+                "profile": profile,
+                "deterministic_report": deterministic_report,
+                "institutional_report": institutional,
+                "user": _public_user(auth_user),
+            },
+        )
+        research_repo().save_report(auth_user["id"], institutional, profile=profile, ai=ai)
+        return {
+            "ok": True,
+            "profile": profile,
+            "deterministic_report": deterministic_report,
+            "institutional_report": institutional,
+            "ai": ai,
+        }
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=500)
 
@@ -2366,6 +3181,31 @@ async def api_research_portfolio(request: Request):
     payload = await request.json()
     try:
         return build_portfolio_plan(payload)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=400)
+
+
+@app.get("/api/portfolio")
+def api_get_portfolio(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    try:
+        return get_portfolio_analysis(auth_user["id"])
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=500)
+
+
+@app.post("/api/portfolio/holdings")
+async def api_upsert_portfolio_holding(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    payload = await request.json()
+    try:
+        portfolio = portfolio_repo().get_or_create_default_portfolio(auth_user["id"])
+        holding_id = portfolio_repo().upsert_holding(auth_user["id"], portfolio["id"], payload)
+        return {"ok": True, "id": holding_id, **get_portfolio_analysis(auth_user["id"])}
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=400)
 
@@ -2492,6 +3332,423 @@ def api_debug_ortex(ticker: str, request: Request):
         return scanner.ortex_debug_ticker(ticker)
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=500)
+
+
+@app.post("/api/praetor/scanner/ask")
+async def api_praetor_scanner_ask(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    payload = await request.json()
+    scanner_row = payload.get("scanner_row") or {}
+    question = (payload.get("question") or "Give me your scanner assessment.").strip()
+    context = build_scanner_context(auth_user, scanner_row)
+    service = PraetorService()
+    result = service.ask(question, context)
+    result_dict = response_to_dict(result)
+    try:
+        interaction_id = praetor_log_interaction(
+            user_id=auth_user["id"],
+            page_context="scanner",
+            module="scanner_ai",
+            topic=(scanner_row.get("ticker") or "scanner"),
+            user_message=question,
+            praetor_response=result.response,
+            context=context.to_dict(),
+            tools_used=["scanner_row"],
+        )
+        result_dict["interaction_id"] = interaction_id
+    except Exception:
+        pass
+    return result_dict
+
+
+@app.post("/api/praetor/ask")
+async def api_praetor_ask(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    payload = await request.json()
+    page = payload.get("page") or "global"
+    question = (payload.get("question") or "").strip()
+    scanner_row = payload.get("scanner_row")
+    context = build_scanner_context(auth_user, scanner_row or {}) if scanner_row else build_scanner_context(auth_user, {})
+    context.page = page
+    context.module = "global_praetor"
+    context.extra["client_context"] = payload.get("client_context") or {}
+    if page == "command_center":
+        context.extra["command_center"] = build_command_center_context(auth_user["id"])["command_center"]
+    service = PraetorService()
+    result = service.ask(question or "Help me understand this page.", context)
+    return response_to_dict(result)
+
+
+@app.post("/api/praetor/trade-plan")
+async def api_praetor_trade_plan(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    payload = await request.json()
+    scanner_row = payload.get("scanner_row") or {}
+    style = payload.get("style") or "balanced"
+    service = PraetorService()
+    result = service.scanner_trade_plan(scanner_row, style=style)
+    result_dict = response_to_dict(result)
+    plans = (result.structured or {}).get("trade_plans") or []
+    saved_ids: list[str] = []
+    for plan in plans:
+        try:
+            saved_ids.append(trade_plan_repo().save_plan(auth_user["id"], plan, scanner_row=scanner_row))
+        except Exception as e:
+            result_dict["save_error"] = str(e)[:200]
+    result_dict["trade_plan_ids"] = saved_ids
+    if saved_ids:
+        result_dict["trade_plan_id"] = saved_ids[0]
+    return result_dict
+
+
+@app.get("/api/praetor/playbook")
+def api_praetor_playbook(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    service = PraetorService()
+    return response_to_dict(service.playbook_summary())
+
+
+@app.get("/api/praetor/playbook/learning")
+def api_praetor_playbook_learning(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    learning = run_praetor_learning_update(auth_user["id"])
+    return {
+        "ok": True,
+        "learning": learning,
+        "memory": memory_repo().list_memory(auth_user["id"]),
+        "discoveries": discovery_repo().list_discoveries(auth_user["id"]),
+    }
+
+
+@app.get("/api/praetor/ai/status")
+def api_praetor_ai_status(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    return ai_provider_status()
+
+
+@app.get("/api/praetor/command-center")
+def api_praetor_command_center(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    try:
+        return build_command_center_context(auth_user["id"])["command_center"]
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=500)
+
+
+@app.get("/api/praetor/ai/command-center")
+def api_praetor_ai_command_center(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    try:
+        context = build_command_center_context(auth_user["id"])
+        return {"ok": True, **context, "ai": synthesize_ai("command_center", context)}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=500)
+
+
+@app.get("/api/praetor/risk")
+def api_praetor_risk(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    learning = run_praetor_learning_update(auth_user["id"])
+    return {"ok": True, "risk": learning.get("risk"), "learning": learning}
+
+
+@app.get("/api/praetor/discoveries")
+def api_praetor_discoveries(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    learning = run_praetor_learning_update(auth_user["id"])
+    discoveries = discovery_repo().list_discoveries(auth_user["id"], limit=100)
+    return {"ok": True, "discoveries": discoveries, "summary": summarize_discoveries(discoveries), "learning": learning}
+
+
+@app.get("/api/praetor/briefings")
+def api_praetor_briefings(request: Request, briefing_type: str | None = None):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    return {"ok": True, "briefings": briefing_repo().list_briefings(auth_user["id"], briefing_type=briefing_type)}
+
+
+@app.post("/api/praetor/briefings/generate")
+async def api_praetor_generate_briefing(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    payload = await request.json()
+    try:
+        return generate_and_save_briefing(auth_user["id"], payload.get("briefing_type") or "morning")
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=500)
+
+
+@app.get("/api/praetor/committee")
+def api_praetor_committee(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    return {"ok": True, "committee_runs": committee_repo().list_runs(auth_user["id"])}
+
+
+@app.post("/api/praetor/committee/run")
+async def api_praetor_committee_run(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    payload = await request.json()
+    try:
+        return run_and_save_committee(auth_user["id"], committee_type=payload.get("committee_type") or "general")
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=500)
+
+
+@app.post("/api/praetor/ai/committee")
+async def api_praetor_ai_committee(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    payload = await request.json()
+    committee_result = run_and_save_committee(auth_user["id"], committee_type=payload.get("committee_type") or "general")
+    return {"ok": True, **committee_result, "ai": synthesize_ai("committee", committee_result)}
+
+
+@app.get("/api/praetor/ai/committee/latest")
+def api_praetor_ai_committee_latest(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    runs = committee_repo().list_runs(auth_user["id"], limit=1)
+    if not runs:
+        return {"ok": True, "ai": synthesize_ai("committee", {"committee": {"synthesis": {"consensus": "n/a", "final_recommendation": "No committee run yet."}}})}
+    run = runs[0]
+    committee = {"votes": run.get("votes_json") or [], "synthesis": run.get("synthesis_json") or {}}
+    return {"ok": True, "committee": committee, "ai": synthesize_ai("committee", {"committee": committee})}
+
+
+@app.get("/api/praetor/journal/learning")
+def api_praetor_journal_learning(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    try:
+        return run_praetor_journal_update(auth_user["id"])
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=500)
+
+
+@app.get("/api/praetor/ai/risk")
+def api_praetor_ai_risk(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    learning = run_praetor_learning_update(auth_user["id"])
+    return {"ok": True, "risk": learning.get("risk"), "ai": synthesize_ai("risk", {"risk": learning.get("risk"), "learning": learning})}
+
+
+@app.get("/api/praetor/ai/journal")
+def api_praetor_ai_journal(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    journal = run_praetor_journal_update(auth_user["id"])
+    return {"ok": True, **journal, "ai": synthesize_ai("journal", journal)}
+
+
+@app.post("/api/praetor/ai/briefing")
+async def api_praetor_ai_briefing(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    payload = await request.json()
+    briefing = generate_and_save_briefing(auth_user["id"], payload.get("briefing_type") or "morning")
+    return {"ok": True, **briefing, "ai": synthesize_ai("briefing", {"briefing": briefing.get("briefing")})}
+
+
+@app.get("/api/praetor/ai/briefing/latest")
+def api_praetor_ai_briefing_latest(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    runs = briefing_repo().list_briefings(auth_user["id"], limit=1)
+    if not runs:
+        return {"ok": True, "ai": synthesize_ai("briefing", {"briefing": {"title": "Briefing", "lead": "No briefing generated yet."}})}
+    briefing = runs[0].get("content_json") or {}
+    return {"ok": True, "briefing": briefing, "ai": synthesize_ai("briefing", {"briefing": briefing})}
+
+
+@app.get("/api/praetor/trade-plans")
+def api_praetor_trade_plans(request: Request, status: str | None = None):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    try:
+        return {"ok": True, "trade_plans": trade_plan_repo().list_plans(auth_user["id"], status=status)}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=500)
+
+
+@app.patch("/api/praetor/trade-plans/{plan_id}/decision")
+async def api_praetor_trade_plan_decision(plan_id: str, request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    payload = await request.json()
+    try:
+        updated = trade_plan_repo().update_decision(
+            auth_user["id"],
+            plan_id,
+            payload.get("decision_status") or "",
+            payload.get("notes") or "",
+        )
+        return {"ok": bool(updated)}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=400)
+
+
+@app.patch("/api/praetor/trade-plans/{plan_id}/outcome")
+async def api_praetor_trade_plan_outcome(plan_id: str, request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    payload = await request.json()
+    try:
+        updated = trade_plan_repo().update_outcome(
+            auth_user["id"],
+            plan_id,
+            payload.get("outcome") or "",
+            payload.get("notes") or "",
+        )
+        learning = run_praetor_learning_update(auth_user["id"]) if updated else None
+        return {"ok": bool(updated), "learning": learning}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=400)
+
+
+@app.get("/api/praetor/alerts")
+def api_praetor_alerts(request: Request, status: str | None = None):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    return {"ok": True, "alerts": alert_repo().list_alerts(auth_user["id"], status=status)}
+
+
+@app.post("/api/praetor/monitor/run")
+async def api_praetor_monitor_run(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    payload = await request.json()
+    try:
+        return run_praetor_monitoring(auth_user["id"], market_prices=payload.get("market_prices") or {})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=400)
+
+
+@app.get("/api/praetor/monitor/health")
+def api_praetor_monitor_health(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    try:
+        health = praetor_orchestrator().monitoring_health(auth_user["id"])
+        run_id = save_monitoring_run(auth_user["id"], health)
+        return {"ok": True, "health": health, "monitoring_run_id": run_id}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=500)
+
+
+@app.post("/api/praetor/monitor/run-v2")
+async def api_praetor_monitor_run_v2(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    payload = await request.json()
+    try:
+        result = run_praetor_monitoring(auth_user["id"], market_prices=payload.get("market_prices") or {})
+        run_id = save_monitoring_run(auth_user["id"], result.get("health") or {})
+        result["monitoring_run_id"] = run_id
+        return result
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=400)
+
+
+@app.get("/api/praetor/notification-preferences")
+def api_praetor_notification_preferences(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    return {"ok": True, "preferences": get_notification_preferences(auth_user["id"])}
+
+
+@app.patch("/api/praetor/notification-preferences")
+async def api_praetor_update_notification_preferences(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    payload = await request.json()
+    try:
+        return {"ok": True, "preferences": save_notification_preferences(auth_user["id"], payload)}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=400)
+
+
+@app.post("/api/praetor/alerts")
+async def api_praetor_create_alert(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    payload = await request.json()
+    try:
+        alert_id = alert_repo().create_alert(
+            user_id=auth_user["id"],
+            alert_type=payload.get("alert_type") or "Manual Alert",
+            ticker=payload.get("ticker") or "",
+            message=payload.get("message") or "",
+            urgency=payload.get("urgency") or "normal",
+            importance=payload.get("importance") or "watchlist",
+            confidence=payload.get("confidence"),
+            related_entity_type=payload.get("related_entity_type"),
+            related_entity_id=payload.get("related_entity_id"),
+            evidence=payload.get("evidence") or {},
+            category=payload.get("category"),
+            priority=payload.get("priority"),
+            source_modules=payload.get("source_modules") or [],
+            explanation=payload.get("explanation"),
+        )
+        return {"ok": True, "id": alert_id}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=400)
+
+
+@app.patch("/api/praetor/alerts/{alert_id}")
+async def api_praetor_update_alert(alert_id: str, request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    payload = await request.json()
+    try:
+        updated = alert_repo().update_status(auth_user["id"], alert_id, payload.get("status") or "")
+        return {"ok": bool(updated)}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=400)
 
 
 @app.get("/api/founder/past-trades/seed")
