@@ -139,16 +139,46 @@ def _table_has_column_sqlite(conn: sqlite3.Connection, table: str, col: str) -> 
 
 def _ensure_schema_migrations():
     """
-    Minimal, safe migrations:
-    - add trades.review_text
-    - add trades.reviewed_at_utc
+    Minimal, safe migrations for existing deployed databases.
+
+    CREATE TABLE IF NOT EXISTS does not add columns to an existing table, so
+    older Render/Postgres databases can be missing scanner/journal fields that
+    newer query paths expect.
     """
+    nullable_trade_cols = {
+        "scan_id": "TEXT",
+        "scan_date_ct": "TEXT",
+        "bucket": "TEXT",
+        "subtype": "TEXT",
+        "confidence": "REAL",
+        "plan": "TEXT",
+        "trigger": "REAL",
+        "stop": "REAL",
+        "scan_close": "REAL",
+        "move_pct": "REAL",
+        "dollar_vol": "REAL",
+        "range_pct": "REAL",
+        "hold_pct": "REAL",
+        "rel_vol": "REAL",
+        "si_pct_ff": "REAL",
+        "ctb": "REAL",
+        "avail": "REAL",
+        "entry_price": "REAL",
+        "entry_time_ct": "TEXT",
+        "exit_price": "REAL",
+        "exit_time_ct": "TEXT",
+        "shares": "REAL",
+        "review_flags": "TEXT",
+        "review_text": "TEXT",
+        "reviewed_at_utc": "TIMESTAMPTZ" if using_postgres() else "TEXT",
+    }
+
     if using_postgres():
         try:
             with pg_conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS review_text TEXT;")
-                    cur.execute("ALTER TABLE trades ADD COLUMN IF NOT EXISTS reviewed_at_utc TIMESTAMPTZ;")
+                    for col, typ in nullable_trade_cols.items():
+                        cur.execute(f"ALTER TABLE trades ADD COLUMN IF NOT EXISTS {col} {typ};")
                 conn.commit()
         except Exception:
             pass
@@ -156,10 +186,9 @@ def _ensure_schema_migrations():
         with DB_LOCK:
             conn = sqlite_conn()
             try:
-                if not _table_has_column_sqlite(conn, "trades", "review_text"):
-                    conn.execute("ALTER TABLE trades ADD COLUMN review_text TEXT;")
-                if not _table_has_column_sqlite(conn, "trades", "reviewed_at_utc"):
-                    conn.execute("ALTER TABLE trades ADD COLUMN reviewed_at_utc TEXT;")
+                for col, typ in nullable_trade_cols.items():
+                    if not _table_has_column_sqlite(conn, "trades", col):
+                        conn.execute(f"ALTER TABLE trades ADD COLUMN {col} {typ};")
                 conn.commit()
             except Exception:
                 pass
