@@ -30,6 +30,7 @@ from praetor_service import PraetorService, response_to_dict
 from playbook_engine import calculate_playbook_stats
 from memory_engine import build_memory_updates
 from discovery_engine import build_discovery_candidates, build_journal_discovery_candidates
+from discovery_engine_v2 import build_discovery_v2_candidates, summarize_discoveries
 from journal_engine import build_journal_memory_updates, build_journal_report
 from risk_engine import build_risk_report
 from repositories.alert_repository import AlertRepository
@@ -166,6 +167,15 @@ def _ensure_praetor_schema_migrations():
                 with conn.cursor() as cur:
                     for col, typ in trade_plan_cols.items():
                         cur.execute(f"ALTER TABLE trade_plans ADD COLUMN IF NOT EXISTS {col} {typ};")
+                    discovery_cols = {
+                        "category": "TEXT",
+                        "impact_score": "REAL",
+                        "importance": "TEXT",
+                        "urgency": "TEXT",
+                        "priority": "TEXT",
+                    }
+                    for col, typ in discovery_cols.items():
+                        cur.execute(f"ALTER TABLE discoveries ADD COLUMN IF NOT EXISTS {col} {typ};")
                 conn.commit()
         except Exception:
             pass
@@ -177,6 +187,16 @@ def _ensure_praetor_schema_migrations():
             for col, typ in trade_plan_cols.items():
                 if not _table_has_column_sqlite(conn, "trade_plans", col):
                     conn.execute(f"ALTER TABLE trade_plans ADD COLUMN {col} {typ};")
+            discovery_cols = {
+                "category": "TEXT",
+                "impact_score": "REAL",
+                "importance": "TEXT",
+                "urgency": "TEXT",
+                "priority": "TEXT",
+            }
+            for col, typ in discovery_cols.items():
+                if not _table_has_column_sqlite(conn, "discoveries", col):
+                    conn.execute(f"ALTER TABLE discoveries ADD COLUMN {col} {typ};")
             conn.commit()
         except Exception:
             pass
@@ -419,10 +439,15 @@ def db_init():
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
       discovery_type TEXT NOT NULL,
+      category TEXT,
       title TEXT NOT NULL,
       description TEXT,
       confidence REAL NOT NULL DEFAULT 0,
       evidence_count INTEGER NOT NULL DEFAULT 0,
+      impact_score REAL,
+      importance TEXT,
+      urgency TEXT,
+      priority TEXT,
       source_module TEXT,
       evidence_json TEXT,
       status TEXT NOT NULL DEFAULT 'OPEN',
@@ -623,6 +648,9 @@ def run_praetor_learning_update(user_id: str) -> dict[str, Any]:
     memory = memory_repo().list_memory(user_id)
     discoveries = discovery_repo().list_discoveries(user_id)
     risk = build_risk_report(plans, stats, memory, discoveries)
+    for discovery in build_discovery_v2_candidates(stats, risk_report=risk):
+        discovery_ids.append(discovery_repo().save_discovery(user_id, discovery))
+    discoveries = discovery_repo().list_discoveries(user_id)
 
     return {
         "ok": True,
@@ -631,6 +659,7 @@ def run_praetor_learning_update(user_id: str) -> dict[str, Any]:
         "memory_ids": memory_ids,
         "discovery_ids": discovery_ids,
         "risk": risk,
+        "discovery_summary": summarize_discoveries(discoveries),
     }
 
 
@@ -650,6 +679,8 @@ def run_praetor_journal_update(user_id: str) -> dict[str, Any]:
     discovery_ids: list[str] = []
     for discovery in build_journal_discovery_candidates(journal_report):
         discovery_ids.append(discovery_repo().save_discovery(user_id, discovery))
+    for discovery in build_discovery_v2_candidates(learning["stats"], journal_report=journal_report, risk_report=learning["risk"]):
+        discovery_ids.append(discovery_repo().save_discovery(user_id, discovery))
 
     return {
         "ok": True,
@@ -658,6 +689,7 @@ def run_praetor_journal_update(user_id: str) -> dict[str, Any]:
         "discovery_ids": discovery_ids,
         "memory": memory_repo().list_memory(user_id),
         "discoveries": discovery_repo().list_discoveries(user_id),
+        "discovery_summary": summarize_discoveries(discovery_repo().list_discoveries(user_id)),
         "risk": learning["risk"],
     }
 
@@ -2937,6 +2969,16 @@ def api_praetor_risk(request: Request):
         return auth_user
     learning = run_praetor_learning_update(auth_user["id"])
     return {"ok": True, "risk": learning.get("risk"), "learning": learning}
+
+
+@app.get("/api/praetor/discoveries")
+def api_praetor_discoveries(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    learning = run_praetor_learning_update(auth_user["id"])
+    discoveries = discovery_repo().list_discoveries(auth_user["id"], limit=100)
+    return {"ok": True, "discoveries": discoveries, "summary": summarize_discoveries(discoveries), "learning": learning}
 
 
 @app.get("/api/praetor/journal/learning")

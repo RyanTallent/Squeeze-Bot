@@ -673,6 +673,32 @@
                 </div>
               </div>
             </div>
+            <div class="card" style="margin-top:14px">
+              <div class="eyebrow">Discovery Center</div>
+              <h3>Praetor is looking for hidden edges and hidden risks.</h3>
+              <div class="researchGrid">
+                <div class="card">
+                  <h3>Critical Discoveries</h3>
+                  <div id="discCritical" class="fineprint">No critical discoveries yet.</div>
+                </div>
+                <div class="card">
+                  <h3>High-Impact Discoveries</h3>
+                  <div id="discHighImpact" class="fineprint">No high-impact discoveries yet.</div>
+                </div>
+                <div class="card">
+                  <h3>Emerging Hypotheses</h3>
+                  <div id="discHypotheses" class="fineprint">No emerging hypotheses yet.</div>
+                </div>
+                <div class="card">
+                  <h3>Hidden Opportunities</h3>
+                  <div id="discOpportunities" class="fineprint">No hidden opportunities yet.</div>
+                </div>
+                <div class="card">
+                  <h3>Hidden Risks</h3>
+                  <div id="discRisks" class="fineprint">No hidden risks yet.</div>
+                </div>
+              </div>
+            </div>
             <div class="tableWrap">
               <table>
                 <thead>
@@ -1567,6 +1593,10 @@
     const alertsResp = await fetch("/api/praetor/alerts").catch(()=>null);
     const alertsData = alertsResp ? await safeJson(alertsResp) : {ok:false, alerts:[]};
     renderAlerts(alertsData.alerts || []);
+
+    const discResp = await fetch("/api/praetor/discoveries").catch(()=>null);
+    const discData = discResp ? await safeJson(discResp) : {ok:false};
+    if(discData.ok) renderDiscoveryCenter(discData.summary || {});
   }
 
   function confidenceText(x){
@@ -1631,6 +1661,23 @@
       confidence: w.confidence,
       evidence_count: w.intervention_level || 1
     })), "No warnings yet.");
+  }
+
+  function discoveryRows(rows){
+    return (rows || []).map(d => ({
+      title: `${d.priority || d.importance || ""} ${d.category || ""}: ${d.title || ""}`,
+      description: `${d.description || ""} Impact ${fmtNum(d.impact_score,0)} | Urgency ${d.urgency || "n/a"}`,
+      confidence: d.confidence,
+      evidence_count: d.evidence_count
+    }));
+  }
+
+  function renderDiscoveryCenter(summary){
+    renderLearningList("discCritical", discoveryRows(summary.critical), "No critical discoveries yet.");
+    renderLearningList("discHighImpact", discoveryRows(summary.high_impact), "No high-impact discoveries yet.");
+    renderLearningList("discHypotheses", discoveryRows(summary.emerging_hypotheses), "No emerging hypotheses yet.");
+    renderLearningList("discOpportunities", discoveryRows(summary.hidden_opportunities), "No hidden opportunities yet.");
+    renderLearningList("discRisks", discoveryRows(summary.hidden_risks), "No hidden risks yet.");
   }
 
   function renderPlaybook(plans){

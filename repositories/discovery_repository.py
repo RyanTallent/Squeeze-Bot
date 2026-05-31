@@ -24,10 +24,15 @@ class DiscoveryRepository:
             "id": discovery.id,
             "user_id": user_id,
             "discovery_type": discovery.discovery_type,
+            "category": getattr(discovery, "category", None) or self._category_from_type(discovery.discovery_type),
             "title": discovery.title,
             "description": discovery.description,
             "confidence": discovery.confidence,
             "evidence_count": discovery.evidence_count,
+            "impact_score": getattr(discovery, "impact_score", None),
+            "importance": getattr(discovery, "importance", None),
+            "urgency": getattr(discovery, "urgency", None),
+            "priority": getattr(discovery, "priority", None),
             "source_module": discovery.source_module,
             "evidence_json": json.dumps(discovery.evidence, default=str),
             "status": "OPEN",
@@ -88,13 +93,17 @@ class DiscoveryRepository:
                     cur.execute(
                         """
                         UPDATE discoveries
-                        SET description=%s, confidence=%s, evidence_count=%s, evidence_json=%s, updated_at_utc=%s
+                        SET description=%s, confidence=%s, evidence_count=%s, impact_score=%s, importance=%s, urgency=%s, priority=%s, evidence_json=%s, updated_at_utc=%s
                         WHERE id=%s AND user_id=%s
                         """,
                         (
                             discovery.description,
                             discovery.confidence,
                             discovery.evidence_count,
+                            getattr(discovery, "impact_score", None),
+                            getattr(discovery, "importance", None),
+                            getattr(discovery, "urgency", None),
+                            getattr(discovery, "priority", None),
                             evidence_json,
                             now,
                             discovery_id,
@@ -109,13 +118,17 @@ class DiscoveryRepository:
                 conn.execute(
                     """
                     UPDATE discoveries
-                    SET description=?, confidence=?, evidence_count=?, evidence_json=?, updated_at_utc=?
+                    SET description=?, confidence=?, evidence_count=?, impact_score=?, importance=?, urgency=?, priority=?, evidence_json=?, updated_at_utc=?
                     WHERE id=? AND user_id=?
                     """,
                     (
                         discovery.description,
                         discovery.confidence,
                         discovery.evidence_count,
+                        getattr(discovery, "impact_score", None),
+                        getattr(discovery, "importance", None),
+                        getattr(discovery, "urgency", None),
+                        getattr(discovery, "priority", None),
                         evidence_json,
                         now,
                         discovery_id,
@@ -147,3 +160,16 @@ class DiscoveryRepository:
             except Exception:
                 row["evidence_json"] = {}
         return rows
+
+    @staticmethod
+    def _category_from_type(discovery_type: str) -> str:
+        t = (discovery_type or "").lower()
+        if "risk" in t:
+            return "Risk"
+        if "edge" in t or "strength" in t:
+            return "Edge"
+        if "behavior" in t:
+            return "Behavioral"
+        if "opportunity" in t:
+            return "Opportunity"
+        return "Educational"
