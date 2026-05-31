@@ -352,6 +352,7 @@
         <button class="sideBtn" data-page="Signals">Signals</button>
         <button class="sideBtn" data-page="Research">Research</button>
         <button class="sideBtn" data-page="Playbook">Playbook</button>
+        <button class="sideBtn" data-page="Alerts">Alerts</button>
         <button class="sideBtn" data-page="Journal">Journal</button>
         <button class="sideBtn" data-page="Risk">Risk</button>
         <button class="sideBtn" data-page="Pricing">Pricing</button>
@@ -728,6 +729,32 @@
           </div>
         </div>
 
+        <div class="page" id="pageAlerts">
+          <div class="card">
+            <div class="eyebrow">Alert Center</div>
+            <h2>Smart in-app alerts and monitoring checks.</h2>
+            <p>Praetor alerts include trade-plan context, playbook context, memory, discoveries, and risk context. This is the foundation for future SMS notifications.</p>
+            <div class="portfolioForm">
+              <div class="field"><label>Monitor ticker</label><input id="monitorTicker" placeholder="AAPL" /></div>
+              <div class="field"><label>Current price</label><input id="monitorPrice" type="number" step="0.0001" placeholder="123.45" /></div>
+              <div class="field"><label>&nbsp;</label><button class="btn primary" id="runMonitorBtn" type="button">Run Monitor Check</button></div>
+            </div>
+            <div class="fineprint" id="monitorStatus">Enter a ticker/current price to evaluate saved active trade plans.</div>
+          </div>
+          <div class="card">
+            <div class="eyebrow">Active alerts</div>
+            <div class="tableWrap"><table><thead><tr><th>Ticker</th><th>Category</th><th>Priority</th><th>Confidence</th><th>Message</th><th>Explanation</th><th>Actions</th></tr></thead><tbody id="alertCenterActive"></tbody></table></div>
+          </div>
+          <div class="card">
+            <div class="eyebrow">Dismissed alerts</div>
+            <div class="tableWrap"><table><thead><tr><th>Ticker</th><th>Category</th><th>Priority</th><th>Message</th><th>Status</th></tr></thead><tbody id="alertCenterDismissed"></tbody></table></div>
+          </div>
+          <div class="card">
+            <div class="eyebrow">Alert history</div>
+            <div class="tableWrap"><table><thead><tr><th>Ticker</th><th>Type</th><th>Priority</th><th>Urgency</th><th>Status</th><th>Created</th></tr></thead><tbody id="alertCenterHistory"></tbody></table></div>
+          </div>
+        </div>
+
         <div class="page" id="pageRisk">
           <div class="card">
             <div class="eyebrow">Risk architecture</div>
@@ -971,6 +998,7 @@
     document.querySelectorAll("[data-page]").forEach(b => b.classList.toggle("active", b.dataset.page === name));
     if(name === "Journal") loadNotebook();
     if(name === "Playbook") loadPlaybook();
+    if(name === "Alerts") loadAlertCenter();
     if(name === "Pricing") paintPricing("appPricing");
   }
 
@@ -1767,6 +1795,70 @@
     });
   }
 
+  async function loadAlertCenter(){
+    if(!state.user) return;
+    const resp = await fetch("/api/praetor/alerts").catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false, alerts:[]};
+    const alerts = data.alerts || [];
+    renderAlertCenter(alerts);
+  }
+
+  function renderAlertCenter(alerts){
+    const active = alerts.filter(a => a.status === "OPEN" || a.status === "ACKNOWLEDGED");
+    const dismissed = alerts.filter(a => a.status === "DISMISSED" || a.status === "RESOLVED");
+    const activeBody = $("alertCenterActive");
+    const dismissedBody = $("alertCenterDismissed");
+    const historyBody = $("alertCenterHistory");
+    if(activeBody){
+      activeBody.innerHTML = active.map(a => `
+        <tr>
+          <td><b>${escHtml(a.ticker || "")}</b></td>
+          <td>${escHtml(a.category || a.alert_type || "")}</td>
+          <td>${escHtml(a.priority || a.urgency || "")}</td>
+          <td>${fmtPct(a.confidence)}</td>
+          <td>${escHtml(a.message || "")}</td>
+          <td><pre style="white-space:pre-wrap;margin:0">${escHtml(a.explanation || "")}</pre></td>
+          <td><button class="ghost" data-alert-dismiss="${a.id}">Dismiss</button></td>
+        </tr>`).join("");
+    }
+    if(dismissedBody){
+      dismissedBody.innerHTML = dismissed.map(a => `<tr><td><b>${escHtml(a.ticker || "")}</b></td><td>${escHtml(a.category || a.alert_type || "")}</td><td>${escHtml(a.priority || a.urgency || "")}</td><td>${escHtml(a.message || "")}</td><td>${escHtml(a.status || "")}</td></tr>`).join("");
+    }
+    if(historyBody){
+      historyBody.innerHTML = alerts.map(a => `<tr><td><b>${escHtml(a.ticker || "")}</b></td><td>${escHtml(a.alert_type || "")}</td><td>${escHtml(a.priority || "")}</td><td>${escHtml(a.urgency || "")}</td><td>${escHtml(a.status || "")}</td><td>${escHtml(a.created_at_utc || "")}</td></tr>`).join("");
+    }
+    document.querySelectorAll("[data-alert-dismiss]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        await fetch(`/api/praetor/alerts/${btn.dataset.alertDismiss}`, {
+          method:"PATCH", headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({status:"DISMISSED"})
+        }).catch(()=>{});
+        loadAlertCenter();
+      });
+    });
+  }
+
+  async function runMonitorCheck(){
+    const ticker = ($("monitorTicker").value || "").toUpperCase().trim();
+    const price = Number($("monitorPrice").value);
+    if(!ticker || !Number.isFinite(price)){
+      alert("Enter ticker and current price.");
+      return;
+    }
+    $("monitorStatus").textContent = "Running monitor check...";
+    const resp = await fetch("/api/praetor/monitor/run", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({market_prices:{[ticker]:price}})
+    }).catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false,error:"Monitor unavailable."};
+    if(!data.ok){
+      $("monitorStatus").textContent = data.error || "Monitor failed.";
+      return;
+    }
+    $("monitorStatus").textContent = `Monitor created ${data.alert_count || 0} alert(s) from ${data.events?.length || 0} event(s).`;
+    loadAlertCenter();
+  }
+
   async function createManualAlert(){
     const payload = {
       ticker:$("alertTicker").value,
@@ -1783,6 +1875,7 @@
     $("alertType").value = "";
     $("alertMessage").value = "";
     loadPlaybook();
+    loadAlertCenter();
   }
 
   function bind(){
@@ -1831,6 +1924,7 @@
     $("addPastBtn").addEventListener("click", addPastTrade);
     $("refreshPlaybookBtn").addEventListener("click", loadPlaybook);
     $("createAlertBtn").addEventListener("click", createManualAlert);
+    $("runMonitorBtn").addEventListener("click", runMonitorCheck);
     $("researchRunBtn").addEventListener("click", loadResearch);
     $("researchTicker").addEventListener("keydown", e => { if(e.key === "Enter") loadResearch(); });
     $("researchChart").addEventListener("mousemove", showResearchTip);

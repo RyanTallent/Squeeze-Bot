@@ -33,6 +33,8 @@ from discovery_engine import build_discovery_candidates, build_journal_discovery
 from discovery_engine_v2 import build_discovery_v2_candidates, summarize_discoveries
 from journal_engine import build_journal_memory_updates, build_journal_report
 from risk_engine import build_risk_report
+from monitoring_engine import monitor_trade_plans
+from alert_engine import build_smart_alert, smart_alert_to_repo_kwargs
 from repositories.alert_repository import AlertRepository
 from repositories.discovery_repository import DiscoveryRepository
 from repositories.memory_repository import MemoryRepository
@@ -176,6 +178,14 @@ def _ensure_praetor_schema_migrations():
                     }
                     for col, typ in discovery_cols.items():
                         cur.execute(f"ALTER TABLE discoveries ADD COLUMN IF NOT EXISTS {col} {typ};")
+                    alert_cols = {
+                        "category": "TEXT",
+                        "priority": "TEXT",
+                        "source_modules": "TEXT",
+                        "explanation": "TEXT",
+                    }
+                    for col, typ in alert_cols.items():
+                        cur.execute(f"ALTER TABLE alerts ADD COLUMN IF NOT EXISTS {col} {typ};")
                 conn.commit()
         except Exception:
             pass
@@ -197,6 +207,15 @@ def _ensure_praetor_schema_migrations():
             for col, typ in discovery_cols.items():
                 if not _table_has_column_sqlite(conn, "discoveries", col):
                     conn.execute(f"ALTER TABLE discoveries ADD COLUMN {col} {typ};")
+            alert_cols = {
+                "category": "TEXT",
+                "priority": "TEXT",
+                "source_modules": "TEXT",
+                "explanation": "TEXT",
+            }
+            for col, typ in alert_cols.items():
+                if not _table_has_column_sqlite(conn, "alerts", col):
+                    conn.execute(f"ALTER TABLE alerts ADD COLUMN {col} {typ};")
             conn.commit()
         except Exception:
             pass
@@ -411,10 +430,14 @@ def db_init():
       ticker TEXT,
       related_entity_type TEXT,
       related_entity_id TEXT,
+      category TEXT,
+      priority TEXT,
       urgency TEXT,
       importance TEXT,
       confidence REAL,
       message TEXT NOT NULL,
+      explanation TEXT,
+      source_modules TEXT,
       evidence TEXT,
       status TEXT NOT NULL DEFAULT 'OPEN',
       delivered_at_utc TEXT,
@@ -691,6 +714,36 @@ def run_praetor_journal_update(user_id: str) -> dict[str, Any]:
         "discoveries": discovery_repo().list_discoveries(user_id),
         "discovery_summary": summarize_discoveries(discovery_repo().list_discoveries(user_id)),
         "risk": learning["risk"],
+    }
+
+
+def run_praetor_monitoring(user_id: str, market_prices: dict[str, Any] | None = None) -> dict[str, Any]:
+    plans = trade_plan_repo().list_plans(user_id, limit=1000)
+    learning = run_praetor_learning_update(user_id)
+    memory = memory_repo().list_memory(user_id)
+    discoveries = discovery_repo().list_discoveries(user_id)
+    playbook_context = learning.get("stats") or {}
+    risk_context = learning.get("risk") or {}
+    events = monitor_trade_plans(plans, market_prices or {})
+
+    created_alerts = []
+    for event in events:
+        smart = build_smart_alert(
+            event,
+            playbook_context=playbook_context,
+            memory_context=memory,
+            discovery_context=discoveries,
+            risk_context=risk_context,
+        )
+        alert_id = alert_repo().create_alert(user_id=user_id, **smart_alert_to_repo_kwargs(smart))
+        created_alerts.append({**smart.__dict__, "id": alert_id})
+
+    return {
+        "ok": True,
+        "events": events,
+        "created_alerts": created_alerts,
+        "alert_count": len(created_alerts),
+        "risk": risk_context,
     }
 
 
@@ -3048,6 +3101,18 @@ def api_praetor_alerts(request: Request, status: str | None = None):
     return {"ok": True, "alerts": alert_repo().list_alerts(auth_user["id"], status=status)}
 
 
+@app.post("/api/praetor/monitor/run")
+async def api_praetor_monitor_run(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    payload = await request.json()
+    try:
+        return run_praetor_monitoring(auth_user["id"], market_prices=payload.get("market_prices") or {})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=400)
+
+
 @app.post("/api/praetor/alerts")
 async def api_praetor_create_alert(request: Request):
     auth_user = require_user(request)
@@ -3066,6 +3131,10 @@ async def api_praetor_create_alert(request: Request):
             related_entity_type=payload.get("related_entity_type"),
             related_entity_id=payload.get("related_entity_id"),
             evidence=payload.get("evidence") or {},
+            category=payload.get("category"),
+            priority=payload.get("priority"),
+            source_modules=payload.get("source_modules") or [],
+            explanation=payload.get("explanation"),
         )
         return {"ok": True, "id": alert_id}
     except Exception as e:

@@ -32,6 +32,10 @@ class AlertRepository:
         related_entity_type: str | None = None,
         related_entity_id: str | None = None,
         evidence: dict[str, Any] | None = None,
+        category: str | None = None,
+        priority: str | None = None,
+        source_modules: list[str] | None = None,
+        explanation: str | None = None,
     ) -> str:
         row = {
             "id": str(uuid.uuid4()),
@@ -40,10 +44,14 @@ class AlertRepository:
             "ticker": (ticker or "").upper(),
             "related_entity_type": related_entity_type,
             "related_entity_id": related_entity_id,
+            "category": category,
+            "priority": priority,
             "urgency": urgency,
             "importance": importance,
             "confidence": confidence,
             "message": message,
+            "explanation": explanation,
+            "source_modules": json.dumps(source_modules or []),
             "evidence": json.dumps(evidence or {}, default=str),
             "status": "OPEN",
             "delivered_at_utc": None,
@@ -97,6 +105,10 @@ class AlertRepository:
                 row["evidence"] = json.loads(row.get("evidence") or "{}")
             except Exception:
                 row["evidence"] = {}
+            try:
+                row["source_modules"] = json.loads(row.get("source_modules") or "[]")
+            except Exception:
+                row["source_modules"] = []
         return rows
 
     def update_status(self, user_id: str, alert_id: str, status: str) -> bool:
