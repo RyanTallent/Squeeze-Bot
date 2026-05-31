@@ -45,6 +45,7 @@ from wealth_engine import build_wealth_plan
 from research_engine import build_institutional_research
 from fundamental_engine import build_fundamental_analysis
 from ai_synthesis_engine import synthesize as synthesize_ai
+from research_consistency import deterministic_research_contract, enforce_research_ai_consistency
 from data_providers.fmp_provider import FMPProvider, fmp_status
 from data_providers.sec_provider import sec_status
 from sector_frameworks import available_sector_frameworks
@@ -1242,6 +1243,23 @@ def _research_opinion_debug(report: dict[str, Any]) -> dict[str, Any]:
         "has_score_conflicts": isinstance(opinion.get("score_conflicts"), list),
         "has_opportunity_ranking": isinstance(opinion.get("opportunity_ranking"), list),
         "static_cache_check": "/__ui_version",
+    }
+
+
+def _research_ai_consistency_debug(ai: dict[str, Any]) -> dict[str, Any]:
+    consistency = (ai or {}).get("consistency") or {}
+    contract = (ai or {}).get("deterministic_contract") or {}
+    return {
+        "deterministic_recommendation": consistency.get("deterministic_recommendation") or contract.get("final_recommendation"),
+        "deterministic_action": consistency.get("deterministic_action") or contract.get("today_action"),
+        "openai_recommendation": consistency.get("ai_recommendation_detected"),
+        "openai_action": consistency.get("ai_action_detected"),
+        "recommendation_consistent": consistency.get("recommendation_consistent"),
+        "action_consistent": consistency.get("action_consistent"),
+        "coverage_consistent": consistency.get("coverage_consistent"),
+        "consistency_pass": consistency.get("overall_consistent"),
+        "consistency_corrected": (ai or {}).get("consistency_corrected"),
+        "issues": consistency.get("issues") or [],
     }
 
 
@@ -3429,6 +3447,7 @@ async def api_praetor_ai_research(request: Request):
         opportunity_context = [r.get("report_json") or {} for r in research_repo().list_reports(auth_user["id"], limit=12)]
         deterministic_report = generate_research_report(profile, report_type, objective, fundamentals=fundamentals, opportunity_context=opportunity_context)
         institutional = deterministic_report.get("institutional") or {}
+        deterministic_contract = deterministic_research_contract(institutional)
         ai = synthesize_ai(
             "research",
             {
@@ -3437,10 +3456,12 @@ async def api_praetor_ai_research(request: Request):
                 "profile": profile,
                 "deterministic_report": deterministic_report,
                 "institutional_report": institutional,
+                "deterministic_opinion_contract": deterministic_contract,
                 "fundamentals": fundamentals,
                 "user": _public_user(auth_user),
             },
         )
+        ai = enforce_research_ai_consistency(ai, deterministic_contract)
         research_repo().save_report(auth_user["id"], institutional, profile=profile, ai=ai)
         response = {
             "ok": True,
@@ -3451,6 +3472,7 @@ async def api_praetor_ai_research(request: Request):
         }
         if (auth_user.get("plan_code") or "") == "founder":
             response["research_debug"] = _research_opinion_debug(deterministic_report)
+            response["research_consistency_debug"] = _research_ai_consistency_debug(ai)
         return response
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=500)
