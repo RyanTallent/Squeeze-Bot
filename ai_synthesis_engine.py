@@ -80,6 +80,25 @@ def _fallback(kind: str, context: dict[str, Any]) -> str:
 
 
 def _prompt(kind: str, context: dict[str, Any]) -> str:
+    deterministic_contract = context.get("deterministic_opinion_contract") or {}
+    contract_rules = ""
+    if kind == "research" and deterministic_contract:
+        contract_rules = (
+            "\nMANDATORY DETERMINISTIC CONTRACT - DO NOT CONTRADICT:\n"
+            f"- Final Recommendation: {deterministic_contract.get('final_recommendation')}\n"
+            f"- Today Action: {deterministic_contract.get('today_action')}\n"
+            f"- Conviction: {json.dumps(deterministic_contract.get('conviction'), default=str)}\n"
+            f"- Valuation: {json.dumps(deterministic_contract.get('valuation'), default=str)}\n"
+            f"- Data Coverage: {json.dumps(deterministic_contract.get('data_coverage'), default=str)}\n"
+            f"- Score Conflicts: {json.dumps(deterministic_contract.get('score_conflicts'), default=str)[:2000]}\n"
+            f"- Opportunity Ranking: {json.dumps(deterministic_contract.get('opportunity_ranking'), default=str)[:2000]}\n\n"
+            "You may explain, add nuance, discuss risks/opportunities, and clarify uncertainty. "
+            "You may NOT replace or contradict the Final Recommendation or Today Action. "
+            "If the deterministic recommendation is Avoid for Now, do not say Buy, Hold, Maintain Position, Accumulate, or Add. "
+            "If the deterministic action is Watchlist Only, do not recommend Accumulate, Add, Buy, or Maintain Position. "
+            "If deterministic data coverage is strong, do not claim data is incomplete. "
+            "If deterministic data coverage is weak, explicitly explain missing data and lower confidence.\n"
+        )
     guidance = {
         "research": (
             "Act like a senior equity analyst, portfolio manager, and investment committee member. "
@@ -105,6 +124,7 @@ def _prompt(kind: str, context: dict[str, Any]) -> str:
         "- Use probabilistic language.\n"
         "- Include professional explanation and plain-English explanation when useful.\n"
         "- Be willing to disagree if evidence warrants it.\n\n"
+        f"{contract_rules}\n"
         f"Context JSON:\n{json.dumps(context, default=str)[:14000]}"
     )
 

@@ -1659,6 +1659,7 @@
     }
     renderResearch(data.profile);
     state.lastResearchDebug = data.research_debug || null;
+    const consistencyDebug = data.research_consistency_debug || data.ai?.consistency || null;
     if(state.user?.plan_code === "founder"){
       const inst = data.deterministic_report?.institutional || {};
       console.log("[Research QA Debug] AI deterministic response", {
@@ -1667,12 +1668,29 @@
         institutional_opinion_exists: !!inst.opinion,
         opinion_keys: Object.keys(inst.opinion || {}),
         backend_debug: data.research_debug || null,
+        consistency_debug: consistencyDebug,
         sections_keys: Object.keys(inst.sections || {}),
         render_path_expected: "renderResearchReport:opinion-v2"
       });
     }
     renderResearchReport(data.deterministic_report, null);
+    const founderConsistency = state.user?.plan_code === "founder" ? `
+      <details class="explainer" open>
+        <summary>Founder AI Consistency Debug</summary>
+        <p><b>Deterministic Recommendation:</b> ${escHtml(consistencyDebug?.deterministic_recommendation || data.ai?.deterministic_contract?.final_recommendation || "n/a")}</p>
+        <p><b>OpenAI Recommendation Detected:</b> ${escHtml(consistencyDebug?.openai_recommendation || data.ai?.consistency?.ai_recommendation_detected || "n/a")}</p>
+        <p><b>Deterministic Today Action:</b> ${escHtml(consistencyDebug?.deterministic_action || data.ai?.deterministic_contract?.today_action || "n/a")}</p>
+        <p><b>OpenAI Action Detected:</b> ${escHtml(consistencyDebug?.openai_action || data.ai?.consistency?.ai_action_detected || "n/a")}</p>
+        <p><b>Consistency Pass:</b> ${String(consistencyDebug?.consistency_pass ?? data.ai?.consistency?.overall_consistent ?? "n/a")}</p>
+        <p><b>Recommendation Consistent:</b> ${String(consistencyDebug?.recommendation_consistent ?? data.ai?.consistency?.recommendation_consistent ?? "n/a")}</p>
+        <p><b>Action Consistent:</b> ${String(consistencyDebug?.action_consistent ?? data.ai?.consistency?.action_consistent ?? "n/a")}</p>
+        <p><b>Coverage Consistent:</b> ${String(consistencyDebug?.coverage_consistent ?? data.ai?.consistency?.coverage_consistent ?? "n/a")}</p>
+        <p><b>Corrected:</b> ${String(consistencyDebug?.consistency_corrected ?? data.ai?.consistency_corrected ?? "n/a")}</p>
+        <p><b>Issues:</b> ${((consistencyDebug?.issues || data.ai?.consistency?.issues || []).map(escHtml).join("; ")) || "none"}</p>
+      </details>
+    ` : "";
     $("researchAiReport").innerHTML = `
+      ${founderConsistency}
       <div class="reportSection">
         <h3>Praetor Thesis <span class="scoreBadge">${data.ai?.fallback_used ? "Fallback" : "OpenAI"}</span></h3>
         <p style="white-space:pre-wrap">${escHtml(data.ai?.text || "No Praetor synthesis returned.")}</p>
