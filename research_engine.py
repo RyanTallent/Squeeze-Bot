@@ -42,7 +42,22 @@ def _score(name: str, score: float, explanation: str, evidence: list[str], confi
     }
 
 
-def build_research_scores(profile: dict[str, Any], deterministic_report: dict[str, Any] | None = None) -> dict[str, Any]:
+def _fundamental_sections(fundamentals: dict[str, Any] | None) -> dict[str, Any]:
+    return (fundamentals or {}).get("sections") or {}
+
+
+def _rating_score(rating: str | None, unavailable_default: float = 45) -> float:
+    r = (rating or "").lower()
+    if r == "high" or r == "low" and "risk" in r:
+        return 75
+    if r == "medium":
+        return 55
+    if r == "low":
+        return 35
+    return unavailable_default
+
+
+def build_research_scores(profile: dict[str, Any], deterministic_report: dict[str, Any] | None = None, fundamentals: dict[str, Any] | None = None) -> dict[str, Any]:
     m = profile.get("metrics") or {}
     latest_close = _num(m.get("latest_close"))
     sma50 = m.get("sma50")
@@ -99,27 +114,34 @@ def build_research_scores(profile: dict[str, Any], deterministic_report: dict[st
         elif dd < -0.25:
             vol_risk_score -= 10
 
-    fundamental_placeholder = [
-        "Fundamental data provider not yet connected for revenue, cash flow, margins, balance sheet, and guidance.",
-        "Connect Financial Modeling Prep, Intrinio, FactSet/Capital IQ, or similar provider for higher-confidence scoring.",
-    ]
+    f_sections = _fundamental_sections(fundamentals)
+    earnings = f_sections.get("earnings_quality") or {}
+    balance = f_sections.get("balance_sheet") or {}
+    analyst = f_sections.get("analyst_expectations") or {}
+    fundamental_score = _rating_score(earnings.get("rating"))
+    balance_score = 100 - _rating_score(balance.get("rating"), unavailable_default=55) if balance.get("rating") in ("High", "Medium", "Low") else 45
+    valuation_score = _rating_score(analyst.get("rating"))
+    fundamental_evidence = (earnings.get("items") or [])[:4] or ["Fundamental data unavailable."]
+    valuation_evidence = (analyst.get("items") or [])[:4] or ["Analyst/valuation data unavailable."]
 
-    thesis_strength = (trend_score * 0.28 + momentum_score * 0.24 + liquidity_score * 0.16 + vol_risk_score * 0.20 + 45 * 0.12)
-    portfolio_fit = (liquidity_score * 0.25 + vol_risk_score * 0.35 + trend_score * 0.25 + 50 * 0.15)
+    thesis_strength = (trend_score * 0.24 + momentum_score * 0.20 + liquidity_score * 0.14 + vol_risk_score * 0.17 + fundamental_score * 0.15 + valuation_score * 0.10)
+    portfolio_fit = (liquidity_score * 0.22 + vol_risk_score * 0.30 + trend_score * 0.20 + fundamental_score * 0.18 + balance_score * 0.10)
 
     return {
         "trend_quality": _score("Trend Quality", trend_score, "Evaluates price location versus moving averages and selected-period trend.", trend_evidence or ["Trend evidence is limited."]),
         "momentum_quality": _score("Momentum Quality", momentum_score, "Evaluates return profile and relative strength versus SPY.", momentum_evidence or ["Momentum evidence is limited."]),
         "liquidity_quality": _score("Liquidity Quality", liquidity_score, "Evaluates tradability using average volume as a first-pass proxy.", liquidity_evidence),
         "volatility_risk": _score("Volatility Risk", vol_risk_score, "Higher score means cleaner/manageable volatility risk.", vol_evidence or ["Volatility evidence is unavailable."]),
-        "fundamental_quality": _score("Fundamental Quality", 45, "Placeholder until fundamental data provider is connected.", fundamental_placeholder, 0.15),
-        "valuation_risk": _score("Valuation Risk", 45, "Placeholder until valuation data, earnings, and peer multiples are connected.", fundamental_placeholder, 0.15),
-        "thesis_strength": _score("Thesis Strength", thesis_strength, "Composite of trend, momentum, liquidity, volatility risk, and currently limited fundamentals.", ["Technical/market evidence available.", "Fundamental evidence currently limited."]),
-        "portfolio_fit": _score("Portfolio Fit", portfolio_fit, "Evaluates whether the idea appears suitable for portfolio inclusion based on liquidity, volatility, and trend context.", ["Portfolio-specific goals and holdings improve this score when connected."]),
+        "fundamental_quality": _score("Fundamental Quality", fundamental_score, "Uses FMP earnings quality, cash-flow support, and margin evidence when available.", fundamental_evidence, earnings.get("confidence")),
+        "valuation_risk": _score("Valuation / Expectations", valuation_score, "Uses FMP analyst expectations and key metrics where available.", valuation_evidence, analyst.get("confidence")),
+        "thesis_strength": _score("Thesis Strength", thesis_strength, "Composite of trend, momentum, liquidity, volatility risk, fundamentals, and expectations.", ["Technical/market evidence available.", "FMP fundamental context included when available."]),
+        "portfolio_fit": _score("Portfolio Fit", portfolio_fit, "Evaluates suitability using liquidity, volatility, trend, fundamentals, balance sheet, and later portfolio holdings.", ["Portfolio-specific goals and holdings improve this score when connected."]),
     }
 
 
-def build_framework_sections(profile: dict[str, Any]) -> dict[str, Any]:
+def build_framework_sections(profile: dict[str, Any], fundamentals: dict[str, Any] | None = None) -> dict[str, Any]:
+    if fundamentals and fundamentals.get("sections"):
+        return fundamentals["sections"]
     return {
         "revenue_business": {
             "rating": "Data Unavailable",
@@ -202,9 +224,9 @@ def build_scenarios(profile: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
-def build_institutional_research(profile: dict[str, Any], deterministic_report: dict[str, Any], objective: str = "") -> dict[str, Any]:
-    scores = build_research_scores(profile, deterministic_report)
-    frameworks = build_framework_sections(profile)
+def build_institutional_research(profile: dict[str, Any], deterministic_report: dict[str, Any], objective: str = "", fundamentals: dict[str, Any] | None = None) -> dict[str, Any]:
+    scores = build_research_scores(profile, deterministic_report, fundamentals=fundamentals)
+    frameworks = build_framework_sections(profile, fundamentals=fundamentals)
     scenarios = build_scenarios(profile)
     ticker = profile.get("ticker")
     score_values = [v["score"] for v in scores.values()]
@@ -224,23 +246,23 @@ def build_institutional_research(profile: dict[str, Any], deterministic_report: 
         "sections": {
             "executive_view": {
                 "title": "Executive View",
-                "body": f"{ticker} receives a {verdict} label from the current deterministic research stack. Technical evidence is available; fundamental evidence is limited until provider integrations are added.",
+                "body": f"{ticker} receives a {verdict} label from the current deterministic research stack. Technical evidence is available; FMP fundamental evidence is included when returned by the provider.",
             },
             "institutional_view": {
                 "title": "Institutional View",
-                "body": "Current institutional view combines trend, momentum, liquidity, volatility, and placeholder fundamental/valuation modules. Missing fundamental data should lower confidence.",
+                "body": "Current institutional view combines trend, momentum, liquidity, volatility, FMP fundamentals, analyst expectations, and explicit data-gap handling.",
             },
             "bull_case": {
                 "title": "Bull Case",
-                "body": "Bull case depends on trend persistence, relative strength, liquidity support, and future confirmation from fundamentals/catalysts.",
+                "body": "Bull case depends on trend persistence, relative strength, liquidity support, fundamental quality, and future confirmation from earnings/catalysts.",
             },
             "bear_case": {
                 "title": "Bear Case",
-                "body": "Bear case centers on trend failure, drawdown risk, volatility expansion, and missing fundamental confirmation.",
+                "body": "Bear case centers on trend failure, drawdown risk, volatility expansion, weak earnings quality, balance-sheet risk, or negative revisions.",
             },
             "risks": {
                 "title": "Risks",
-                "body": "Key risks include volatility, drawdown, incomplete financial statement data, unknown valuation context, and missing peer benchmark data.",
+                "body": "Key risks include volatility, drawdown, weak or unavailable financial data, valuation/expectations risk, and peer/sector comparison gaps.",
             },
             "portfolio_fit": {
                 "title": "Portfolio Fit",
@@ -252,12 +274,13 @@ def build_institutional_research(profile: dict[str, Any], deterministic_report: 
             },
         },
         "data_gaps": [
-            "fundamental statements",
-            "valuation multiples",
-            "analyst estimates",
-            "peer benchmarking",
+            *(["fundamental statements"] if not fundamentals or not fundamentals.get("ok") else []),
+            *(["valuation multiples"] if not (_fundamental_sections(fundamentals).get("analyst_expectations") or {}).get("provider_ok") else []),
+            *(["analyst estimates"] if not (_fundamental_sections(fundamentals).get("analyst_expectations") or {}).get("provider_ok") else []),
+            *(["peer benchmarking"] if not (_fundamental_sections(fundamentals).get("sector_benchmarking") or {}).get("provider_ok") else []),
             "segment revenue",
-            "earnings quality metrics",
-            "balance sheet details",
+            *(["earnings quality metrics"] if not (_fundamental_sections(fundamentals).get("earnings_quality") or {}).get("provider_ok") else []),
+            *(["balance sheet details"] if not (_fundamental_sections(fundamentals).get("balance_sheet") or {}).get("provider_ok") else []),
         ],
+        "fundamentals": fundamentals or {"ok": False, "provider": "FMP", "sections": {}},
     }

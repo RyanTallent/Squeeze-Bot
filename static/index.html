@@ -1658,7 +1658,10 @@
     const frameworkCards = Object.entries(frameworks).map(([key, f]) => `
       <details class="explainer"><summary>${escHtml(key.replaceAll("_"," "))}: ${escHtml(f.rating || "")}</summary>
       <ul>${(f.items || []).map(x => `<li>${escHtml(x)}</li>`).join("")}</ul>
-      <p class="fineprint">Data requirements: ${(f.data_requirements || []).map(escHtml).join(", ")}</p></details>
+      <p class="fineprint">Source: ${escHtml(f.source || "n/a")} | Timestamp: ${escHtml(f.timestamp || "n/a")} | Confidence: ${fmtPct(f.confidence)}</p>
+      <p class="fineprint">Data requirements: ${(f.data_requirements || []).map(escHtml).join(", ") || "satisfied or not specified"}</p>
+      ${f.provider_error ? `<p class="fineprint bad">Provider note: ${escHtml(f.provider_error)}</p>` : ""}
+      </details>
     `).join("");
     $("researchReport").innerHTML = `
       <div class="reportSection"><h3>Executive View <span class="scoreBadge">${escHtml(inst.verdict || "Needs Confirmation")}</span></h3><p>${escHtml(sections.executive_view?.body || "No executive view available.")}</p></div>
@@ -1672,6 +1675,7 @@
       </div>
       <div class="reportSection"><h3>Scenario Analysis</h3>${scenarios}</div>
       <div class="reportSection"><h3>Research Frameworks</h3>${frameworkCards}</div>
+      <div class="reportSection"><h3>Analyst Expectations</h3><p>${escHtml(frameworks.analyst_expectations?.items?.join(" ") || "Analyst expectations unavailable.")}</p></div>
       ${(report.sections || []).map(s => `<div class="reportSection"><h3>${s.title}</h3><p>${s.body}</p></div>`).join("")}
       <div class="reportSection"><h3>Committee View</h3><p>Research reports now persist and feed Committee/Briefings/Command Center context. Run Committee for multi-role synthesis.</p></div>
       <div class="reportSection"><h3>What Praetor Would Do</h3><p>${escHtml(sections.what_praetor_would_do?.body || "")}</p></div>

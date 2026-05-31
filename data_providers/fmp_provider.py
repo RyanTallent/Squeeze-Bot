@@ -1,0 +1,90 @@
+from __future__ import annotations
+
+import os
+from datetime import datetime, timedelta
+from typing import Any, Callable
+
+import requests
+
+
+FMP_BASE_URL = "https://financialmodelingprep.com"
+FMP_API_KEY = (os.getenv("FMP_API_KEY") or "").strip()
+
+
+CacheGet = Callable[[str], dict[str, Any] | None]
+CacheSet = Callable[[str, str, dict[str, Any], datetime], None]
+
+
+def fmp_status() -> dict[str, Any]:
+    return {
+        "provider": "financial_modeling_prep",
+        "configured": bool(FMP_API_KEY),
+        "base_url": FMP_BASE_URL,
+    }
+
+
+class FMPProvider:
+    def __init__(self, cache_get: CacheGet | None = None, cache_set: CacheSet | None = None):
+        self.api_key = FMP_API_KEY
+        self.cache_get = cache_get
+        self.cache_set = cache_set
+
+    @property
+    def configured(self) -> bool:
+        return bool(self.api_key)
+
+    def _cache_key(self, endpoint: str, params: dict[str, Any]) -> str:
+        parts = "&".join(f"{k}={params[k]}" for k in sorted(params))
+        return f"fmp:{endpoint}?{parts}"
+
+    def get(self, endpoint: str, params: dict[str, Any] | None = None, ttl_hours: int = 24) -> dict[str, Any]:
+        params = dict(params or {})
+        cache_key = self._cache_key(endpoint, params)
+        if self.cache_get:
+            cached = self.cache_get(cache_key)
+            if cached is not None:
+                return {"ok": True, "source": "FMP", "cached": True, "fetched_at": cached.get("fetched_at"), "data": cached.get("data")}
+
+        if not self.api_key:
+            return {"ok": False, "source": "FMP", "cached": False, "error": "FMP_API_KEY not configured", "data": None}
+
+        url = f"{FMP_BASE_URL}{endpoint}"
+        request_params = {**params, "apikey": self.api_key}
+        try:
+            response = requests.get(url, params=request_params, timeout=25)
+            if response.status_code >= 400:
+                return {"ok": False, "source": "FMP", "cached": False, "error": f"FMP {response.status_code}: {response.text[:200]}", "data": None}
+            data = response.json()
+        except requests.RequestException as e:
+            return {"ok": False, "source": "FMP", "cached": False, "error": f"{type(e).__name__}: {str(e)[:200]}", "data": None}
+        except Exception as e:
+            return {"ok": False, "source": "FMP", "cached": False, "error": f"Invalid FMP response: {str(e)[:200]}", "data": None}
+
+        fetched_at = datetime.utcnow()
+        if self.cache_set:
+            self.cache_set(cache_key, "FMP", data, fetched_at + timedelta(hours=ttl_hours))
+        return {"ok": True, "source": "FMP", "cached": False, "fetched_at": fetched_at.isoformat(), "data": data}
+
+    def fundamentals_bundle(self, ticker: str) -> dict[str, Any]:
+        symbol = ticker.upper().strip()
+        endpoints = {
+            "income_statement": ("/stable/income-statement", {"symbol": symbol, "limit": 8}, 24),
+            "balance_sheet": ("/stable/balance-sheet-statement", {"symbol": symbol, "limit": 8}, 24),
+            "cash_flow": ("/stable/cash-flow-statement", {"symbol": symbol, "limit": 8}, 24),
+            "key_metrics": ("/stable/key-metrics", {"symbol": symbol, "limit": 8}, 24),
+            "financial_ratios": ("/stable/ratios", {"symbol": symbol, "limit": 8}, 24),
+            "analyst_estimates": ("/stable/analyst-estimates", {"symbol": symbol, "limit": 8}, 12),
+            "peers": ("/stable/stock-peers", {"symbol": symbol}, 168),
+            "earnings_calendar": ("/stable/earnings-calendar", {"symbol": symbol}, 12),
+        }
+        results: dict[str, Any] = {}
+        for name, (endpoint, params, ttl) in endpoints.items():
+            results[name] = self.get(endpoint, params, ttl_hours=ttl)
+        return {
+            "ok": any(v.get("ok") for v in results.values()),
+            "ticker": symbol,
+            "provider": "FMP",
+            "configured": self.configured,
+            "fetched_at": datetime.utcnow().isoformat(),
+            "endpoints": results,
+        }
