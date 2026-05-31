@@ -100,3 +100,15 @@ def get_ai_provider() -> AIProvider:
     if not api_key:
         return FallbackProvider()
     return OpenAIProvider(api_key=api_key, model=model)
+
+
+def ai_provider_status() -> dict[str, Any]:
+    api_key = (os.getenv("OPENAI_API_KEY") or "").strip()
+    model = (os.getenv("OPENAI_MODEL") or "gpt-4o-mini").strip()
+    openai_configured = bool(api_key)
+    return {
+        "provider": "openai" if openai_configured else "fallback",
+        "model": model if openai_configured else "deterministic",
+        "openai_configured": openai_configured,
+        "fallback_mode": not openai_configured,
+    }

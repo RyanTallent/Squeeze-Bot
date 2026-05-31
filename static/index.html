@@ -402,6 +402,7 @@
           </div>
           <div class="card">
             <div class="eyebrow">Recommendation of the Day</div>
+            <div class="pill" id="aiStatusPill">AI: checking...</div>
             <h3 id="ccRecommendation">Loading...</h3>
           </div>
           <div class="researchGrid">
@@ -1005,6 +1006,7 @@
         <div class="eyebrow">Praetor Copilot</div>
         <h3 id="copilotTitle">Page-aware assistant</h3>
         <p class="fineprint" id="copilotContext">Context: -</p>
+        <p class="fineprint" id="copilotAiStatus">AI: checking...</p>
       </div>
       <button class="x" id="closeCopilotBtn" type="button">&times;</button>
     </div>
@@ -1062,6 +1064,18 @@
     copilotHistory:[],
     commandSnapshot:null
   };
+
+  async function loadAiStatus(){
+    if(!state.user) return null;
+    const resp = await fetch("/api/praetor/ai/status").catch(()=>null);
+    const data = resp ? await safeJson(resp) : null;
+    const label = data && data.openai_configured
+      ? `OpenAI Active (${data.model})`
+      : `Fallback Mode`;
+    if($("aiStatusPill")) $("aiStatusPill").textContent = `AI: ${label}`;
+    if($("copilotAiStatus")) $("copilotAiStatus").textContent = `AI: ${label}`;
+    return data;
+  }
 
   function setTheme(theme){
     state.theme = theme === "dark" ? "dark" : "light";
@@ -1251,6 +1265,7 @@
       $("userPill").textContent = `${state.user.email} - ${state.user.plan_name}`;
       applyOrtexDefault();
       paintUsage();
+      loadAiStatus();
     }
     paintPricing("publicPricing");
     paintPricing("appPricing");
@@ -1858,6 +1873,7 @@
 
   function openCopilot(){
     updateCopilotContext();
+    loadAiStatus();
     $("praetorCopilotDrawer").classList.add("open");
   }
 
@@ -2703,6 +2719,7 @@
     await loadMe();
     renderAll();
     applyOrtexDefault();
+    if(state.user) await loadAiStatus();
     if(state.user) await loadCommandCenter();
     if(state.user) await loadNotebook();
   }

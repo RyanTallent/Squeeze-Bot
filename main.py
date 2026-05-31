@@ -27,6 +27,7 @@ from fastapi.staticfiles import StaticFiles
 import scanner  # your scanner.py
 from praetor_context import build_scanner_context
 from praetor_service import PraetorService, response_to_dict
+from praetor_providers import ai_provider_status
 from playbook_engine import calculate_playbook_stats
 from memory_engine import build_memory_updates
 from discovery_engine import build_discovery_candidates, build_journal_discovery_candidates
@@ -3427,6 +3428,14 @@ def api_praetor_playbook_learning(request: Request):
         "memory": memory_repo().list_memory(auth_user["id"]),
         "discoveries": discovery_repo().list_discoveries(auth_user["id"]),
     }
+
+
+@app.get("/api/praetor/ai/status")
+def api_praetor_ai_status(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    return ai_provider_status()
 
 
 @app.get("/api/praetor/command-center")
