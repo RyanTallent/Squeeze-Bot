@@ -1718,6 +1718,7 @@
     const conviction = inst.conviction || {};
     const coverage = inst.data_coverage || {};
     const sectorFramework = inst.sector_framework || {};
+    const opinion = inst.opinion || {};
     const scoreCards = Object.values(scores).map(s => metricCard(s.name || "Score", `${s.score ?? "-"} ${s.label ? "(" + s.label + ")" : ""}`)).join("");
     const scenarios = (inst.scenarios || []).map(s => `
       <div class="reportSection"><h3>${s.name} <span class="scoreBadge">${fmtPct(s.probability)}</span></h3>
@@ -1734,9 +1735,28 @@
       ${f.provider_error ? `<p class="fineprint bad">Provider note: ${escHtml(f.provider_error)}</p>` : ""}
       </details>
     `).join("");
+    const opinionList = arr => `<ul>${(arr || []).map(x => `<li>${escHtml(x)}</li>`).join("") || "<li>Not enough evidence yet.</li>"}</ul>`;
     $("researchReport").innerHTML = `
-      <div class="reportSection"><h3>Executive View <span class="scoreBadge">${escHtml(inst.verdict || "Needs Confirmation")}</span></h3><p>${escHtml(sections.executive_view?.body || "No executive view available.")}</p></div>
+      <div class="reportSection"><h3>Praetor Final Stance <span class="scoreBadge">${escHtml(opinion.final_stance || inst.verdict || "Needs Confirmation")}</span></h3><p>${escHtml(opinion.final_stance_body || sections.executive_view?.body || "No executive view available.")}</p></div>
       <div class="metricGrid">${scoreCards}</div>
+      <div class="researchGrid">
+        <div class="reportSection"><h3>Buy / Hold / Avoid View</h3><p>${escHtml(opinion.buy_hold_avoid_view || "n/a")}</p></div>
+        <div class="reportSection"><h3>Long-Term Investment View</h3><p><b>${escHtml(opinion.long_term_investment_view?.label || "n/a")}</b>: ${escHtml(opinion.long_term_investment_view?.body || "")}</p></div>
+        <div class="reportSection"><h3>Trade View</h3><p><b>${escHtml(opinion.trade_view?.label || "n/a")}</b>: ${escHtml(opinion.trade_view?.body || "")}</p></div>
+        <div class="reportSection"><h3>Confidence Level</h3><p>${fmtPct(opinion.confidence_level)} | Conviction ${opinion.conviction?.score ?? conviction.score ?? "-"} / 100</p></div>
+      </div>
+      <div class="researchGrid">
+        <div class="reportSection"><h3>Highest Conviction Bull Argument</h3><p>${escHtml(opinion.highest_conviction_bull_argument || "No bull argument established.")}</p></div>
+        <div class="reportSection"><h3>Highest Conviction Bear Argument</h3><p>${escHtml(opinion.highest_conviction_bear_argument || "No bear argument established.")}</p></div>
+        <div class="reportSection"><h3>Key Risks</h3>${opinionList(opinion.key_risks)}</div>
+        <div class="reportSection"><h3>Key Opportunities</h3>${opinionList(opinion.key_opportunities)}</div>
+      </div>
+      <div class="researchGrid">
+        <div class="reportSection"><h3>What Would Change My Mind</h3>${opinionList(opinion.what_would_change_my_mind)}</div>
+        <div class="reportSection"><h3>What Matters Most</h3>${opinionList(opinion.what_matters_most)}</div>
+        <div class="reportSection"><h3>What Is Noise</h3>${opinionList(opinion.what_is_noise)}</div>
+        <div class="reportSection"><h3>What Investors May Be Overlooking</h3>${opinionList(opinion.what_investors_may_be_overlooking)}</div>
+      </div>
       <div class="reportSection"><h3>Institutional View</h3><p>${escHtml(sections.institutional_view?.body || "")}</p></div>
       <div class="researchGrid">
         <div class="reportSection"><h3>Data Coverage <span class="scoreBadge">${escHtml(coverage.rating || "n/a")}</span></h3>

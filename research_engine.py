@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Any
 
 from conviction_engine import build_conviction
+from opinion_engine import build_opinion_intelligence
 from sector_frameworks import select_sector_framework
 
 
@@ -255,6 +256,16 @@ def build_institutional_research(profile: dict[str, Any], deterministic_report: 
     data_coverage = (fundamentals or {}).get("data_coverage") or {}
     sector_framework = (fundamentals or {}).get("sector_framework") or select_sector_framework(profile=profile, fundamentals=fundamentals)
     conviction = build_conviction(profile, fundamentals, valuation, peer_benchmarking, scores, data_coverage=data_coverage)
+    opinion = build_opinion_intelligence(
+        profile=profile,
+        scores=scores,
+        fundamentals=fundamentals,
+        valuation=valuation,
+        peer_benchmarking=peer_benchmarking,
+        conviction=conviction,
+        data_coverage=data_coverage,
+        sector_framework=sector_framework,
+    )
     scores["conviction_score"] = _score(
         "Conviction Score",
         conviction.get("score") or 0,
@@ -280,13 +291,14 @@ def build_institutional_research(profile: dict[str, Any], deterministic_report: 
         "valuation": valuation,
         "peer_benchmarking": peer_benchmarking,
         "conviction": conviction,
+        "opinion": opinion,
         "data_coverage": data_coverage,
         "sector_framework": sector_framework,
         "scenarios": scenarios,
         "sections": {
             "executive_view": {
                 "title": "Executive View",
-                "body": f"{ticker} receives a {verdict} label with {conviction.get('rating')} ({conviction.get('score')}/100). Technicals, FMP fundamentals, valuation, peers, analyst expectations, and balance sheet evidence are included when available.",
+                "body": opinion.get("final_stance_body") or f"{ticker} receives a {verdict} label with {conviction.get('rating')} ({conviction.get('score')}/100). Technicals, FMP fundamentals, valuation, peers, analyst expectations, and balance sheet evidence are included when available.",
             },
             "institutional_view": {
                 "title": "Institutional View",
@@ -310,7 +322,27 @@ def build_institutional_research(profile: dict[str, Any], deterministic_report: 
             },
             "what_praetor_would_do": {
                 "title": "What Praetor Would Do",
-                "body": f"Conviction engine says {conviction.get('rating')} ({conviction.get('score')}/100). Treat this as a research candidate, not a prediction; verify catalysts, valuation, peer rank, and portfolio fit before increasing exposure.",
+                "body": f"{opinion.get('buy_hold_avoid_view')}: {opinion.get('final_stance_body')} No guarantees are provided; data coverage and valuation constraints remain source-of-truth checks.",
+            },
+            "praetor_final_stance": {
+                "title": "Praetor Final Stance",
+                "body": opinion.get("final_stance_body") or "",
+            },
+            "buy_hold_avoid_view": {
+                "title": "Buy / Hold / Avoid View",
+                "body": opinion.get("buy_hold_avoid_view") or "",
+            },
+            "long_term_investment_view": {
+                "title": "Long-Term Investment View",
+                "body": f"{(opinion.get('long_term_investment_view') or {}).get('label', '')}: {(opinion.get('long_term_investment_view') or {}).get('body', '')}",
+            },
+            "trade_view": {
+                "title": "Trade View",
+                "body": f"{(opinion.get('trade_view') or {}).get('label', '')}: {(opinion.get('trade_view') or {}).get('body', '')}",
+            },
+            "what_would_change_my_mind": {
+                "title": "What Would Change My Mind",
+                "body": " ".join(opinion.get("what_would_change_my_mind") or []),
             },
         },
         "data_gaps": [
