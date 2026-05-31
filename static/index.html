@@ -353,6 +353,7 @@
         <button class="sideBtn" data-page="Research">Research</button>
         <button class="sideBtn" data-page="Playbook">Playbook</button>
         <button class="sideBtn" data-page="Alerts">Alerts</button>
+        <button class="sideBtn" data-page="Briefings">Briefings</button>
         <button class="sideBtn" data-page="Journal">Journal</button>
         <button class="sideBtn" data-page="Risk">Risk</button>
         <button class="sideBtn" data-page="Pricing">Pricing</button>
@@ -755,6 +756,48 @@
           </div>
         </div>
 
+        <div class="page" id="pageBriefings">
+          <div class="card">
+            <div class="eyebrow">Daily Briefing Center</div>
+            <h2>Praetor's proactive financial intelligence briefing.</h2>
+            <p>Briefings synthesize playbook learning, memory, discoveries, risk, journal intelligence, trade plans, and alerts.</p>
+            <div class="toolbar">
+              <button class="btn primary" data-briefing-generate="morning" type="button">Morning Briefing</button>
+              <button class="btn" data-briefing-generate="midday" type="button">Midday Briefing</button>
+              <button class="btn" data-briefing-generate="end_of_day" type="button">End-of-Day Review</button>
+              <button class="btn" data-briefing-generate="weekly" type="button">Weekly Briefing</button>
+              <button class="ghost" id="refreshBriefingsBtn" type="button">Refresh</button>
+            </div>
+            <div class="fineprint" id="briefingStatus">Generate a briefing to answer: what is the most important thing I need to know right now?</div>
+          </div>
+          <div class="card">
+            <div class="eyebrow">Latest briefing</div>
+            <div id="latestBriefing">No briefing generated yet.</div>
+          </div>
+          <div class="researchGrid">
+            <div class="card">
+              <h3>Morning</h3>
+              <div id="morningBriefing">No morning briefing yet.</div>
+            </div>
+            <div class="card">
+              <h3>Midday</h3>
+              <div id="middayBriefing">No midday briefing yet.</div>
+            </div>
+            <div class="card">
+              <h3>End of Day</h3>
+              <div id="eodBriefing">No end-of-day briefing yet.</div>
+            </div>
+            <div class="card">
+              <h3>Weekly</h3>
+              <div id="weeklyBriefing">No weekly briefing yet.</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="eyebrow">Briefing history</div>
+            <div class="tableWrap"><table><thead><tr><th>Type</th><th>Priority</th><th>Title</th><th>Summary</th><th>Created</th></tr></thead><tbody id="briefingHistory"></tbody></table></div>
+          </div>
+        </div>
+
         <div class="page" id="pageRisk">
           <div class="card">
             <div class="eyebrow">Risk architecture</div>
@@ -999,6 +1042,7 @@
     if(name === "Journal") loadNotebook();
     if(name === "Playbook") loadPlaybook();
     if(name === "Alerts") loadAlertCenter();
+    if(name === "Briefings") loadBriefings();
     if(name === "Pricing") paintPricing("appPricing");
   }
 
@@ -1859,6 +1903,54 @@
     loadAlertCenter();
   }
 
+  function renderBriefingCard(briefing){
+    if(!briefing) return "No briefing generated yet.";
+    const content = briefing.content_json || briefing;
+    return `
+      <div class="reportSection">
+        <h3>${escHtml(content.title || briefing.title || "Briefing")} <span class="scoreBadge">${escHtml(content.priority || briefing.priority || "")}</span></h3>
+        <p>${escHtml(content.lead || briefing.summary || "")}</p>
+      </div>
+      ${(content.sections || []).map(s => `<div class="reportSection"><h3>${escHtml(s.title)} <span class="scoreBadge">${escHtml(s.priority || "")}</span></h3><ul>${(s.bullets || []).map(b => `<li>${escHtml(b)}</li>`).join("")}</ul></div>`).join("")}
+    `;
+  }
+
+  function renderBriefings(briefings){
+    const latest = briefings[0];
+    $("latestBriefing").innerHTML = renderBriefingCard(latest);
+    const byType = Object.fromEntries((briefings || []).map(b => [b.briefing_type, b]));
+    $("morningBriefing").innerHTML = renderBriefingCard(byType.morning);
+    $("middayBriefing").innerHTML = renderBriefingCard(byType.midday);
+    $("eodBriefing").innerHTML = renderBriefingCard(byType.end_of_day);
+    $("weeklyBriefing").innerHTML = renderBriefingCard(byType.weekly);
+    $("briefingHistory").innerHTML = (briefings || []).map(b => `
+      <tr><td>${escHtml(b.briefing_type || "")}</td><td>${escHtml(b.priority || "")}</td><td>${escHtml(b.title || "")}</td><td>${escHtml(b.summary || "")}</td><td>${escHtml(b.created_at_utc || "")}</td></tr>
+    `).join("");
+  }
+
+  async function loadBriefings(){
+    if(!state.user) return;
+    const resp = await fetch("/api/praetor/briefings").catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false, briefings:[]};
+    if(data.ok) renderBriefings(data.briefings || []);
+  }
+
+  async function generateBriefing(type){
+    $("briefingStatus").textContent = "Generating briefing...";
+    const resp = await fetch("/api/praetor/briefings/generate", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({briefing_type:type})
+    }).catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false,error:"Briefing unavailable."};
+    if(!data.ok){
+      $("briefingStatus").textContent = data.error || "Briefing failed.";
+      return;
+    }
+    $("briefingStatus").textContent = `${data.briefing?.title || "Briefing"} generated.`;
+    await loadBriefings();
+  }
+
   async function createManualAlert(){
     const payload = {
       ticker:$("alertTicker").value,
@@ -1925,6 +2017,10 @@
     $("refreshPlaybookBtn").addEventListener("click", loadPlaybook);
     $("createAlertBtn").addEventListener("click", createManualAlert);
     $("runMonitorBtn").addEventListener("click", runMonitorCheck);
+    document.querySelectorAll("[data-briefing-generate]").forEach(btn => {
+      btn.addEventListener("click", () => generateBriefing(btn.dataset.briefingGenerate));
+    });
+    $("refreshBriefingsBtn").addEventListener("click", loadBriefings);
     $("researchRunBtn").addEventListener("click", loadResearch);
     $("researchTicker").addEventListener("keydown", e => { if(e.key === "Enter") loadResearch(); });
     $("researchChart").addEventListener("mousemove", showResearchTip);

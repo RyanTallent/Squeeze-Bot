@@ -35,7 +35,9 @@ from journal_engine import build_journal_memory_updates, build_journal_report
 from risk_engine import build_risk_report
 from monitoring_engine import monitor_trade_plans
 from alert_engine import build_smart_alert, smart_alert_to_repo_kwargs
+from briefing_engine import build_briefing
 from repositories.alert_repository import AlertRepository
+from repositories.briefing_repository import BriefingRepository
 from repositories.discovery_repository import DiscoveryRepository
 from repositories.memory_repository import MemoryRepository
 from repositories.playbook_repository import PlaybookRepository
@@ -479,6 +481,20 @@ def db_init():
     );
     """
 
+    briefing_runs_sql = """
+    CREATE TABLE IF NOT EXISTS briefing_runs (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      briefing_type TEXT NOT NULL,
+      priority TEXT,
+      title TEXT,
+      summary TEXT,
+      content_json TEXT NOT NULL,
+      source_context_json TEXT,
+      created_at_utc TEXT NOT NULL
+    );
+    """
+
     if using_postgres():
         with pg_conn() as conn:
             with conn.cursor() as cur:
@@ -502,6 +518,7 @@ def db_init():
                 cur.execute(
                     discoveries_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ").replace("updated_at_utc TEXT", "updated_at_utc TIMESTAMPTZ")
                 )
+                cur.execute(briefing_runs_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ"))
             conn.commit()
     else:
         with DB_LOCK:
@@ -519,6 +536,7 @@ def db_init():
                 conn.execute(alerts_sql)
                 conn.execute(playbook_snapshots_sql)
                 conn.execute(discoveries_sql)
+                conn.execute(briefing_runs_sql)
                 conn.commit()
             finally:
                 conn.close()
@@ -655,6 +673,10 @@ def discovery_repo() -> DiscoveryRepository:
     return DiscoveryRepository(using_postgres, pg_conn, sqlite_conn, DB_LOCK)
 
 
+def briefing_repo() -> BriefingRepository:
+    return BriefingRepository(using_postgres, pg_conn, sqlite_conn, DB_LOCK)
+
+
 def run_praetor_learning_update(user_id: str) -> dict[str, Any]:
     plans = trade_plan_repo().list_plans(user_id, limit=1000)
     stats = calculate_playbook_stats(plans)
@@ -745,6 +767,31 @@ def run_praetor_monitoring(user_id: str, market_prices: dict[str, Any] | None = 
         "alert_count": len(created_alerts),
         "risk": risk_context,
     }
+
+
+def build_briefing_context(user_id: str) -> dict[str, Any]:
+    learning = run_praetor_learning_update(user_id)
+    journal = run_praetor_journal_update(user_id)
+    alerts = alert_repo().list_alerts(user_id, limit=100)
+    discoveries = discovery_repo().list_discoveries(user_id, limit=100)
+    plans = trade_plan_repo().list_plans(user_id, limit=1000)
+    memory = memory_repo().list_memory(user_id, limit=100)
+    return {
+        "learning": learning,
+        "journal": journal.get("journal"),
+        "alerts": alerts,
+        "discoveries": discoveries,
+        "trade_plans": plans,
+        "memory": memory,
+        "risk": learning.get("risk"),
+    }
+
+
+def generate_and_save_briefing(user_id: str, briefing_type: str) -> dict[str, Any]:
+    context = build_briefing_context(user_id)
+    briefing = build_briefing(briefing_type, context)
+    briefing_id = briefing_repo().save_briefing(user_id, briefing, source_context=context)
+    return {"ok": True, "briefing": briefing, "briefing_id": briefing_id}
 
 
 # -------------------- Auth + plans --------------------
@@ -3032,6 +3079,26 @@ def api_praetor_discoveries(request: Request):
     learning = run_praetor_learning_update(auth_user["id"])
     discoveries = discovery_repo().list_discoveries(auth_user["id"], limit=100)
     return {"ok": True, "discoveries": discoveries, "summary": summarize_discoveries(discoveries), "learning": learning}
+
+
+@app.get("/api/praetor/briefings")
+def api_praetor_briefings(request: Request, briefing_type: str | None = None):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    return {"ok": True, "briefings": briefing_repo().list_briefings(auth_user["id"], briefing_type=briefing_type)}
+
+
+@app.post("/api/praetor/briefings/generate")
+async def api_praetor_generate_briefing(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    payload = await request.json()
+    try:
+        return generate_and_save_briefing(auth_user["id"], payload.get("briefing_type") or "morning")
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=500)
 
 
 @app.get("/api/praetor/journal/learning")
