@@ -599,6 +599,7 @@
                 </select>
               </div>
               <button class="btn primary" id="researchRunBtn" type="button">Generate</button>
+              <button class="btn success" id="researchAiBtn" type="button">Generate AI Thesis</button>
             </div>
             <div class="field">
               <label>What are you looking for?</label>
@@ -612,6 +613,7 @@
             </div>
             <div class="fineprint" id="researchStatus">Enter any ticker and generate research.</div>
             <div id="researchReport"></div>
+            <div id="researchAiReport"></div>
 
             <details class="explainer" open>
               <summary>Metric explanations</summary>
@@ -1460,6 +1462,7 @@
     const objective = $("researchObjective").value || "";
     $("researchStatus").textContent = "Loading research data...";
     $("researchReport").innerHTML = "";
+    $("researchAiReport").innerHTML = "";
 
     const profileResp = await fetch(`/api/research/${encodeURIComponent(ticker)}?range=${encodeURIComponent(range)}`).catch(()=>null);
     const profile = profileResp ? await safeJson(profileResp) : {ok:false,error:"Could not reach server."};
@@ -1477,6 +1480,35 @@
     }).catch(()=>null);
     const report = reportResp ? await safeJson(reportResp) : {ok:false,error:"Could not generate report."};
     renderResearchReport(report.ok ? report.report : null, report.error);
+  }
+
+  async function loadResearchAI(){
+    if(!state.user){ openAuth("login"); return; }
+    const ticker = ($("researchTicker").value || "").trim().toUpperCase();
+    if(!ticker){ alert("Enter a ticker first."); return; }
+    $("researchAiReport").innerHTML = `<div class="reportSection">Praetor AI is generating thesis synthesis...</div>`;
+    const payload = {
+      ticker,
+      range:$("researchRange").value || "1y",
+      report_type:$("researchReportType").value || "full",
+      objective:$("researchObjective").value || ""
+    };
+    const resp = await fetch("/api/praetor/ai/research", {
+      method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload)
+    }).catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false,error:"Research AI unavailable."};
+    if(!data.ok){
+      $("researchAiReport").innerHTML = `<div class="reportSection"><b>AI thesis error</b><p>${escHtml(data.error || "Research AI unavailable.")}</p></div>`;
+      return;
+    }
+    renderResearch(data.profile);
+    renderResearchReport(data.deterministic_report, null);
+    $("researchAiReport").innerHTML = `
+      <div class="reportSection">
+        <h3>Praetor AI Thesis <span class="scoreBadge">${data.ai?.fallback_used ? "Fallback" : "OpenAI"}</span></h3>
+        <p style="white-space:pre-wrap">${escHtml(data.ai?.text || "No AI synthesis returned.")}</p>
+      </div>
+    `;
   }
 
   function renderResearch(profile){
@@ -2529,6 +2561,7 @@
     $("refreshCommandCenterBtn").addEventListener("click", loadCommandCenter);
     $("commandAskBtn").addEventListener("click", askCommandPraetor);
     $("researchRunBtn").addEventListener("click", loadResearch);
+    $("researchAiBtn").addEventListener("click", loadResearchAI);
     $("researchTicker").addEventListener("keydown", e => { if(e.key === "Enter") loadResearch(); });
     $("researchChart").addEventListener("mousemove", showResearchTip);
     $("researchChart").addEventListener("mouseleave", () => { $("researchChartTip").style.display = "none"; });

@@ -40,6 +40,7 @@ from committee_engine import run_investment_committee
 from command_center_engine import build_command_center
 from monitor_scheduler import build_monitoring_health
 from portfolio_engine import analyze_portfolio
+from ai_synthesis_engine import synthesize as synthesize_ai
 from services.praetor_orchestrator import PraetorDataLoaders, PraetorOrchestrator, PraetorRepositories
 from repositories.alert_repository import AlertRepository
 from repositories.briefing_repository import BriefingRepository
@@ -3106,6 +3107,38 @@ async def api_research_report(request: Request):
         return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=500)
 
 
+@app.post("/api/praetor/ai/research")
+async def api_praetor_ai_research(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    payload = await request.json()
+    ticker = payload.get("ticker") or ""
+    range_name = payload.get("range") or "1y"
+    report_type = payload.get("report_type") or "full"
+    objective = payload.get("objective") or ""
+    try:
+        profile = build_research_profile(ticker, range_name)
+        deterministic_report = generate_research_report(profile, report_type, objective)
+        return {
+            "ok": True,
+            "profile": profile,
+            "deterministic_report": deterministic_report,
+            "ai": synthesize_ai(
+                "research",
+                {
+                    "ticker": ticker,
+                    "objective": objective,
+                    "profile": profile,
+                    "deterministic_report": deterministic_report,
+                    "user": _public_user(auth_user),
+                },
+            ),
+        }
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=500)
+
+
 @app.post("/api/research/portfolio")
 async def api_research_portfolio(request: Request):
     auth_user = require_user(request)
@@ -3433,6 +3466,16 @@ async def api_praetor_committee_run(request: Request):
         return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=500)
 
 
+@app.post("/api/praetor/ai/committee")
+async def api_praetor_ai_committee(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    payload = await request.json()
+    committee_result = run_and_save_committee(auth_user["id"], committee_type=payload.get("committee_type") or "general")
+    return {"ok": True, **committee_result, "ai": synthesize_ai("committee", committee_result)}
+
+
 @app.get("/api/praetor/journal/learning")
 def api_praetor_journal_learning(request: Request):
     auth_user = require_user(request)
@@ -3442,6 +3485,34 @@ def api_praetor_journal_learning(request: Request):
         return run_praetor_journal_update(auth_user["id"])
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=500)
+
+
+@app.get("/api/praetor/ai/risk")
+def api_praetor_ai_risk(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    learning = run_praetor_learning_update(auth_user["id"])
+    return {"ok": True, "risk": learning.get("risk"), "ai": synthesize_ai("risk", {"risk": learning.get("risk"), "learning": learning})}
+
+
+@app.get("/api/praetor/ai/journal")
+def api_praetor_ai_journal(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    journal = run_praetor_journal_update(auth_user["id"])
+    return {"ok": True, **journal, "ai": synthesize_ai("journal", journal)}
+
+
+@app.post("/api/praetor/ai/briefing")
+async def api_praetor_ai_briefing(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    payload = await request.json()
+    briefing = generate_and_save_briefing(auth_user["id"], payload.get("briefing_type") or "morning")
+    return {"ok": True, **briefing, "ai": synthesize_ai("briefing", {"briefing": briefing.get("briefing")})}
 
 
 @app.get("/api/praetor/trade-plans")

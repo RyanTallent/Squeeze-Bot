@@ -1,0 +1,104 @@
+from __future__ import annotations
+
+import json
+from typing import Any
+
+from praetor_providers import AIProvider, get_ai_provider
+
+
+AI_SYNTHESIS_SYSTEM_PROMPT = """
+You are Praetor, Cardo Praevisio's AI synthesis layer.
+You do not replace deterministic financial calculations.
+Use only the evidence provided in the context.
+Do not fabricate data, catalysts, fundamentals, prices, or guarantees.
+Be professional, skeptical, uncertainty-aware, and clear.
+Your job is to explain, synthesize, coach, challenge, and prioritize.
+If data is missing, explicitly say the evidence is incomplete.
+"""
+
+
+def _fallback(kind: str, context: dict[str, Any]) -> str:
+    if kind == "research":
+        report = context.get("deterministic_report") or {}
+        sections = report.get("sections") or []
+        first = sections[0].get("body") if sections else "Deterministic research report is available, but AI synthesis is unavailable."
+        return (
+            "AI synthesis unavailable. Deterministic research summary:\n\n"
+            f"{first}\n\n"
+            "Use the metric tables, scenario framework, and risk notes as the source of truth."
+        )
+    if kind == "committee":
+        s = (context.get("committee") or {}).get("synthesis") or {}
+        return (
+            "AI synthesis unavailable. Deterministic committee synthesis:\n\n"
+            f"Consensus: {s.get('consensus', 'n/a')}\n"
+            f"Recommendation: {s.get('final_recommendation', 'n/a')}\n"
+            f"Disagreement: {s.get('disagreement_summary', 'n/a')}"
+        )
+    if kind == "risk":
+        r = context.get("risk") or {}
+        return (
+            "AI synthesis unavailable. Deterministic risk read:\n\n"
+            f"Overall risk: {r.get('overall_risk_label', 'n/a')} ({r.get('overall_risk_score', 'n/a')}).\n"
+            "Review current risks and high-confidence warnings before adding exposure."
+        )
+    if kind == "journal":
+        j = context.get("journal") or {}
+        return (
+            "AI synthesis unavailable. Deterministic journal read:\n\n"
+            f"Execution score: {j.get('execution_score', 'n/a')}\n"
+            f"Discipline score: {j.get('discipline_score', 'n/a')}\n"
+            f"Process score: {j.get('process_score', 'n/a')}\n"
+            "Review recurring mistakes and strengths for coaching."
+        )
+    if kind == "briefing":
+        b = context.get("briefing") or {}
+        return (
+            "AI synthesis unavailable. Deterministic briefing:\n\n"
+            f"{b.get('title', 'Briefing')}: {b.get('lead', 'No lead summary available.')}"
+        )
+    return "AI synthesis unavailable. Deterministic outputs remain available."
+
+
+def _prompt(kind: str, context: dict[str, Any]) -> str:
+    guidance = {
+        "research": "Create an institutional thesis summary, bull/bear tension, key risks, simple-English explanation, and next due diligence steps.",
+        "committee": "Synthesize committee votes, identify disagreement, strongest bull/bear evidence, and a careful final view.",
+        "risk": "Explain the risk profile like a risk officer. Challenge dangerous assumptions and identify the highest-priority risk.",
+        "journal": "Coach the user from journal evidence. Identify repeated mistakes, strengths, lessons, and next behavior change.",
+        "briefing": "Create an executive briefing summary. Prioritize what matters now, what changed, and what the user should review first.",
+    }.get(kind, "Synthesize the provided deterministic evidence carefully.")
+    return (
+        f"Task: {guidance}\n\n"
+        "Rules:\n"
+        "- Deterministic data is source of truth.\n"
+        "- Do not invent missing data.\n"
+        "- Use probabilistic language.\n"
+        "- Include professional explanation and plain-English explanation when useful.\n"
+        "- Be willing to disagree if evidence warrants it.\n\n"
+        f"Context JSON:\n{json.dumps(context, default=str)[:14000]}"
+    )
+
+
+def synthesize(kind: str, context: dict[str, Any], provider: AIProvider | None = None) -> dict[str, Any]:
+    provider = provider or get_ai_provider()
+    result = provider.complete(AI_SYNTHESIS_SYSTEM_PROMPT, _prompt(kind, context), context)
+    if result.ok:
+        return {
+            "ok": True,
+            "kind": kind,
+            "text": result.text,
+            "provider": result.provider,
+            "model": result.model,
+            "fallback_used": False,
+            "error": None,
+        }
+    return {
+        "ok": True,
+        "kind": kind,
+        "text": _fallback(kind, context),
+        "provider": result.provider,
+        "model": result.model,
+        "fallback_used": True,
+        "error": result.error,
+    }
