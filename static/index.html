@@ -354,6 +354,7 @@
         <button class="sideBtn" data-page="Playbook">Playbook</button>
         <button class="sideBtn" data-page="Alerts">Alerts</button>
         <button class="sideBtn" data-page="Briefings">Briefings</button>
+        <button class="sideBtn" data-page="Committee">Committee</button>
         <button class="sideBtn" data-page="Journal">Journal</button>
         <button class="sideBtn" data-page="Risk">Risk</button>
         <button class="sideBtn" data-page="Pricing">Pricing</button>
@@ -798,6 +799,28 @@
           </div>
         </div>
 
+        <div class="page" id="pageCommittee">
+          <div class="card">
+            <div class="eyebrow">Investment Committee</div>
+            <h2>Evidence-based committee review.</h2>
+            <p>Praetor's committee uses playbook learning, memory, discoveries, risk, journal AI, trade plans, and briefings. It is designed to reduce confirmation bias, not roleplay random opinions.</p>
+            <div class="toolbar">
+              <button class="btn primary" id="runCommitteeBtn" type="button">Run Committee</button>
+              <button class="ghost" id="refreshCommitteeBtn" type="button">Refresh</button>
+              <span class="pill" id="committeeStatus">No committee run loaded.</span>
+            </div>
+          </div>
+          <div class="card">
+            <div class="eyebrow">Praetor conclusion</div>
+            <div id="committeeConclusion">No committee run yet.</div>
+          </div>
+          <div class="researchGrid" id="committeeMembers"></div>
+          <div class="card">
+            <div class="eyebrow">Committee history</div>
+            <div class="tableWrap"><table><thead><tr><th>Consensus</th><th>Confidence</th><th>Recommendation</th><th>Created</th></tr></thead><tbody id="committeeHistory"></tbody></table></div>
+          </div>
+        </div>
+
         <div class="page" id="pageRisk">
           <div class="card">
             <div class="eyebrow">Risk architecture</div>
@@ -1043,6 +1066,7 @@
     if(name === "Playbook") loadPlaybook();
     if(name === "Alerts") loadAlertCenter();
     if(name === "Briefings") loadBriefings();
+    if(name === "Committee") loadCommittee();
     if(name === "Pricing") paintPricing("appPricing");
   }
 
@@ -1951,6 +1975,69 @@
     await loadBriefings();
   }
 
+  function renderCommitteeRun(run){
+    const committee = run?.committee || run?.content_json || run;
+    if(!committee || !committee.synthesis){
+      $("committeeConclusion").innerHTML = "No committee run yet.";
+      $("committeeMembers").innerHTML = "";
+      return;
+    }
+    const s = committee.synthesis;
+    $("committeeConclusion").innerHTML = `
+      <div class="reportSection">
+        <h3>${escHtml(s.consensus || "Neutral")} <span class="scoreBadge">${fmtPct(s.confidence)}</span></h3>
+        <p><b>Final recommendation:</b> ${escHtml(s.final_recommendation || "")}</p>
+        <p><b>Disagreement:</b> ${escHtml(s.disagreement_summary || "")}</p>
+        <p><b>Strongest bullish argument:</b> ${escHtml(s.strongest_bullish_argument || "")}</p>
+        <p><b>Strongest bearish argument:</b> ${escHtml(s.strongest_bearish_argument || "")}</p>
+      </div>
+    `;
+    $("committeeMembers").innerHTML = (committee.votes || []).map(v => `
+      <div class="card">
+        <h3>${escHtml(v.member)} <span class="scoreBadge">${escHtml(v.stance)}</span></h3>
+        <p class="muted">${escHtml(v.role)} | Confidence ${fmtPct(v.confidence)}</p>
+        <h4>Evidence</h4>
+        <ul>${(v.supporting_evidence || []).map(x => `<li>${escHtml(x)}</li>`).join("")}</ul>
+        <h4>Concerns</h4>
+        <ul>${(v.concerns || []).map(x => `<li>${escHtml(x)}</li>`).join("")}</ul>
+        <p><b>Recommendation:</b> ${escHtml(v.recommendation || "")}</p>
+      </div>
+    `).join("");
+  }
+
+  function renderCommitteeHistory(runs){
+    $("committeeHistory").innerHTML = (runs || []).map(r => `
+      <tr><td>${escHtml(r.consensus || "")}</td><td>${fmtPct(r.confidence)}</td><td>${escHtml(r.final_recommendation || "")}</td><td>${escHtml(r.created_at_utc || "")}</td></tr>
+    `).join("");
+  }
+
+  async function loadCommittee(){
+    if(!state.user) return;
+    const resp = await fetch("/api/praetor/committee").catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false, committee_runs:[]};
+    const runs = data.committee_runs || [];
+    renderCommitteeHistory(runs);
+    renderCommitteeRun(runs[0]);
+    $("committeeStatus").textContent = runs.length ? `${runs.length} committee run(s)` : "No committee run loaded.";
+  }
+
+  async function runCommittee(){
+    $("committeeStatus").textContent = "Running committee...";
+    const resp = await fetch("/api/praetor/committee/run", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({committee_type:"general"})
+    }).catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false,error:"Committee unavailable."};
+    if(!data.ok){
+      $("committeeStatus").textContent = data.error || "Committee failed.";
+      return;
+    }
+    $("committeeStatus").textContent = "Committee run complete.";
+    renderCommitteeRun(data);
+    await loadCommittee();
+  }
+
   async function createManualAlert(){
     const payload = {
       ticker:$("alertTicker").value,
@@ -2021,6 +2108,8 @@
       btn.addEventListener("click", () => generateBriefing(btn.dataset.briefingGenerate));
     });
     $("refreshBriefingsBtn").addEventListener("click", loadBriefings);
+    $("runCommitteeBtn").addEventListener("click", runCommittee);
+    $("refreshCommitteeBtn").addEventListener("click", loadCommittee);
     $("researchRunBtn").addEventListener("click", loadResearch);
     $("researchTicker").addEventListener("keydown", e => { if(e.key === "Enter") loadResearch(); });
     $("researchChart").addEventListener("mousemove", showResearchTip);

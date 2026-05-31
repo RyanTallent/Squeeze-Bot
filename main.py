@@ -36,8 +36,10 @@ from risk_engine import build_risk_report
 from monitoring_engine import monitor_trade_plans
 from alert_engine import build_smart_alert, smart_alert_to_repo_kwargs
 from briefing_engine import build_briefing
+from committee_engine import run_investment_committee
 from repositories.alert_repository import AlertRepository
 from repositories.briefing_repository import BriefingRepository
+from repositories.committee_repository import CommitteeRepository
 from repositories.discovery_repository import DiscoveryRepository
 from repositories.memory_repository import MemoryRepository
 from repositories.playbook_repository import PlaybookRepository
@@ -495,6 +497,21 @@ def db_init():
     );
     """
 
+    committee_runs_sql = """
+    CREATE TABLE IF NOT EXISTS committee_runs (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      committee_type TEXT NOT NULL,
+      consensus TEXT,
+      final_recommendation TEXT,
+      confidence REAL,
+      votes_json TEXT NOT NULL,
+      evidence_json TEXT,
+      synthesis_json TEXT,
+      created_at_utc TEXT NOT NULL
+    );
+    """
+
     if using_postgres():
         with pg_conn() as conn:
             with conn.cursor() as cur:
@@ -519,6 +536,7 @@ def db_init():
                     discoveries_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ").replace("updated_at_utc TEXT", "updated_at_utc TIMESTAMPTZ")
                 )
                 cur.execute(briefing_runs_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ"))
+                cur.execute(committee_runs_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ"))
             conn.commit()
     else:
         with DB_LOCK:
@@ -537,6 +555,7 @@ def db_init():
                 conn.execute(playbook_snapshots_sql)
                 conn.execute(discoveries_sql)
                 conn.execute(briefing_runs_sql)
+                conn.execute(committee_runs_sql)
                 conn.commit()
             finally:
                 conn.close()
@@ -677,6 +696,10 @@ def briefing_repo() -> BriefingRepository:
     return BriefingRepository(using_postgres, pg_conn, sqlite_conn, DB_LOCK)
 
 
+def committee_repo() -> CommitteeRepository:
+    return CommitteeRepository(using_postgres, pg_conn, sqlite_conn, DB_LOCK)
+
+
 def run_praetor_learning_update(user_id: str) -> dict[str, Any]:
     plans = trade_plan_repo().list_plans(user_id, limit=1000)
     stats = calculate_playbook_stats(plans)
@@ -792,6 +815,15 @@ def generate_and_save_briefing(user_id: str, briefing_type: str) -> dict[str, An
     briefing = build_briefing(briefing_type, context)
     briefing_id = briefing_repo().save_briefing(user_id, briefing, source_context=context)
     return {"ok": True, "briefing": briefing, "briefing_id": briefing_id}
+
+
+def run_and_save_committee(user_id: str, committee_type: str = "general") -> dict[str, Any]:
+    context = build_briefing_context(user_id)
+    context["briefings"] = briefing_repo().list_briefings(user_id, limit=10)
+    context["committee_type"] = committee_type
+    committee = run_investment_committee(context)
+    committee_id = committee_repo().save_run(user_id, committee, source_context=context)
+    return {"ok": True, "committee": committee, "committee_id": committee_id}
 
 
 # -------------------- Auth + plans --------------------
@@ -3097,6 +3129,26 @@ async def api_praetor_generate_briefing(request: Request):
     payload = await request.json()
     try:
         return generate_and_save_briefing(auth_user["id"], payload.get("briefing_type") or "morning")
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=500)
+
+
+@app.get("/api/praetor/committee")
+def api_praetor_committee(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    return {"ok": True, "committee_runs": committee_repo().list_runs(auth_user["id"])}
+
+
+@app.post("/api/praetor/committee/run")
+async def api_praetor_committee_run(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    payload = await request.json()
+    try:
+        return run_and_save_committee(auth_user["id"], committee_type=payload.get("committee_type") or "general")
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=500)
 
