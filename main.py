@@ -40,6 +40,7 @@ from committee_engine import run_investment_committee
 from command_center_engine import build_command_center
 from monitor_scheduler import build_monitoring_health
 from portfolio_engine import analyze_portfolio
+from research_engine import build_institutional_research
 from ai_synthesis_engine import synthesize as synthesize_ai
 from services.praetor_orchestrator import PraetorDataLoaders, PraetorOrchestrator, PraetorRepositories
 from repositories.alert_repository import AlertRepository
@@ -49,6 +50,7 @@ from repositories.discovery_repository import DiscoveryRepository
 from repositories.memory_repository import MemoryRepository
 from repositories.playbook_repository import PlaybookRepository
 from repositories.portfolio_repository import PortfolioRepository
+from repositories.research_repository import ResearchRepository
 from repositories.trade_plan_repository import TradePlanRepository
 
 # Optional Postgres (only used if DATABASE_URL is set)
@@ -588,6 +590,20 @@ def db_init():
     );
     """
 
+    research_reports_sql = """
+    CREATE TABLE IF NOT EXISTS research_reports (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      ticker TEXT NOT NULL,
+      verdict TEXT,
+      aggregate_score REAL,
+      report_json TEXT NOT NULL,
+      profile_json TEXT,
+      ai_json TEXT,
+      created_at_utc TEXT NOT NULL
+    );
+    """
+
     if using_postgres():
         with pg_conn() as conn:
             with conn.cursor() as cur:
@@ -618,6 +634,7 @@ def db_init():
                 cur.execute(portfolios_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ").replace("updated_at_utc TEXT", "updated_at_utc TIMESTAMPTZ"))
                 cur.execute(portfolio_holdings_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ").replace("updated_at_utc TEXT", "updated_at_utc TIMESTAMPTZ"))
                 cur.execute(portfolio_snapshots_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ"))
+                cur.execute(research_reports_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ"))
             conn.commit()
     else:
         with DB_LOCK:
@@ -642,6 +659,7 @@ def db_init():
                 conn.execute(portfolios_sql)
                 conn.execute(portfolio_holdings_sql)
                 conn.execute(portfolio_snapshots_sql)
+                conn.execute(research_reports_sql)
                 conn.commit()
             finally:
                 conn.close()
@@ -788,6 +806,10 @@ def committee_repo() -> CommitteeRepository:
 
 def portfolio_repo() -> PortfolioRepository:
     return PortfolioRepository(using_postgres, pg_conn, sqlite_conn, DB_LOCK)
+
+
+def research_repo() -> ResearchRepository:
+    return ResearchRepository(using_postgres, pg_conn, sqlite_conn, DB_LOCK)
 
 
 def praetor_orchestrator() -> PraetorOrchestrator:
@@ -1033,6 +1055,7 @@ def build_briefing_context(user_id: str) -> dict[str, Any]:
     discoveries = discovery_repo().list_discoveries(user_id, limit=100)
     plans = trade_plan_repo().list_plans(user_id, limit=1000)
     memory = memory_repo().list_memory(user_id, limit=100)
+    research_reports = research_repo().list_reports(user_id, limit=10)
     return {
         "learning": learning,
         "journal": journal.get("journal"),
@@ -1041,6 +1064,7 @@ def build_briefing_context(user_id: str) -> dict[str, Any]:
         "trade_plans": plans,
         "memory": memory,
         "risk": learning.get("risk"),
+        "research_reports": research_reports,
     }
 
 
@@ -1065,6 +1089,7 @@ def build_command_center_context(user_id: str) -> dict[str, Any]:
     orchestrator = praetor_orchestrator()
     data = orchestrator.build_context(user_id)
     data["portfolio"] = get_portfolio_analysis(user_id)["analysis"]
+    data["research_reports"] = research_repo().list_reports(user_id, limit=10)
     return {"sources": data, "command_center": build_command_center(data)}
 
 
@@ -3005,7 +3030,8 @@ def generate_research_report(profile: dict[str, Any], report_type: str, objectiv
         "Relative strength shows whether this stock is outperforming or lagging the broad market.",
     ]
 
-    return {"type": report_type, "sections": sections, "plain_english": plain_english}
+    base = {"type": report_type, "sections": sections, "plain_english": plain_english}
+    return {**base, "institutional": build_institutional_research(profile, base, objective)}
 
 
 def build_portfolio_plan(payload: dict[str, Any]) -> dict[str, Any]:
@@ -3102,7 +3128,9 @@ async def api_research_report(request: Request):
     objective = payload.get("objective") or ""
     try:
         profile = build_research_profile(ticker, range_name)
-        return {"ok": True, "report": generate_research_report(profile, report_type, objective)}
+        report = generate_research_report(profile, report_type, objective)
+        research_repo().save_report(auth_user["id"], report.get("institutional") or {}, profile=profile)
+        return {"ok": True, "report": report}
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=500)
 
@@ -3120,20 +3148,25 @@ async def api_praetor_ai_research(request: Request):
     try:
         profile = build_research_profile(ticker, range_name)
         deterministic_report = generate_research_report(profile, report_type, objective)
+        institutional = deterministic_report.get("institutional") or {}
+        ai = synthesize_ai(
+            "research",
+            {
+                "ticker": ticker,
+                "objective": objective,
+                "profile": profile,
+                "deterministic_report": deterministic_report,
+                "institutional_report": institutional,
+                "user": _public_user(auth_user),
+            },
+        )
+        research_repo().save_report(auth_user["id"], institutional, profile=profile, ai=ai)
         return {
             "ok": True,
             "profile": profile,
             "deterministic_report": deterministic_report,
-            "ai": synthesize_ai(
-                "research",
-                {
-                    "ticker": ticker,
-                    "objective": objective,
-                    "profile": profile,
-                    "deterministic_report": deterministic_report,
-                    "user": _public_user(auth_user),
-                },
-            ),
+            "institutional_report": institutional,
+            "ai": ai,
         }
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=500)

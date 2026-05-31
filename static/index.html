@@ -1628,9 +1628,38 @@
       $("researchReport").innerHTML = `<div class="reportSection"><b>Report error</b><p>${err || "Could not generate report."}</p></div>`;
       return;
     }
+    const inst = report.institutional || {};
+    const sections = inst.sections || {};
+    const frameworks = inst.frameworks || {};
+    const scores = inst.scores || {};
+    const scoreCards = Object.values(scores).map(s => metricCard(s.name || "Score", `${s.score ?? "-"} ${s.label ? "(" + s.label + ")" : ""}`)).join("");
+    const scenarios = (inst.scenarios || []).map(s => `
+      <div class="reportSection"><h3>${s.name} <span class="scoreBadge">${fmtPct(s.probability)}</span></h3>
+      <p><b>Range:</b> ${fmtDollar(s.price_range?.[0])} - ${fmtDollar(s.price_range?.[1])}</p>
+      <p><b>Assumptions:</b> ${(s.assumptions || []).map(escHtml).join("; ")}</p>
+      <p><b>Confirm:</b> ${escHtml(s.confirmation || "")}</p>
+      <p><b>Invalidate:</b> ${escHtml(s.invalidation || "")}</p></div>
+    `).join("");
+    const frameworkCards = Object.entries(frameworks).map(([key, f]) => `
+      <details class="explainer"><summary>${escHtml(key.replaceAll("_"," "))}: ${escHtml(f.rating || "")}</summary>
+      <ul>${(f.items || []).map(x => `<li>${escHtml(x)}</li>`).join("")}</ul>
+      <p class="fineprint">Data requirements: ${(f.data_requirements || []).map(escHtml).join(", ")}</p></details>
+    `).join("");
     $("researchReport").innerHTML = `
-      <div class="reportSection"><h3>${report.type || "Research"} report</h3></div>
+      <div class="reportSection"><h3>Executive View <span class="scoreBadge">${escHtml(inst.verdict || "Needs Confirmation")}</span></h3><p>${escHtml(sections.executive_view?.body || "No executive view available.")}</p></div>
+      <div class="metricGrid">${scoreCards}</div>
+      <div class="reportSection"><h3>Institutional View</h3><p>${escHtml(sections.institutional_view?.body || "")}</p></div>
+      <div class="researchGrid">
+        <div class="reportSection"><h3>Bull Case</h3><p>${escHtml(sections.bull_case?.body || "")}</p></div>
+        <div class="reportSection"><h3>Bear Case</h3><p>${escHtml(sections.bear_case?.body || "")}</p></div>
+        <div class="reportSection"><h3>Risks</h3><p>${escHtml(sections.risks?.body || "")}</p></div>
+        <div class="reportSection"><h3>Portfolio Fit</h3><p>${escHtml(sections.portfolio_fit?.body || "")}</p></div>
+      </div>
+      <div class="reportSection"><h3>Scenario Analysis</h3>${scenarios}</div>
+      <div class="reportSection"><h3>Research Frameworks</h3>${frameworkCards}</div>
       ${(report.sections || []).map(s => `<div class="reportSection"><h3>${s.title}</h3><p>${s.body}</p></div>`).join("")}
+      <div class="reportSection"><h3>Committee View</h3><p>Research reports now persist and feed Committee/Briefings/Command Center context. Run Committee for multi-role synthesis.</p></div>
+      <div class="reportSection"><h3>What Praetor Would Do</h3><p>${escHtml(sections.what_praetor_would_do?.body || "")}</p></div>
       <details class="explainer" open><summary>Plain-English explanation</summary><ul>${(report.plain_english || []).map(x => `<li>${x}</li>`).join("")}</ul></details>
     `;
   }
