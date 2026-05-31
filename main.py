@@ -25,6 +25,8 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Res
 from fastapi.staticfiles import StaticFiles
 
 import scanner  # your scanner.py
+from praetor_context import build_scanner_context
+from praetor_service import PraetorService, response_to_dict
 
 # Optional Postgres (only used if DATABASE_URL is set)
 try:
@@ -257,6 +259,82 @@ def db_init():
     );
     """
 
+    praetor_interactions_sql = """
+    CREATE TABLE IF NOT EXISTS praetor_interactions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      page_context TEXT,
+      module TEXT,
+      topic TEXT,
+      user_message TEXT,
+      praetor_response TEXT,
+      context_json TEXT,
+      tools_used TEXT,
+      created_at_utc TEXT NOT NULL
+    );
+    """
+
+    praetor_memory_sql = """
+    CREATE TABLE IF NOT EXISTS praetor_memory_items (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      memory_type TEXT NOT NULL,
+      belief_type TEXT NOT NULL,
+      topic TEXT,
+      statement TEXT NOT NULL,
+      confidence REAL NOT NULL DEFAULT 0,
+      evidence_count INTEGER NOT NULL DEFAULT 0,
+      source_module TEXT,
+      supporting_record_ids TEXT,
+      contradicting_record_ids TEXT,
+      created_at_utc TEXT NOT NULL,
+      updated_at_utc TEXT NOT NULL
+    );
+    """
+
+    playbook_rules_sql = """
+    CREATE TABLE IF NOT EXISTS playbook_rules (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      setup_type TEXT,
+      rule_text TEXT NOT NULL,
+      rule_category TEXT,
+      confidence REAL NOT NULL DEFAULT 0,
+      evidence_count INTEGER NOT NULL DEFAULT 0,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at_utc TEXT NOT NULL,
+      updated_at_utc TEXT NOT NULL
+    );
+    """
+
+    trade_plans_sql = """
+    CREATE TABLE IF NOT EXISTS trade_plans (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      ticker TEXT NOT NULL,
+      source_scan_id TEXT,
+      setup_type TEXT,
+      plan_style TEXT NOT NULL,
+      entry_zone_low REAL,
+      entry_zone_high REAL,
+      trigger_price REAL,
+      chase_threshold REAL,
+      stop_price REAL,
+      target_1 REAL,
+      target_2 REAL,
+      target_3 REAL,
+      risk_reward REAL,
+      confidence REAL,
+      conviction REAL,
+      status TEXT NOT NULL DEFAULT 'ACTIVE',
+      valid_conditions TEXT,
+      invalidation_conditions TEXT,
+      plan_json TEXT,
+      created_at_utc TEXT NOT NULL,
+      updated_at_utc TEXT NOT NULL
+    );
+    """
+
     if using_postgres():
         with pg_conn() as conn:
             with conn.cursor() as cur:
@@ -265,6 +343,16 @@ def db_init():
                 cur.execute(users_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ"))
                 cur.execute(sessions_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ").replace("expires_at_utc TEXT", "expires_at_utc TIMESTAMPTZ"))
                 cur.execute(scan_usage_sql)
+                cur.execute(praetor_interactions_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ"))
+                cur.execute(
+                    praetor_memory_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ").replace("updated_at_utc TEXT", "updated_at_utc TIMESTAMPTZ")
+                )
+                cur.execute(
+                    playbook_rules_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ").replace("updated_at_utc TEXT", "updated_at_utc TIMESTAMPTZ")
+                )
+                cur.execute(
+                    trade_plans_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ").replace("updated_at_utc TEXT", "updated_at_utc TIMESTAMPTZ")
+                )
             conn.commit()
     else:
         with DB_LOCK:
@@ -275,6 +363,10 @@ def db_init():
                 conn.execute(users_sql)
                 conn.execute(sessions_sql)
                 conn.execute(scan_usage_sql)
+                conn.execute(praetor_interactions_sql)
+                conn.execute(praetor_memory_sql)
+                conn.execute(playbook_rules_sql)
+                conn.execute(trade_plans_sql)
                 conn.commit()
             finally:
                 conn.close()
@@ -317,6 +409,177 @@ def kv_set(key: str, val: str):
             conn.commit()
         finally:
             conn.close()
+
+
+def praetor_log_interaction(
+    user_id: str,
+    page_context: str,
+    module: str,
+    topic: str,
+    user_message: str,
+    praetor_response: str,
+    context: dict[str, Any] | None = None,
+    tools_used: list[str] | None = None,
+) -> str:
+    row = {
+        "id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "page_context": page_context,
+        "module": module,
+        "topic": topic,
+        "user_message": user_message,
+        "praetor_response": praetor_response,
+        "context_json": json.dumps(context or {}, default=str),
+        "tools_used": json.dumps(tools_used or []),
+        "created_at_utc": datetime.utcnow().isoformat(),
+    }
+
+    if using_postgres():
+        with pg_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO praetor_interactions (
+                      id, user_id, page_context, module, topic, user_message,
+                      praetor_response, context_json, tools_used, created_at_utc
+                    ) VALUES (
+                      %(id)s, %(user_id)s, %(page_context)s, %(module)s, %(topic)s, %(user_message)s,
+                      %(praetor_response)s, %(context_json)s, %(tools_used)s, %(created_at_utc)s
+                    )
+                    """,
+                    row,
+                )
+            conn.commit()
+        return row["id"]
+
+    with DB_LOCK:
+        conn = sqlite_conn()
+        try:
+            conn.execute(
+                """
+                INSERT INTO praetor_interactions (
+                  id, user_id, page_context, module, topic, user_message,
+                  praetor_response, context_json, tools_used, created_at_utc
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    row["id"],
+                    row["user_id"],
+                    row["page_context"],
+                    row["module"],
+                    row["topic"],
+                    row["user_message"],
+                    row["praetor_response"],
+                    row["context_json"],
+                    row["tools_used"],
+                    row["created_at_utc"],
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    return row["id"]
+
+
+def praetor_save_trade_plan(user_id: str, plan: dict[str, Any], scanner_row: dict[str, Any] | None = None) -> str:
+    now = datetime.utcnow().isoformat()
+    plan_id = plan.get("id") or str(uuid.uuid4())
+    row = {
+        "id": plan_id,
+        "user_id": user_id,
+        "ticker": (plan.get("ticker") or "").upper(),
+        "source_scan_id": (scanner_row or {}).get("scan_id"),
+        "setup_type": plan.get("setup_type"),
+        "plan_style": plan.get("plan_style") or "balanced",
+        "entry_zone_low": plan.get("entry_zone_low"),
+        "entry_zone_high": plan.get("entry_zone_high"),
+        "trigger_price": plan.get("trigger_price"),
+        "chase_threshold": plan.get("chase_threshold"),
+        "stop_price": plan.get("stop_price"),
+        "target_1": plan.get("target_1"),
+        "target_2": plan.get("target_2"),
+        "target_3": plan.get("target_3"),
+        "risk_reward": plan.get("risk_reward"),
+        "confidence": plan.get("confidence"),
+        "conviction": plan.get("conviction"),
+        "status": "ACTIVE",
+        "valid_conditions": json.dumps(plan.get("valid_conditions") or []),
+        "invalidation_conditions": json.dumps(plan.get("invalidation_conditions") or []),
+        "plan_json": json.dumps(plan, default=str),
+        "created_at_utc": now,
+        "updated_at_utc": now,
+    }
+
+    if using_postgres():
+        with pg_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO trade_plans (
+                      id, user_id, ticker, source_scan_id, setup_type, plan_style,
+                      entry_zone_low, entry_zone_high, trigger_price, chase_threshold,
+                      stop_price, target_1, target_2, target_3, risk_reward,
+                      confidence, conviction, status, valid_conditions,
+                      invalidation_conditions, plan_json, created_at_utc, updated_at_utc
+                    ) VALUES (
+                      %(id)s, %(user_id)s, %(ticker)s, %(source_scan_id)s, %(setup_type)s, %(plan_style)s,
+                      %(entry_zone_low)s, %(entry_zone_high)s, %(trigger_price)s, %(chase_threshold)s,
+                      %(stop_price)s, %(target_1)s, %(target_2)s, %(target_3)s, %(risk_reward)s,
+                      %(confidence)s, %(conviction)s, %(status)s, %(valid_conditions)s,
+                      %(invalidation_conditions)s, %(plan_json)s, %(created_at_utc)s, %(updated_at_utc)s
+                    )
+                    ON CONFLICT (id) DO UPDATE SET
+                      updated_at_utc=EXCLUDED.updated_at_utc,
+                      plan_json=EXCLUDED.plan_json
+                    """,
+                    row,
+                )
+            conn.commit()
+        return plan_id
+
+    with DB_LOCK:
+        conn = sqlite_conn()
+        try:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO trade_plans (
+                  id, user_id, ticker, source_scan_id, setup_type, plan_style,
+                  entry_zone_low, entry_zone_high, trigger_price, chase_threshold,
+                  stop_price, target_1, target_2, target_3, risk_reward,
+                  confidence, conviction, status, valid_conditions,
+                  invalidation_conditions, plan_json, created_at_utc, updated_at_utc
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    row["id"],
+                    row["user_id"],
+                    row["ticker"],
+                    row["source_scan_id"],
+                    row["setup_type"],
+                    row["plan_style"],
+                    row["entry_zone_low"],
+                    row["entry_zone_high"],
+                    row["trigger_price"],
+                    row["chase_threshold"],
+                    row["stop_price"],
+                    row["target_1"],
+                    row["target_2"],
+                    row["target_3"],
+                    row["risk_reward"],
+                    row["confidence"],
+                    row["conviction"],
+                    row["status"],
+                    row["valid_conditions"],
+                    row["invalidation_conditions"],
+                    row["plan_json"],
+                    row["created_at_utc"],
+                    row["updated_at_utc"],
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    return plan_id
 
 
 # -------------------- Auth + plans --------------------
@@ -2492,6 +2755,82 @@ def api_debug_ortex(ticker: str, request: Request):
         return scanner.ortex_debug_ticker(ticker)
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=500)
+
+
+@app.post("/api/praetor/scanner/ask")
+async def api_praetor_scanner_ask(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    payload = await request.json()
+    scanner_row = payload.get("scanner_row") or {}
+    question = (payload.get("question") or "Give me your scanner assessment.").strip()
+    context = build_scanner_context(auth_user, scanner_row)
+    service = PraetorService()
+    result = service.ask(question, context)
+    result_dict = response_to_dict(result)
+    try:
+        interaction_id = praetor_log_interaction(
+            user_id=auth_user["id"],
+            page_context="scanner",
+            module="scanner_ai",
+            topic=(scanner_row.get("ticker") or "scanner"),
+            user_message=question,
+            praetor_response=result.response,
+            context=context.to_dict(),
+            tools_used=["scanner_row"],
+        )
+        result_dict["interaction_id"] = interaction_id
+    except Exception:
+        pass
+    return result_dict
+
+
+@app.post("/api/praetor/ask")
+async def api_praetor_ask(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    payload = await request.json()
+    page = payload.get("page") or "global"
+    question = (payload.get("question") or "").strip()
+    scanner_row = payload.get("scanner_row")
+    context = build_scanner_context(auth_user, scanner_row or {}) if scanner_row else build_scanner_context(auth_user, {})
+    context.page = page
+    context.module = "global_praetor"
+    service = PraetorService()
+    result = service.ask(question or "Help me understand this page.", context)
+    return response_to_dict(result)
+
+
+@app.post("/api/praetor/trade-plan")
+async def api_praetor_trade_plan(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    payload = await request.json()
+    scanner_row = payload.get("scanner_row") or {}
+    style = payload.get("style") or "balanced"
+    service = PraetorService()
+    result = service.scanner_trade_plan(scanner_row, style=style)
+    result_dict = response_to_dict(result)
+    plan = (result.structured or {}).get("trade_plan")
+    if plan:
+        try:
+            plan_id = praetor_save_trade_plan(auth_user["id"], plan, scanner_row=scanner_row)
+            result_dict["trade_plan_id"] = plan_id
+        except Exception as e:
+            result_dict["save_error"] = str(e)[:200]
+    return result_dict
+
+
+@app.get("/api/praetor/playbook")
+def api_praetor_playbook(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    service = PraetorService()
+    return response_to_dict(service.playbook_summary())
 
 
 @app.get("/api/founder/past-trades/seed")

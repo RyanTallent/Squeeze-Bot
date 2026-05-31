@@ -165,6 +165,8 @@
     .intelSubscore span{display:block;color:var(--muted);font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.08em}
     .intelLists{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:12px}
     .showMoreRow{display:flex;justify-content:center;padding:10px;border-top:1px solid var(--line)}
+    .praetorBox{border:1px solid var(--line);border-radius:14px;background:var(--panel2);padding:12px;margin-top:12px;white-space:pre-wrap}
+    .praetorActions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
     .researchSubNav{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}
     .researchSubBtn{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:9px 13px;font-weight:900;cursor:pointer;color:var(--muted)}
     .researchSubBtn.active{color:var(--text);border-color:var(--accent);background:color-mix(in srgb, var(--accent) 12%, var(--panel))}
@@ -1214,10 +1216,65 @@
         </div>
         <div class="reportSection"><h3>Execution notes</h3><ul>${(i.execution_notes || []).map(x => `<li>${escHtml(x)}</li>`).join("")}</ul></div>
         <div class="reportSection"><h3>ORTEX / Catalyst context</h3><p>${escHtml(r.ortex_status || "ORTEX not available.")}</p><p>${escHtml(r.catalyst_label || "Catalyst Not Verified")}: ${escHtml(r.catalyst_summary || "No verified catalyst summary available.")}</p></div>
-        <button class="btn primary" data-add="${escHtml(r.ticker)}" type="button">Save to Journal</button>
+        <div class="praetorActions">
+          <button class="btn primary" data-add="${escHtml(r.ticker)}" type="button">Save to Journal</button>
+          <button class="btn" data-praetor-ask="${escHtml(r.ticker)}" type="button">Ask Praetor</button>
+          <button class="btn success" data-praetor-plan="${escHtml(r.ticker)}" type="button">Save Trade Plan</button>
+        </div>
+        <div class="praetorBox hidden" id="praetorResponseBox"></div>
       </div>
     `;
     $("planBox").querySelector("[data-add]")?.addEventListener("click", () => addTradeFromScan(r));
+    $("planBox").querySelector("[data-praetor-ask]")?.addEventListener("click", () => askPraetorScanner(r));
+    $("planBox").querySelector("[data-praetor-plan]")?.addEventListener("click", () => savePraetorTradePlan(r));
+  }
+
+  function showPraetorResponse(text){
+    const box = $("praetorResponseBox");
+    if(!box) return;
+    box.classList.remove("hidden");
+    box.textContent = text;
+  }
+
+  async function askPraetorScanner(row){
+    showPraetorResponse("Praetor is reviewing the setup...");
+    const resp = await fetch("/api/praetor/scanner/ask", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({
+        scanner_row: row,
+        question: "Challenge or validate this scanner setup. Am I chasing? What matters most?"
+      })
+    }).catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false,error:"Could not reach Praetor."};
+    if(!data.ok){
+      showPraetorResponse(data.error || "Praetor unavailable.");
+      return;
+    }
+    showPraetorResponse(`${data.fallback_used ? "Fallback Praetor" : "Praetor"}:\n\n${data.response}`);
+  }
+
+  async function savePraetorTradePlan(row){
+    showPraetorResponse("Praetor is building a balanced trade plan...");
+    const resp = await fetch("/api/praetor/trade-plan", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({scanner_row: row, style:"balanced"})
+    }).catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false,error:"Could not reach Praetor."};
+    if(!data.ok){
+      showPraetorResponse(data.error || "Trade plan failed.");
+      return;
+    }
+    const plan = data.structured?.trade_plan || {};
+    showPraetorResponse(
+      `${data.response}\n\n` +
+      `Saved plan ID: ${data.trade_plan_id || "not saved"}\n` +
+      `Entry zone: ${fmtNum(plan.entry_zone_low,4)} - ${fmtNum(plan.entry_zone_high,4)}\n` +
+      `Trigger: ${fmtNum(plan.trigger_price,4)} | Stop: ${fmtNum(plan.stop_price,4)}\n` +
+      `Targets: ${fmtNum(plan.target_1,4)} / ${fmtNum(plan.target_2,4)} / ${fmtNum(plan.target_3,4)}\n` +
+      `Conviction: ${fmtNum(plan.conviction,0)}`
+    );
   }
 
   async function addTradeFromScan(row){
