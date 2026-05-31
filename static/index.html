@@ -362,18 +362,29 @@
 
       <section>
         <div class="page active" id="pageDashboard">
+          <div class="card">
+            <div class="eyebrow">Praetor Command Center</div>
+            <h2>What matters right now?</h2>
+            <p>The Command Center unifies risk, discoveries, alerts, briefings, committee consensus, trade plans, playbook learning, and journal lessons.</p>
+            <div class="toolbar">
+              <button class="btn primary" id="refreshCommandCenterBtn" type="button">Refresh Command Center</button>
+              <button class="btn" type="button" data-jump="Scanner">Run Scanner</button>
+              <button class="btn" type="button" data-jump="Alerts">Open Alerts</button>
+            </div>
+          </div>
+          <div class="card">
+            <div class="eyebrow">Recommendation of the Day</div>
+            <h3 id="ccRecommendation">Loading...</h3>
+          </div>
           <div class="dashTop">
             <div class="card">
-              <div class="eyebrow">Command center</div>
-              <h2>Welcome to Cardo Praevisio.</h2>
-              <p>
-                Your account is active. The scanner is protected behind login, scan usage is tracked,
-                and ORTEX-backed scans are reserved for plans with weekly ORTEX credits.
-              </p>
+              <div class="eyebrow">Global Ask Praetor</div>
+              <h3>Ask with full command-center context.</h3>
+              <textarea id="commandAskInput" placeholder="Ask Praetor what matters most, what risk stands out, or what you should focus on today."></textarea>
               <div class="toolbar">
-                <button class="btn primary" type="button" data-jump="Scanner">Run scanner</button>
-                <button class="btn" type="button" data-jump="Research">View research suite</button>
+                <button class="btn primary" id="commandAskBtn" type="button">Ask Praetor</button>
               </div>
+              <div class="praetorBox hidden" id="commandAskResponse"></div>
             </div>
             <div class="card">
               <div class="eyebrow">Plan and usage</div>
@@ -387,10 +398,32 @@
               <p class="fineprint" id="trialNote"></p>
             </div>
           </div>
-          <div class="grid3">
-            <div class="card"><h3>Scanner</h3><p>Live momentum and short-pressure screens with entry, stop, target, and journal flow.</p></div>
-            <div class="card"><h3>Research</h3><p>Fundamental, alternative-data, quantitative, and risk divisions for institutional workflow.</p></div>
-            <div class="card"><h3>Execution</h3><p>Track actions, review mistakes, and build rules that improve repeatability.</p></div>
+          <div class="researchGrid">
+            <div class="card"><h3>Top Risk Warning</h3><div id="ccTopRisk" class="fineprint">Loading...</div></div>
+            <div class="card"><h3>Top Discovery</h3><div id="ccTopDiscovery" class="fineprint">Loading...</div></div>
+            <div class="card"><h3>Committee Consensus</h3><div id="ccCommittee" class="fineprint">Loading...</div></div>
+            <div class="card"><h3>Latest Briefing</h3><div id="ccBriefing" class="fineprint">Loading...</div></div>
+            <div class="card"><h3>Highest Priority Alert</h3><div id="ccAlert" class="fineprint">Loading...</div></div>
+            <div class="card"><h3>Recent Journal Lesson</h3><div id="ccJournalLesson" class="fineprint">Loading...</div></div>
+          </div>
+          <div class="card">
+            <div class="eyebrow">Monitoring Overview</div>
+            <div class="usageGrid">
+              <div class="usageBox"><b id="ccMonitoredPlans">-</b><span>Monitored Plans</span></div>
+              <div class="usageBox"><b id="ccTriggeredPlans">-</b><span>Triggered Plans</span></div>
+              <div class="usageBox"><b id="ccActiveAlerts">-</b><span>Active Alerts</span></div>
+              <div class="usageBox"><b id="ccMemoryCount">-</b><span>Memory Items</span></div>
+            </div>
+          </div>
+          <div class="researchGrid">
+            <div class="card"><h3>Learning Strengths</h3><div id="ccStrengths" class="fineprint">Loading...</div></div>
+            <div class="card"><h3>Learning Weaknesses</h3><div id="ccWeaknesses" class="fineprint">Loading...</div></div>
+            <div class="card"><h3>Emerging Hypotheses</h3><div id="ccHypotheses" class="fineprint">Loading...</div></div>
+            <div class="card"><h3>Active Trade Plans</h3><div id="ccActivePlans" class="fineprint">Loading...</div></div>
+          </div>
+          <div class="card">
+            <div class="eyebrow">Praetor Intelligence Feed</div>
+            <div id="ccFeed" class="fineprint">Loading...</div>
           </div>
         </div>
 
@@ -942,6 +975,7 @@
     state.plans = data.plans || state.plans;
     closeAuth();
     renderAll();
+    await loadCommandCenter();
     await loadNotebook();
   }
 
@@ -954,6 +988,64 @@
       state.usage = data.usage;
       state.plans = data.plans || [];
     }
+  }
+
+  function simpleList(items, emptyText){
+    if(!items || !items.length) return emptyText;
+    return `<ul>${items.map(x => `<li>${escHtml(x.title || x.statement || x.description || x.warning || x.lesson || String(x))}<br><span class="muted">${escHtml(x.description || "")}</span></li>`).join("")}</ul>`;
+  }
+
+  function briefLine(obj, emptyText){
+    if(!obj) return emptyText;
+    return `<b>${escHtml(obj.title || obj.consensus || obj.alert_type || obj.priority || "")}</b><br>${escHtml(obj.description || obj.summary || obj.final_recommendation || obj.message || obj.warning || obj.lead || "")}`;
+  }
+
+  async function loadCommandCenter(){
+    if(!state.user) return;
+    const resp = await fetch("/api/praetor/command-center").catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false,error:"Command Center unavailable."};
+    if(!data.ok){
+      $("ccRecommendation").textContent = data.error || "Command Center unavailable.";
+      return;
+    }
+    renderCommandCenter(data);
+  }
+
+  function renderCommandCenter(data){
+    $("ccRecommendation").textContent = data.recommendation_of_day?.text || "No critical issue detected.";
+    $("ccTopRisk").innerHTML = data.top_risk_warning ? `${escHtml(data.top_risk_warning.warning || "")}<br><span class="muted">Intervention level ${data.top_risk_warning.intervention_level || 1}</span>` : "No top risk warning.";
+    $("ccTopDiscovery").innerHTML = briefLine(data.top_discovery, "No top discovery.");
+    $("ccCommittee").innerHTML = data.committee_overview?.consensus ? `<b>${escHtml(data.committee_overview.consensus)}</b><br>${escHtml(data.committee_overview.final_recommendation || "")}<br><span class="muted">Confidence ${fmtPct(data.committee_overview.confidence)}</span>` : "No committee run yet.";
+    $("ccBriefing").innerHTML = data.latest_briefing ? `<b>${escHtml(data.latest_briefing.title || "")}</b><br>${escHtml(data.latest_briefing.summary || "")}` : "No briefing yet.";
+    $("ccAlert").innerHTML = briefLine(data.highest_priority_alert, "No active alert.");
+    $("ccJournalLesson").innerHTML = data.recent_journal_lesson ? `<b>${escHtml(data.recent_journal_lesson.ticker || "")}</b><br>${escHtml(data.recent_journal_lesson.lesson || "")}` : "No recent lesson.";
+    $("ccMonitoredPlans").textContent = data.monitoring_summary?.monitored_plans ?? 0;
+    $("ccTriggeredPlans").textContent = data.monitoring_summary?.triggered_plans ?? 0;
+    $("ccActiveAlerts").textContent = data.monitoring_summary?.active_alerts ?? 0;
+    $("ccMemoryCount").textContent = data.learning_progress?.memory_count ?? 0;
+    $("ccStrengths").innerHTML = simpleList(data.learning_progress?.strengths, "No strengths learned yet.");
+    $("ccWeaknesses").innerHTML = simpleList(data.learning_progress?.weaknesses, "No weaknesses learned yet.");
+    $("ccHypotheses").innerHTML = simpleList(data.learning_progress?.hypotheses, "No hypotheses yet.");
+    $("ccActivePlans").innerHTML = simpleList((data.active_trade_plans || []).map(p => ({title:`${p.ticker} ${p.plan_style}`, description:`${p.status} | trigger ${p.trigger_price} | stop ${p.stop_price}`})), "No active plans.");
+    $("ccFeed").innerHTML = simpleList(data.intelligence_feed, "No feed items yet.");
+  }
+
+  async function askCommandPraetor(){
+    const question = ($("commandAskInput").value || "").trim() || "What is the most important thing I need to know right now?";
+    const box = $("commandAskResponse");
+    box.classList.remove("hidden");
+    box.textContent = "Praetor is reviewing command-center context...";
+    const resp = await fetch("/api/praetor/ask", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({page:"command_center", question})
+    }).catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false,error:"Praetor unavailable."};
+    if(!data.ok){
+      box.textContent = data.error || "Praetor unavailable.";
+      return;
+    }
+    box.textContent = `${data.fallback_used ? "Fallback Praetor" : "Praetor"}:\n\n${data.response}`;
   }
 
   async function refreshUsage(){
@@ -1067,6 +1159,7 @@
     if(name === "Alerts") loadAlertCenter();
     if(name === "Briefings") loadBriefings();
     if(name === "Committee") loadCommittee();
+    if(name === "Dashboard") loadCommandCenter();
     if(name === "Pricing") paintPricing("appPricing");
   }
 
@@ -2110,6 +2203,8 @@
     $("refreshBriefingsBtn").addEventListener("click", loadBriefings);
     $("runCommitteeBtn").addEventListener("click", runCommittee);
     $("refreshCommitteeBtn").addEventListener("click", loadCommittee);
+    $("refreshCommandCenterBtn").addEventListener("click", loadCommandCenter);
+    $("commandAskBtn").addEventListener("click", askCommandPraetor);
     $("researchRunBtn").addEventListener("click", loadResearch);
     $("researchTicker").addEventListener("keydown", e => { if(e.key === "Enter") loadResearch(); });
     $("researchChart").addEventListener("mousemove", showResearchTip);
@@ -2124,6 +2219,7 @@
     await loadMe();
     renderAll();
     applyOrtexDefault();
+    if(state.user) await loadCommandCenter();
     if(state.user) await loadNotebook();
   }
   boot();

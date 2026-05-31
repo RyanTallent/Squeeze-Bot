@@ -37,6 +37,7 @@ from monitoring_engine import monitor_trade_plans
 from alert_engine import build_smart_alert, smart_alert_to_repo_kwargs
 from briefing_engine import build_briefing
 from committee_engine import run_investment_committee
+from command_center_engine import build_command_center
 from repositories.alert_repository import AlertRepository
 from repositories.briefing_repository import BriefingRepository
 from repositories.committee_repository import CommitteeRepository
@@ -824,6 +825,29 @@ def run_and_save_committee(user_id: str, committee_type: str = "general") -> dic
     committee = run_investment_committee(context)
     committee_id = committee_repo().save_run(user_id, committee, source_context=context)
     return {"ok": True, "committee": committee, "committee_id": committee_id}
+
+
+def build_command_center_context(user_id: str) -> dict[str, Any]:
+    learning = run_praetor_learning_update(user_id)
+    journal = run_praetor_journal_update(user_id)
+    alerts = alert_repo().list_alerts(user_id, limit=100)
+    discoveries = discovery_repo().list_discoveries(user_id, limit=100)
+    briefings = briefing_repo().list_briefings(user_id, limit=20)
+    committee_runs = committee_repo().list_runs(user_id, limit=10)
+    plans = trade_plan_repo().list_plans(user_id, limit=1000)
+    memory = memory_repo().list_memory(user_id, limit=100)
+    data = {
+        "learning": learning,
+        "journal": journal.get("journal"),
+        "alerts": alerts,
+        "discoveries": discoveries,
+        "briefings": briefings,
+        "committee_runs": committee_runs,
+        "trade_plans": plans,
+        "memory": memory,
+        "risk": learning.get("risk"),
+    }
+    return {"sources": data, "command_center": build_command_center(data)}
 
 
 # -------------------- Auth + plans --------------------
@@ -3042,6 +3066,8 @@ async def api_praetor_ask(request: Request):
     context = build_scanner_context(auth_user, scanner_row or {}) if scanner_row else build_scanner_context(auth_user, {})
     context.page = page
     context.module = "global_praetor"
+    if page == "command_center":
+        context.extra["command_center"] = build_command_center_context(auth_user["id"])["command_center"]
     service = PraetorService()
     result = service.ask(question or "Help me understand this page.", context)
     return response_to_dict(result)
@@ -3092,6 +3118,17 @@ def api_praetor_playbook_learning(request: Request):
         "memory": memory_repo().list_memory(auth_user["id"]),
         "discoveries": discovery_repo().list_discoveries(auth_user["id"]),
     }
+
+
+@app.get("/api/praetor/command-center")
+def api_praetor_command_center(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    try:
+        return build_command_center_context(auth_user["id"])["command_center"]
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=500)
 
 
 @app.get("/api/praetor/risk")
