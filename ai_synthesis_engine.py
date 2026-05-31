@@ -27,7 +27,8 @@ def _fallback(kind: str, context: dict[str, Any]) -> str:
         first = sections[0].get("body") if sections else "Deterministic research report is available, but AI synthesis is unavailable."
         return (
             "Praetor synthesis unavailable. Deterministic professional judgment:\n\n"
-            f"Praetor Final Stance: {opinion.get('final_stance') or institutional.get('verdict', 'n/a')}\n"
+            f"Praetor Final Recommendation: {(opinion.get('final_recommendation') or {}).get('label') or opinion.get('final_stance') or institutional.get('verdict', 'n/a')}\n"
+            f"What Praetor Would Do Today: {opinion.get('what_praetor_would_do_today', 'n/a')}\n"
             f"Buy / Hold / Avoid View: {opinion.get('buy_hold_avoid_view', 'n/a')}\n"
             f"Conviction: {conviction.get('score', 'n/a')} ({conviction.get('rating', 'n/a')})\n\n"
             f"{opinion.get('final_stance_body') or first}\n\n"
@@ -82,10 +83,10 @@ def _prompt(kind: str, context: dict[str, Any]) -> str:
     guidance = {
         "research": (
             "Act like a senior equity analyst, portfolio manager, and investment committee member. "
-            "Do not merely summarize. Give a clear professional opinion using these sections: Praetor Final Stance, "
-            "Buy / Hold / Avoid View, Long-Term Investment View, Trade View, What Would Change My Mind, "
+            "Do not merely summarize. Give a clear professional opinion using these sections: Praetor Final Recommendation, "
+            "What Would Praetor Do Today, Buy / Hold / Avoid View, Long-Term Investment View, Trade View, What Would Change My Mind, "
             "Highest Conviction Bull Argument, Highest Conviction Bear Argument, Key Risks, Key Opportunities, "
-            "Confidence Level, and Data Coverage. Use deterministic opinion/conviction/valuation/peer/data coverage as source of truth. "
+            "Resolve Score Conflicts, Opportunity Ranking, Confidence Level, and Data Coverage. Use deterministic opinion/conviction/valuation/peer/data coverage as source of truth. "
             "Be decisive when evidence is strong; lower confidence and explain missing data when evidence is weak. "
             "Explain what matters most, what is noise, what investors may be overlooking, where the market may be wrong, "
             "and where the thesis is strongest/weakest."

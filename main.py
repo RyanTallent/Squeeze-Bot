@@ -3194,7 +3194,13 @@ def build_research_profile(ticker: str, range_name: str = "1y") -> dict[str, Any
     }
 
 
-def generate_research_report(profile: dict[str, Any], report_type: str, objective: str = "", fundamentals: dict[str, Any] | None = None) -> dict[str, Any]:
+def generate_research_report(
+    profile: dict[str, Any],
+    report_type: str,
+    objective: str = "",
+    fundamentals: dict[str, Any] | None = None,
+    opportunity_context: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     m = profile["metrics"]
     ticker = profile["ticker"]
     report_type = (report_type or "full").lower()
@@ -3274,7 +3280,16 @@ def generate_research_report(profile: dict[str, Any], report_type: str, objectiv
     ]
 
     base = {"type": report_type, "sections": sections, "plain_english": plain_english}
-    return {**base, "institutional": build_institutional_research(profile, base, objective, fundamentals=fundamentals)}
+    return {
+        **base,
+        "institutional": build_institutional_research(
+            profile,
+            base,
+            objective,
+            fundamentals=fundamentals,
+            opportunity_context=opportunity_context,
+        ),
+    }
 
 
 def build_portfolio_plan(payload: dict[str, Any]) -> dict[str, Any]:
@@ -3372,7 +3387,8 @@ async def api_research_report(request: Request):
     try:
         profile = build_research_profile(ticker, range_name)
         fundamentals = get_fundamental_analysis(ticker, profile=profile)
-        report = generate_research_report(profile, report_type, objective, fundamentals=fundamentals)
+        opportunity_context = [r.get("report_json") or {} for r in research_repo().list_reports(auth_user["id"], limit=12)]
+        report = generate_research_report(profile, report_type, objective, fundamentals=fundamentals, opportunity_context=opportunity_context)
         research_repo().save_report(auth_user["id"], report.get("institutional") or {}, profile=profile)
         return {"ok": True, "report": report}
     except Exception as e:
@@ -3392,7 +3408,8 @@ async def api_praetor_ai_research(request: Request):
     try:
         profile = build_research_profile(ticker, range_name)
         fundamentals = get_fundamental_analysis(ticker, profile=profile)
-        deterministic_report = generate_research_report(profile, report_type, objective, fundamentals=fundamentals)
+        opportunity_context = [r.get("report_json") or {} for r in research_repo().list_reports(auth_user["id"], limit=12)]
+        deterministic_report = generate_research_report(profile, report_type, objective, fundamentals=fundamentals, opportunity_context=opportunity_context)
         institutional = deterministic_report.get("institutional") or {}
         ai = synthesize_ai(
             "research",

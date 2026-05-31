@@ -48,6 +48,147 @@ def _stance_from_scores(conviction: float, valuation: float, coverage: float, pe
     return "Hold / Watchlist"
 
 
+def _action_today(stance: str, conviction: float, valuation: float, coverage: float, existing_position: bool = False) -> str:
+    if coverage < 45:
+        return "Watchlist Only"
+    if stance == "Strong Buy Candidate" and valuation >= 58 and not existing_position:
+        return "Accumulate"
+    if stance in ("Strong Buy Candidate", "Buy Candidate"):
+        return "Buy on Pullbacks" if valuation < 68 else "Accumulate"
+    if stance == "Hold / Watchlist":
+        return "Hold Existing Position" if existing_position else "Watchlist Only"
+    if stance == "Reduce / Too Risky":
+        return "Reduce Exposure"
+    if conviction >= 65 and valuation < 35:
+        return "Watchlist Only"
+    return "Watchlist Only"
+
+
+def _sentence_join(sentences: list[str], min_count: int = 3, max_count: int = 5) -> str:
+    clean = [s.strip().rstrip(".") + "." for s in sentences if s and s.strip()]
+    return " ".join(clean[:max_count]) if len(clean) >= min_count else " ".join(clean)
+
+
+def _explain_score_conflicts(scores: dict[str, Any], conviction: dict[str, Any], valuation: dict[str, Any], peer_benchmarking: dict[str, Any], data_coverage: dict[str, Any]) -> list[dict[str, Any]]:
+    values = {
+        "Fundamental Quality": _num((scores.get("fundamental_quality") or {}).get("score"), 50),
+        "Thesis Strength": _num((scores.get("thesis_strength") or {}).get("score"), 50),
+        "Valuation": _num(valuation.get("score"), 50),
+        "Peer Benchmarking": _num(peer_benchmarking.get("score"), 50),
+        "Data Coverage": _num(data_coverage.get("score"), 50),
+        "Conviction": _num(conviction.get("score"), 50),
+    }
+    conflicts: list[dict[str, Any]] = []
+    fundamental = values["Fundamental Quality"]
+    thesis = values["Thesis Strength"]
+    if thesis - fundamental >= 25:
+        conflicts.append(
+            {
+                "title": "Strong thesis despite weaker fundamentals",
+                "scores": {"Fundamental Quality": round(fundamental), "Thesis Strength": round(thesis)},
+                "explanation": (
+                    "The thesis can remain strong when technical trend, momentum, liquidity, peer evidence, or valuation support offset weaker fundamental quality. "
+                    "Praetor treats this as a thesis-quality conflict, not a free pass: weaker fundamentals should lower sizing and require confirmation from revenue, cash flow, or margin evidence."
+                ),
+            }
+        )
+    valuation_score = values["Valuation"]
+    conviction_score = values["Conviction"]
+    if conviction_score - valuation_score >= 30:
+        conflicts.append(
+            {
+                "title": "High conviction versus valuation risk",
+                "scores": {"Conviction": round(conviction_score), "Valuation": round(valuation_score)},
+                "explanation": (
+                    "The business or setup may be attractive while the price is not. Praetor should prefer pullbacks, smaller sizing, or watchlist behavior unless growth and peer evidence justify the premium."
+                ),
+            }
+        )
+    coverage = values["Data Coverage"]
+    if conviction_score >= 65 and coverage < 55:
+        conflicts.append(
+            {
+                "title": "Conviction exceeds data coverage",
+                "scores": {"Conviction": round(conviction_score), "Data Coverage": round(coverage)},
+                "explanation": (
+                    "High conviction is less reliable when coverage is incomplete. Praetor lowers confidence and requires missing data to be filled before acting aggressively."
+                ),
+            }
+        )
+    peer = values["Peer Benchmarking"]
+    if conviction_score >= 65 and peer < 45:
+        conflicts.append(
+            {
+                "title": "Conviction conflicts with peer standing",
+                "scores": {"Conviction": round(conviction_score), "Peer Benchmarking": round(peer)},
+                "explanation": (
+                    "A company can have attractive standalone traits while ranking poorly against peers. Praetor treats weak peer standing as a reason to compare alternatives before allocating capital."
+                ),
+            }
+        )
+    return conflicts
+
+
+def _report_rank_score(report: dict[str, Any]) -> float:
+    opinion = report.get("opinion") or {}
+    conviction = report.get("conviction") or {}
+    valuation = report.get("valuation") or {}
+    peer = report.get("peer_benchmarking") or {}
+    coverage = report.get("data_coverage") or {}
+    stance = opinion.get("final_stance") or ""
+    stance_bonus = {
+        "Strong Buy Candidate": 10,
+        "Buy Candidate": 6,
+        "Hold / Watchlist": 0,
+        "Avoid for Now": -8,
+        "Reduce / Too Risky": -12,
+    }.get(stance, 0)
+    missing_penalty = min(12, len(coverage.get("missing_data") or report.get("data_gaps") or []) * 2)
+    return (
+        _num(conviction.get("score"), 50) * 0.42
+        + _num(valuation.get("score"), 50) * 0.20
+        + _num(peer.get("score"), 50) * 0.16
+        + _num(coverage.get("score"), 50) * 0.14
+        + stance_bonus
+        - missing_penalty
+    )
+
+
+def build_opportunity_ranking(current_report: dict[str, Any], compared_reports: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+    by_ticker: dict[str, dict[str, Any]] = {}
+    for report in [current_report, *(compared_reports or [])]:
+        ticker = str(report.get("ticker") or "").upper()
+        if ticker and ticker not in by_ticker:
+            by_ticker[ticker] = report
+    rows = []
+    for ticker, report in by_ticker.items():
+        opinion = report.get("opinion") or {}
+        conviction = report.get("conviction") or {}
+        valuation = report.get("valuation") or {}
+        coverage = report.get("data_coverage") or {}
+        score = _report_rank_score(report)
+        rows.append(
+            {
+                "ticker": ticker,
+                "rank_score": round(max(0, min(100, score))),
+                "stance": opinion.get("final_stance") or report.get("verdict") or "n/a",
+                "conviction_score": conviction.get("score"),
+                "valuation_rating": valuation.get("rating"),
+                "valuation_score": valuation.get("score"),
+                "data_coverage_score": coverage.get("score"),
+                "explanation": (
+                    f"{ticker} ranks on conviction {conviction.get('score', 'n/a')}, "
+                    f"valuation {valuation.get('score', 'n/a')} ({valuation.get('rating', 'n/a')}), "
+                    f"and coverage {coverage.get('score', 'n/a')}."
+                ),
+            }
+        )
+    rows.sort(key=lambda r: r["rank_score"], reverse=True)
+    for idx, row in enumerate(rows, 1):
+        row["rank"] = idx
+    return rows
+
+
 def _trade_view(technical: float, liquidity: float, volatility: float, conviction: float, coverage: float) -> tuple[str, str]:
     trade_score = technical * 0.35 + liquidity * 0.25 + volatility * 0.15 + conviction * 0.15 + coverage * 0.10
     if coverage < 45:
@@ -83,6 +224,7 @@ def build_opinion_intelligence(
     wealth_context: dict[str, Any] | None = None,
     committee_context: dict[str, Any] | None = None,
     risk_context: dict[str, Any] | None = None,
+    opportunity_context: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     ticker = profile.get("ticker") or (fundamentals or {}).get("ticker") or "Ticker"
     technical = _num((scores.get("trend_quality") or {}).get("score"), 50) * 0.55 + _num((scores.get("momentum_quality") or {}).get("score"), 50) * 0.45
@@ -97,6 +239,7 @@ def build_opinion_intelligence(
     missing = list(data_coverage.get("missing_data") or [])
     valuation_rating = valuation.get("rating") or "n/a"
     stance = _stance_from_scores(conviction_score, valuation_score, coverage_score, peer_score, technical, balance)
+    action_today = _action_today(stance, conviction_score, valuation_score, coverage_score, existing_position=bool(portfolio_context))
     long_label, long_reason = _long_term_view(conviction_score, fundamental, valuation_score, coverage_score, balance)
     trade_label, trade_reason = _trade_view(technical, liquidity, volatility, conviction_score, coverage_score)
 
@@ -175,18 +318,25 @@ def build_opinion_intelligence(
     if missing:
         confidence = min(confidence, 0.55)
 
-    final_body = (
-        f"Praetor's View: {ticker} is currently classified as {stance}. "
-        f"Conviction is {_score_label(conviction_score).lower()} ({conviction_score:.0f}/100), valuation is {valuation_rating} "
-        f"({valuation_score:.0f}/100), peer benchmarking is {_score_label(peer_score).lower()} ({peer_score:.0f}/100), "
-        f"and data coverage is {data_coverage.get('rating', 'n/a')} ({coverage_score:.0f}/100). "
-        f"The most important positive is: {strongest_bull} The most important objection is: {strongest_bear}"
+    score_conflicts = _explain_score_conflicts(scores, conviction, valuation, peer_benchmarking, data_coverage)
+    final_recommendation_body = _sentence_join(
+        [
+            f"Praetor's final recommendation is {stance}.",
+            f"The reason is that conviction is {_score_label(conviction_score).lower()} at {conviction_score:.0f}/100, valuation is {valuation_rating} at {valuation_score:.0f}/100, and peer benchmarking is {_score_label(peer_score).lower()} at {peer_score:.0f}/100.",
+            f"Praetor would {action_today.lower()} today because the evidence must be balanced against data coverage of {coverage_score:.0f}/100 and the current valuation context.",
+            f"The strongest bullish point is: {strongest_bull}",
+            f"The strongest bearish point is: {strongest_bear}",
+        ],
+        min_count=3,
+        max_count=5,
     )
 
-    return {
+    opinion = {
         "label": stance,
+        "final_recommendation": {"label": stance, "body": final_recommendation_body},
         "final_stance": stance,
         "buy_hold_avoid_view": stance,
+        "what_praetor_would_do_today": action_today,
         "long_term_investment_view": {"label": long_label, "body": long_reason},
         "trade_view": {"label": trade_label, "body": trade_reason},
         "conviction": {"score": round(conviction_score), "rating": conviction.get("rating"), "confidence": round(confidence, 2)},
@@ -202,7 +352,9 @@ def build_opinion_intelligence(
         "what_investors_may_be_overlooking": overlooked,
         "where_thesis_is_strongest": strongest_bull,
         "where_thesis_is_weakest": strongest_bear,
-        "final_stance_body": final_body,
+        "score_conflicts": score_conflicts,
+        "opportunity_ranking": [],
+        "final_stance_body": final_recommendation_body,
         "evidence": {
             "fundamentals": ((fundamentals or {}).get("sections") or {}).get("earnings_quality", {}).get("items", [])[:3],
             "valuation": (valuation.get("items") or [])[:3],
@@ -217,3 +369,15 @@ def build_opinion_intelligence(
         },
         "generated_at_utc": datetime.utcnow().isoformat(),
     }
+    current_for_ranking = {
+        "ticker": ticker,
+        "opinion": opinion,
+        "conviction": conviction,
+        "valuation": valuation,
+        "peer_benchmarking": peer_benchmarking,
+        "data_coverage": data_coverage,
+        "verdict": stance,
+        "data_gaps": missing,
+    }
+    opinion["opportunity_ranking"] = build_opportunity_ranking(current_for_ranking, opportunity_context)
+    return opinion

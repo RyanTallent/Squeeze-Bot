@@ -1736,11 +1736,21 @@
       </details>
     `).join("");
     const opinionList = arr => `<ul>${(arr || []).map(x => `<li>${escHtml(x)}</li>`).join("") || "<li>Not enough evidence yet.</li>"}</ul>`;
+    const conflictCards = (opinion.score_conflicts || []).map(c => `
+      <div class="reportSection"><h4>${escHtml(c.title || "Score conflict")}</h4>
+        <p>${escHtml(c.explanation || "")}</p>
+        <p class="fineprint">${Object.entries(c.scores || {}).map(([k,v]) => `${escHtml(k)}: ${escHtml(String(v))}`).join(" | ")}</p>
+      </div>
+    `).join("") || `<p>No major score conflicts detected.</p>`;
+    const rankingRows = (opinion.opportunity_ranking || []).map(r => `
+      <tr><td>${r.rank}</td><td><b>${escHtml(r.ticker || "")}</b></td><td>${r.rank_score ?? "-"}</td><td>${escHtml(r.stance || "")}</td><td>${r.conviction_score ?? "-"}</td><td>${escHtml(r.valuation_rating || "n/a")} (${r.valuation_score ?? "-"})</td><td>${r.data_coverage_score ?? "-"}</td><td>${escHtml(r.explanation || "")}</td></tr>
+    `).join("");
     $("researchReport").innerHTML = `
-      <div class="reportSection"><h3>Praetor Final Stance <span class="scoreBadge">${escHtml(opinion.final_stance || inst.verdict || "Needs Confirmation")}</span></h3><p>${escHtml(opinion.final_stance_body || sections.executive_view?.body || "No executive view available.")}</p></div>
+      <div class="reportSection"><h3>Praetor Final Recommendation <span class="scoreBadge">${escHtml(opinion.final_recommendation?.label || opinion.final_stance || inst.verdict || "Needs Confirmation")}</span></h3><p>${escHtml(opinion.final_recommendation?.body || opinion.final_stance_body || sections.executive_view?.body || "No executive view available.")}</p></div>
       <div class="metricGrid">${scoreCards}</div>
       <div class="researchGrid">
         <div class="reportSection"><h3>Buy / Hold / Avoid View</h3><p>${escHtml(opinion.buy_hold_avoid_view || "n/a")}</p></div>
+        <div class="reportSection"><h3>What Would Praetor Do Today?</h3><p>${escHtml(opinion.what_praetor_would_do_today || "n/a")}</p></div>
         <div class="reportSection"><h3>Long-Term Investment View</h3><p><b>${escHtml(opinion.long_term_investment_view?.label || "n/a")}</b>: ${escHtml(opinion.long_term_investment_view?.body || "")}</p></div>
         <div class="reportSection"><h3>Trade View</h3><p><b>${escHtml(opinion.trade_view?.label || "n/a")}</b>: ${escHtml(opinion.trade_view?.body || "")}</p></div>
         <div class="reportSection"><h3>Confidence Level</h3><p>${fmtPct(opinion.confidence_level)} | Conviction ${opinion.conviction?.score ?? conviction.score ?? "-"} / 100</p></div>
@@ -1756,6 +1766,10 @@
         <div class="reportSection"><h3>What Matters Most</h3>${opinionList(opinion.what_matters_most)}</div>
         <div class="reportSection"><h3>What Is Noise</h3>${opinionList(opinion.what_is_noise)}</div>
         <div class="reportSection"><h3>What Investors May Be Overlooking</h3>${opinionList(opinion.what_investors_may_be_overlooking)}</div>
+      </div>
+      <div class="reportSection"><h3>Resolve Score Conflicts</h3>${conflictCards}</div>
+      <div class="reportSection"><h3>Opportunity Ranking</h3>
+        <div class="tableWrap"><table><thead><tr><th>Rank</th><th>Ticker</th><th>Rank Score</th><th>Stance</th><th>Conviction</th><th>Valuation</th><th>Coverage</th><th>Why</th></tr></thead><tbody>${rankingRows || `<tr><td colspan="8">Generate more Research reports to compare opportunities.</td></tr>`}</tbody></table></div>
       </div>
       <div class="reportSection"><h3>Institutional View</h3><p>${escHtml(sections.institutional_view?.body || "")}</p></div>
       <div class="researchGrid">

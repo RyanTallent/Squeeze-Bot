@@ -248,7 +248,13 @@ def build_scenarios(profile: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
-def build_institutional_research(profile: dict[str, Any], deterministic_report: dict[str, Any], objective: str = "", fundamentals: dict[str, Any] | None = None) -> dict[str, Any]:
+def build_institutional_research(
+    profile: dict[str, Any],
+    deterministic_report: dict[str, Any],
+    objective: str = "",
+    fundamentals: dict[str, Any] | None = None,
+    opportunity_context: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     scores = build_research_scores(profile, deterministic_report, fundamentals=fundamentals)
     frameworks = build_framework_sections(profile, fundamentals=fundamentals)
     valuation = frameworks.get("valuation_analysis") or {}
@@ -265,6 +271,7 @@ def build_institutional_research(profile: dict[str, Any], deterministic_report: 
         conviction=conviction,
         data_coverage=data_coverage,
         sector_framework=sector_framework,
+        opportunity_context=opportunity_context,
     )
     scores["conviction_score"] = _score(
         "Conviction Score",
@@ -298,7 +305,7 @@ def build_institutional_research(profile: dict[str, Any], deterministic_report: 
         "sections": {
             "executive_view": {
                 "title": "Executive View",
-                "body": opinion.get("final_stance_body") or f"{ticker} receives a {verdict} label with {conviction.get('rating')} ({conviction.get('score')}/100). Technicals, FMP fundamentals, valuation, peers, analyst expectations, and balance sheet evidence are included when available.",
+                "body": (opinion.get("final_recommendation") or {}).get("body") or opinion.get("final_stance_body") or f"{ticker} receives a {verdict} label with {conviction.get('rating')} ({conviction.get('score')}/100). Technicals, FMP fundamentals, valuation, peers, analyst expectations, and balance sheet evidence are included when available.",
             },
             "institutional_view": {
                 "title": "Institutional View",
@@ -322,7 +329,7 @@ def build_institutional_research(profile: dict[str, Any], deterministic_report: 
             },
             "what_praetor_would_do": {
                 "title": "What Praetor Would Do",
-                "body": f"{opinion.get('buy_hold_avoid_view')}: {opinion.get('final_stance_body')} No guarantees are provided; data coverage and valuation constraints remain source-of-truth checks.",
+                "body": f"{opinion.get('what_praetor_would_do_today')}: {opinion.get('final_stance_body')} No guarantees are provided; data coverage and valuation constraints remain source-of-truth checks.",
             },
             "praetor_final_stance": {
                 "title": "Praetor Final Stance",
