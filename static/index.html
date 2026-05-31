@@ -599,6 +599,30 @@
               <div class="usageBox"><b id="pbSkipped">-</b><span>Skipped</span></div>
               <div class="usageBox"><b id="pbTotal">-</b><span>Total Plans</span></div>
             </div>
+            <div class="usageGrid" style="margin-bottom:14px">
+              <div class="usageBox"><b id="pbWinRate">-</b><span>Win Rate</span></div>
+              <div class="usageBox"><b id="pbExpectancy">-</b><span>Expectancy</span></div>
+              <div class="usageBox"><b id="pbEvidence">-</b><span>Evidence Count</span></div>
+              <div class="usageBox"><b id="pbMemoryCount">-</b><span>Memory Items</span></div>
+            </div>
+            <div class="researchGrid">
+              <div class="card">
+                <h3>Strengths</h3>
+                <div id="playbookStrengths" class="fineprint">No strengths learned yet.</div>
+              </div>
+              <div class="card">
+                <h3>Weaknesses</h3>
+                <div id="playbookWeaknesses" class="fineprint">No weaknesses learned yet.</div>
+              </div>
+              <div class="card">
+                <h3>Current Hypotheses</h3>
+                <div id="playbookHypotheses" class="fineprint">No hypotheses yet.</div>
+              </div>
+              <div class="card">
+                <h3>Setup Rankings</h3>
+                <div id="playbookRankings" class="fineprint">No setup rankings yet.</div>
+              </div>
+            </div>
             <div class="tableWrap">
               <table>
                 <thead>
@@ -1462,9 +1486,49 @@
     const plansData = plansResp ? await safeJson(plansResp) : {ok:false, trade_plans:[]};
     renderPlaybook(plansData.trade_plans || []);
 
+    const learningResp = await fetch("/api/praetor/playbook/learning").catch(()=>null);
+    const learningData = learningResp ? await safeJson(learningResp) : {ok:false};
+    if(learningData.ok) renderPlaybookLearning(learningData);
+
     const alertsResp = await fetch("/api/praetor/alerts").catch(()=>null);
     const alertsData = alertsResp ? await safeJson(alertsResp) : {ok:false, alerts:[]};
     renderAlerts(alertsData.alerts || []);
+  }
+
+  function confidenceText(x){
+    const n = Number(x);
+    if(!Number.isFinite(n)) return "low";
+    if(n >= .75) return "high";
+    if(n >= .40) return "medium";
+    return "low";
+  }
+
+  function renderLearningList(targetId, rows, emptyText){
+    const el = $(targetId);
+    if(!el) return;
+    if(!rows || rows.length === 0){
+      el.innerHTML = emptyText;
+      return;
+    }
+    el.innerHTML = `<ul>${rows.map(r => `<li><b>${escHtml(r.title || r.topic || r.key || "")}</b><br>${escHtml(r.description || r.statement || "")}<br><span class="muted">Confidence: ${confidenceText(r.confidence)} | Evidence: ${r.evidence_count ?? r.sample_size ?? 0}</span></li>`).join("")}</ul>`;
+  }
+
+  function renderPlaybookLearning(data){
+    const stats = data.learning?.stats || {};
+    const memory = data.memory || [];
+    setText("pbWinRate", stats.win_rate == null ? "-" : fmtPct(stats.win_rate));
+    setText("pbExpectancy", stats.expectancy == null ? "-" : Number(stats.expectancy).toFixed(2));
+    setText("pbEvidence", String(stats.sample_size || 0));
+    setText("pbMemoryCount", String(memory.length));
+    renderLearningList("playbookStrengths", stats.strengths || [], "No strengths learned yet.");
+    renderLearningList("playbookWeaknesses", stats.weaknesses || [], "No weaknesses learned yet.");
+    renderLearningList("playbookHypotheses", memory.filter(m => m.belief_type === "hypothesis"), "No hypotheses yet.");
+    renderLearningList("playbookRankings", (stats.by_setup || []).slice(0,5).map(r => ({
+      title: r.key,
+      description: `Win rate ${fmtPct(r.win_rate)} | Expectancy ${Number(r.expectancy || 0).toFixed(2)}`,
+      confidence: r.confidence,
+      evidence_count: r.sample_size
+    })), "No setup rankings yet.");
   }
 
   function renderPlaybook(plans){

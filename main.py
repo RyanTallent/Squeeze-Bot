@@ -27,7 +27,13 @@ from fastapi.staticfiles import StaticFiles
 import scanner  # your scanner.py
 from praetor_context import build_scanner_context
 from praetor_service import PraetorService, response_to_dict
+from playbook_engine import calculate_playbook_stats
+from memory_engine import build_memory_updates
+from discovery_engine import build_discovery_candidates
 from repositories.alert_repository import AlertRepository
+from repositories.discovery_repository import DiscoveryRepository
+from repositories.memory_repository import MemoryRepository
+from repositories.playbook_repository import PlaybookRepository
 from repositories.trade_plan_repository import TradePlanRepository
 
 # Optional Postgres (only used if DATABASE_URL is set)
@@ -394,6 +400,35 @@ def db_init():
     );
     """
 
+    playbook_snapshots_sql = """
+    CREATE TABLE IF NOT EXISTS playbook_snapshots (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      sample_size INTEGER NOT NULL DEFAULT 0,
+      win_rate REAL,
+      expectancy REAL,
+      snapshot_json TEXT NOT NULL,
+      created_at_utc TEXT NOT NULL
+    );
+    """
+
+    discoveries_sql = """
+    CREATE TABLE IF NOT EXISTS discoveries (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      discovery_type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      confidence REAL NOT NULL DEFAULT 0,
+      evidence_count INTEGER NOT NULL DEFAULT 0,
+      source_module TEXT,
+      evidence_json TEXT,
+      status TEXT NOT NULL DEFAULT 'OPEN',
+      created_at_utc TEXT NOT NULL,
+      updated_at_utc TEXT NOT NULL
+    );
+    """
+
     if using_postgres():
         with pg_conn() as conn:
             with conn.cursor() as cur:
@@ -413,6 +448,10 @@ def db_init():
                     trade_plans_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ").replace("updated_at_utc TEXT", "updated_at_utc TIMESTAMPTZ")
                 )
                 cur.execute(alerts_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ").replace("delivered_at_utc TEXT", "delivered_at_utc TIMESTAMPTZ"))
+                cur.execute(playbook_snapshots_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ"))
+                cur.execute(
+                    discoveries_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ").replace("updated_at_utc TEXT", "updated_at_utc TIMESTAMPTZ")
+                )
             conn.commit()
     else:
         with DB_LOCK:
@@ -428,6 +467,8 @@ def db_init():
                 conn.execute(playbook_rules_sql)
                 conn.execute(trade_plans_sql)
                 conn.execute(alerts_sql)
+                conn.execute(playbook_snapshots_sql)
+                conn.execute(discoveries_sql)
                 conn.commit()
             finally:
                 conn.close()
@@ -550,6 +591,40 @@ def trade_plan_repo() -> TradePlanRepository:
 
 def alert_repo() -> AlertRepository:
     return AlertRepository(using_postgres, pg_conn, sqlite_conn, DB_LOCK)
+
+
+def memory_repo() -> MemoryRepository:
+    return MemoryRepository(using_postgres, pg_conn, sqlite_conn, DB_LOCK)
+
+
+def playbook_repo() -> PlaybookRepository:
+    return PlaybookRepository(using_postgres, pg_conn, sqlite_conn, DB_LOCK)
+
+
+def discovery_repo() -> DiscoveryRepository:
+    return DiscoveryRepository(using_postgres, pg_conn, sqlite_conn, DB_LOCK)
+
+
+def run_praetor_learning_update(user_id: str) -> dict[str, Any]:
+    plans = trade_plan_repo().list_plans(user_id, limit=1000)
+    stats = calculate_playbook_stats(plans)
+    snapshot_id = playbook_repo().save_snapshot(user_id, stats)
+
+    memory_ids: list[str] = []
+    for item in build_memory_updates(stats):
+        memory_ids.append(memory_repo().upsert_memory(user_id, item))
+
+    discovery_ids: list[str] = []
+    for discovery in build_discovery_candidates(stats):
+        discovery_ids.append(discovery_repo().save_discovery(user_id, discovery))
+
+    return {
+        "ok": True,
+        "snapshot_id": snapshot_id,
+        "stats": stats,
+        "memory_ids": memory_ids,
+        "discovery_ids": discovery_ids,
+    }
 
 
 # -------------------- Auth + plans --------------------
@@ -2806,6 +2881,20 @@ def api_praetor_playbook(request: Request):
     return response_to_dict(service.playbook_summary())
 
 
+@app.get("/api/praetor/playbook/learning")
+def api_praetor_playbook_learning(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    learning = run_praetor_learning_update(auth_user["id"])
+    return {
+        "ok": True,
+        "learning": learning,
+        "memory": memory_repo().list_memory(auth_user["id"]),
+        "discoveries": discovery_repo().list_discoveries(auth_user["id"]),
+    }
+
+
 @app.get("/api/praetor/trade-plans")
 def api_praetor_trade_plans(request: Request, status: str | None = None):
     auth_user = require_user(request)
@@ -2848,7 +2937,8 @@ async def api_praetor_trade_plan_outcome(plan_id: str, request: Request):
             payload.get("outcome") or "",
             payload.get("notes") or "",
         )
-        return {"ok": bool(updated)}
+        learning = run_praetor_learning_update(auth_user["id"]) if updated else None
+        return {"ok": bool(updated), "learning": learning}
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=400)
 
