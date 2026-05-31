@@ -404,6 +404,11 @@
             <div class="eyebrow">Recommendation of the Day</div>
             <h3 id="ccRecommendation">Loading...</h3>
           </div>
+          <div class="researchGrid">
+            <div class="card"><h3>AI Recommendation</h3><div id="ccAiRecommendation" class="fineprint">Loading AI synthesis...</div></div>
+            <div class="card"><h3>AI Risk Insight</h3><div id="ccAiRisk" class="fineprint">Loading AI synthesis...</div></div>
+            <div class="card"><h3>AI Opportunity Insight</h3><div id="ccAiOpportunity" class="fineprint">Loading AI synthesis...</div></div>
+          </div>
           <div class="dashTop">
             <div class="card">
               <div class="eyebrow">Global Ask Praetor</div>
@@ -600,6 +605,7 @@
               </div>
               <button class="btn primary" id="researchRunBtn" type="button">Generate</button>
               <button class="btn success" id="researchAiBtn" type="button">Generate AI Thesis</button>
+              <button class="btn" data-explain-page="Research" type="button">Explain This</button>
             </div>
             <div class="field">
               <label>What are you looking for?</label>
@@ -637,6 +643,7 @@
               <div class="field"><label>Theme</label><input id="holdingTheme" placeholder="AI, Semis, Healthcare..." /></div>
               <div class="field"><label>&nbsp;</label><button class="btn primary" id="saveHoldingBtn" type="button">Save Holding</button></div>
             </div>
+            <div class="toolbar"><button class="btn" data-explain-page="Portfolio" type="button">Explain This</button></div>
           </div>
           <div class="usageGrid" style="margin-top:14px">
             <div class="usageBox"><b id="portfolioValue">-</b><span>Portfolio Value</span></div>
@@ -701,6 +708,11 @@
                   <div id="journalBehavior" class="fineprint">No behavioral observations yet.</div>
                 </div>
               </div>
+              <div class="toolbar">
+                <button class="btn" id="journalAiCoachBtn" type="button">Generate Praetor Coaching Notes</button>
+                <button class="btn" data-explain-page="Journal" type="button">Explain This</button>
+              </div>
+              <div class="praetorBox hidden" id="journalAiCoaching"></div>
             </div>
             <div class="tableWrap">
               <table>
@@ -873,6 +885,14 @@
             <div class="eyebrow">Latest briefing</div>
             <div id="latestBriefing">No briefing generated yet.</div>
           </div>
+          <div class="card">
+            <div class="eyebrow">AI Executive Summary</div>
+            <div class="toolbar">
+              <button class="btn primary" id="briefingAiBtn" type="button">Generate Executive Summary</button>
+              <button class="btn" data-explain-page="Briefings" type="button">Explain This</button>
+            </div>
+            <div class="praetorBox" id="briefingAiSummary">AI executive summary has not been generated yet.</div>
+          </div>
           <div class="researchGrid">
             <div class="card">
               <h3>Morning</h3>
@@ -912,6 +932,14 @@
             <div class="eyebrow">Praetor conclusion</div>
             <div id="committeeConclusion">No committee run yet.</div>
           </div>
+          <div class="card">
+            <div class="eyebrow">Praetor AI Committee Conclusion</div>
+            <div class="toolbar">
+              <button class="btn primary" id="committeeAiBtn" type="button">Generate AI Committee Conclusion</button>
+              <button class="btn" data-explain-page="Committee" type="button">Explain This</button>
+            </div>
+            <div class="praetorBox" id="committeeAiConclusion">AI committee synthesis has not been generated yet.</div>
+          </div>
           <div class="researchGrid" id="committeeMembers"></div>
           <div class="card">
             <div class="eyebrow">Committee history</div>
@@ -922,8 +950,13 @@
         <div class="page" id="pageRisk">
           <div class="card">
             <div class="eyebrow">Risk architecture</div>
-            <h2>Exposure intelligence coming next.</h2>
-            <p>This area will track drawdown probability, gross/net exposure, sector concentration, beta, volatility exposure, event risk, liquidity risk, and tail-risk scenarios.</p>
+            <h2>Praetor Risk Officer Commentary</h2>
+            <p>This page surfaces AI explanation on top of deterministic Risk AI. The deterministic Playbook Risk section remains the source of truth.</p>
+            <div class="toolbar">
+              <button class="btn primary" id="riskAiBtn" type="button">Generate Risk Commentary</button>
+              <button class="btn" data-explain-page="Risk" type="button">Explain This</button>
+            </div>
+            <div class="praetorBox" id="riskAiCommentary">Risk commentary has not been generated yet.</div>
           </div>
         </div>
 
@@ -1121,6 +1154,22 @@
       return;
     }
     renderCommandCenter(data);
+    loadCommandCenterAI();
+  }
+
+  async function loadCommandCenterAI(){
+    if(!state.user) return;
+    const resp = await fetch("/api/praetor/ai/command-center").catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false};
+    if(!data.ok || !data.ai){
+      $("ccAiRecommendation").textContent = "AI command-center synthesis unavailable.";
+      return;
+    }
+    const text = data.ai.text || "";
+    const parts = text.split(/\n{2,}|(?=AI Risk|Risk Insight|Opportunity)/i).filter(Boolean);
+    $("ccAiRecommendation").textContent = parts[0] || text;
+    $("ccAiRisk").textContent = parts.find(p => /risk/i.test(p)) || "Review deterministic risk card.";
+    $("ccAiOpportunity").textContent = parts.find(p => /opportun|discovery|edge/i.test(p)) || "Review top discovery and active plans.";
   }
 
   function renderCommandCenter(data){
@@ -1279,6 +1328,7 @@
     if(name === "Committee") loadCommittee();
     if(name === "Portfolio") loadPortfolio();
     if(name === "Dashboard") loadCommandCenter();
+    if(name === "Risk") loadRiskAI();
     if(name === "Pricing") paintPricing("appPricing");
     updateCopilotContext();
   }
@@ -1387,6 +1437,12 @@
     $("copilotInput").value = action;
   }
 
+  function explainThis(page){
+    setPage(page);
+    openCopilot();
+    $("copilotInput").value = `Explain this ${page} page. Summarize what matters, what risk stands out, and what I should review first.`;
+  }
+
   function setResearchPage(name){
     const target = name || "overview";
     const panels = {
@@ -1480,6 +1536,7 @@
     }).catch(()=>null);
     const report = reportResp ? await safeJson(reportResp) : {ok:false,error:"Could not generate report."};
     renderResearchReport(report.ok ? report.report : null, report.error);
+    loadResearchAI();
   }
 
   async function loadResearchAI(){
@@ -1509,6 +1566,42 @@
         <p style="white-space:pre-wrap">${escHtml(data.ai?.text || "No AI synthesis returned.")}</p>
       </div>
     `;
+  }
+
+  function renderAiBox(id, data, label){
+    const el = $(id);
+    if(!el) return;
+    if(!data || !data.ok || !data.ai){
+      el.textContent = `${label || "AI synthesis"} unavailable.`;
+      return;
+    }
+    el.classList.remove("hidden");
+    el.textContent = `${data.ai.fallback_used ? "Fallback" : "OpenAI"} ${label || "AI synthesis"}:\n\n${data.ai.text || ""}`;
+  }
+
+  async function loadCommitteeAI(){
+    $("committeeAiConclusion").textContent = "Generating AI committee synthesis...";
+    const resp = await fetch("/api/praetor/ai/committee/latest").catch(()=>null);
+    renderAiBox("committeeAiConclusion", resp ? await safeJson(resp) : null, "Committee synthesis");
+  }
+
+  async function loadRiskAI(){
+    $("riskAiCommentary").textContent = "Generating risk officer commentary...";
+    const resp = await fetch("/api/praetor/ai/risk").catch(()=>null);
+    renderAiBox("riskAiCommentary", resp ? await safeJson(resp) : null, "Risk commentary");
+  }
+
+  async function loadJournalCoachingAI(){
+    $("journalAiCoaching").classList.remove("hidden");
+    $("journalAiCoaching").textContent = "Generating coaching notes...";
+    const resp = await fetch("/api/praetor/ai/journal").catch(()=>null);
+    renderAiBox("journalAiCoaching", resp ? await safeJson(resp) : null, "Journal coaching");
+  }
+
+  async function loadBriefingAI(){
+    $("briefingAiSummary").textContent = "Generating executive summary...";
+    const resp = await fetch("/api/praetor/ai/briefing/latest").catch(()=>null);
+    renderAiBox("briefingAiSummary", resp ? await safeJson(resp) : null, "Executive summary");
   }
 
   function renderResearch(profile){
@@ -2061,6 +2154,7 @@
       return;
     }
     renderJournalAI(data.journal || {});
+    loadJournalCoachingAI();
   }
 
   function renderJournalAI(report){
@@ -2417,6 +2511,7 @@
     }
     $("briefingStatus").textContent = `${data.briefing?.title || "Briefing"} generated.`;
     await loadBriefings();
+    loadBriefingAI();
   }
 
   function renderCommitteeRun(run){
@@ -2463,6 +2558,7 @@
     renderCommitteeHistory(runs);
     renderCommitteeRun(runs[0]);
     $("committeeStatus").textContent = runs.length ? `${runs.length} committee run(s)` : "No committee run loaded.";
+    if(runs.length) loadCommitteeAI();
   }
 
   async function runCommittee(){
@@ -2479,6 +2575,7 @@
     }
     $("committeeStatus").textContent = "Committee run complete.";
     renderCommitteeRun(data);
+    loadCommitteeAI();
     await loadCommittee();
   }
 
@@ -2516,6 +2613,7 @@
     $("logoutBtn").addEventListener("click", logout);
     document.querySelectorAll("[data-page]").forEach(b => b.addEventListener("click", () => setPage(b.dataset.page)));
     document.querySelectorAll("[data-jump]").forEach(b => b.addEventListener("click", () => setPage(b.dataset.jump)));
+    document.querySelectorAll("[data-explain-page]").forEach(b => b.addEventListener("click", () => explainThis(b.dataset.explainPage)));
     $("ortexToggle").addEventListener("click", () => {
       state.ortex = state.ortex === "on" ? "off" : "on";
       localStorage.setItem("cp_ortex", state.ortex);

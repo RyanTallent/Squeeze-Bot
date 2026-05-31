@@ -57,6 +57,16 @@ def _fallback(kind: str, context: dict[str, Any]) -> str:
             "AI synthesis unavailable. Deterministic briefing:\n\n"
             f"{b.get('title', 'Briefing')}: {b.get('lead', 'No lead summary available.')}"
         )
+    if kind == "command_center":
+        cc = context.get("command_center") or {}
+        rec = (cc.get("recommendation_of_day") or {}).get("text")
+        risk = (cc.get("risk_overview") or {}).get("overall_risk_label")
+        return (
+            "AI synthesis unavailable. Deterministic command-center read:\n\n"
+            f"Recommendation: {rec or 'No critical recommendation.'}\n"
+            f"Risk posture: {risk or 'n/a'}\n"
+            "Review Command Center cards for source evidence."
+        )
     return "AI synthesis unavailable. Deterministic outputs remain available."
 
 
@@ -67,6 +77,7 @@ def _prompt(kind: str, context: dict[str, Any]) -> str:
         "risk": "Explain the risk profile like a risk officer. Challenge dangerous assumptions and identify the highest-priority risk.",
         "journal": "Coach the user from journal evidence. Identify repeated mistakes, strengths, lessons, and next behavior change.",
         "briefing": "Create an executive briefing summary. Prioritize what matters now, what changed, and what the user should review first.",
+        "command_center": "Create three concise outputs: AI Recommendation of the Day, AI Risk Insight, and AI Opportunity Insight from the command-center evidence.",
     }.get(kind, "Synthesize the provided deterministic evidence carefully.")
     return (
         f"Task: {guidance}\n\n"

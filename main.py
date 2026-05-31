@@ -3407,6 +3407,18 @@ def api_praetor_command_center(request: Request):
         return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=500)
 
 
+@app.get("/api/praetor/ai/command-center")
+def api_praetor_ai_command_center(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    try:
+        context = build_command_center_context(auth_user["id"])
+        return {"ok": True, **context, "ai": synthesize_ai("command_center", context)}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=500)
+
+
 @app.get("/api/praetor/risk")
 def api_praetor_risk(request: Request):
     auth_user = require_user(request)
@@ -3476,6 +3488,19 @@ async def api_praetor_ai_committee(request: Request):
     return {"ok": True, **committee_result, "ai": synthesize_ai("committee", committee_result)}
 
 
+@app.get("/api/praetor/ai/committee/latest")
+def api_praetor_ai_committee_latest(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    runs = committee_repo().list_runs(auth_user["id"], limit=1)
+    if not runs:
+        return {"ok": True, "ai": synthesize_ai("committee", {"committee": {"synthesis": {"consensus": "n/a", "final_recommendation": "No committee run yet."}}})}
+    run = runs[0]
+    committee = {"votes": run.get("votes_json") or [], "synthesis": run.get("synthesis_json") or {}}
+    return {"ok": True, "committee": committee, "ai": synthesize_ai("committee", {"committee": committee})}
+
+
 @app.get("/api/praetor/journal/learning")
 def api_praetor_journal_learning(request: Request):
     auth_user = require_user(request)
@@ -3513,6 +3538,18 @@ async def api_praetor_ai_briefing(request: Request):
     payload = await request.json()
     briefing = generate_and_save_briefing(auth_user["id"], payload.get("briefing_type") or "morning")
     return {"ok": True, **briefing, "ai": synthesize_ai("briefing", {"briefing": briefing.get("briefing")})}
+
+
+@app.get("/api/praetor/ai/briefing/latest")
+def api_praetor_ai_briefing_latest(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    runs = briefing_repo().list_briefings(auth_user["id"], limit=1)
+    if not runs:
+        return {"ok": True, "ai": synthesize_ai("briefing", {"briefing": {"title": "Briefing", "lead": "No briefing generated yet."}})}
+    briefing = runs[0].get("content_json") or {}
+    return {"ok": True, "briefing": briefing, "ai": synthesize_ai("briefing", {"briefing": briefing})}
 
 
 @app.get("/api/praetor/trade-plans")
