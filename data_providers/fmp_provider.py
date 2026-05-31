@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from datetime import datetime, timedelta
 from typing import Any, Callable
+from urllib.parse import urlencode
 
 import requests
 
@@ -37,33 +38,106 @@ class FMPProvider:
         parts = "&".join(f"{k}={params[k]}" for k in sorted(params))
         return f"fmp:{endpoint}?{parts}"
 
+    def _safe_url(self, endpoint: str, params: dict[str, Any]) -> str:
+        return f"{FMP_BASE_URL}{endpoint}?{urlencode(params)}"
+
+    @staticmethod
+    def _filter_symbol_data(data: Any, symbol: str) -> Any:
+        if not isinstance(data, list):
+            return data
+        filtered = []
+        for row in data:
+            if not isinstance(row, dict):
+                filtered.append(row)
+                continue
+            row_symbol = str(row.get("symbol") or row.get("ticker") or "").upper()
+            if not row_symbol or row_symbol == symbol.upper():
+                filtered.append(row)
+        return filtered
+
     def get(self, endpoint: str, params: dict[str, Any] | None = None, ttl_hours: int = 24) -> dict[str, Any]:
         params = dict(params or {})
         cache_key = self._cache_key(endpoint, params)
         if self.cache_get:
             cached = self.cache_get(cache_key)
             if cached is not None:
-                return {"ok": True, "source": "FMP", "cached": True, "fetched_at": cached.get("fetched_at"), "data": cached.get("data")}
+                return {
+                    "ok": True,
+                    "source": "FMP",
+                    "cached": True,
+                    "fetched_at": cached.get("fetched_at"),
+                    "endpoint": endpoint,
+                    "params": params,
+                    "url": self._safe_url(endpoint, params),
+                    "data": cached.get("data"),
+                }
 
         if not self.api_key:
-            return {"ok": False, "source": "FMP", "cached": False, "error": "FMP_API_KEY not configured", "data": None}
+            return {
+                "ok": False,
+                "source": "FMP",
+                "cached": False,
+                "endpoint": endpoint,
+                "params": params,
+                "url": self._safe_url(endpoint, params),
+                "error": "FMP_API_KEY not configured",
+                "data": None,
+            }
 
         url = f"{FMP_BASE_URL}{endpoint}"
         request_params = {**params, "apikey": self.api_key}
         try:
             response = requests.get(url, params=request_params, timeout=25)
             if response.status_code >= 400:
-                return {"ok": False, "source": "FMP", "cached": False, "error": f"FMP {response.status_code}: {response.text[:200]}", "data": None}
+                return {
+                    "ok": False,
+                    "source": "FMP",
+                    "cached": False,
+                    "endpoint": endpoint,
+                    "params": params,
+                    "url": self._safe_url(endpoint, params),
+                    "error": f"FMP {response.status_code}: {response.text[:200]}",
+                    "data": None,
+                }
             data = response.json()
+            if params.get("symbol"):
+                data = self._filter_symbol_data(data, str(params["symbol"]))
         except requests.RequestException as e:
-            return {"ok": False, "source": "FMP", "cached": False, "error": f"{type(e).__name__}: {str(e)[:200]}", "data": None}
+            return {
+                "ok": False,
+                "source": "FMP",
+                "cached": False,
+                "endpoint": endpoint,
+                "params": params,
+                "url": self._safe_url(endpoint, params),
+                "error": f"{type(e).__name__}: {str(e)[:200]}",
+                "data": None,
+            }
         except Exception as e:
-            return {"ok": False, "source": "FMP", "cached": False, "error": f"Invalid FMP response: {str(e)[:200]}", "data": None}
+            return {
+                "ok": False,
+                "source": "FMP",
+                "cached": False,
+                "endpoint": endpoint,
+                "params": params,
+                "url": self._safe_url(endpoint, params),
+                "error": f"Invalid FMP response: {str(e)[:200]}",
+                "data": None,
+            }
 
         fetched_at = datetime.utcnow()
         if self.cache_set:
             self.cache_set(cache_key, "FMP", data, fetched_at + timedelta(hours=ttl_hours))
-        return {"ok": True, "source": "FMP", "cached": False, "fetched_at": fetched_at.isoformat(), "data": data}
+        return {
+            "ok": True,
+            "source": "FMP",
+            "cached": False,
+            "fetched_at": fetched_at.isoformat(),
+            "endpoint": endpoint,
+            "params": params,
+            "url": self._safe_url(endpoint, params),
+            "data": data,
+        }
 
     def fundamentals_bundle(self, ticker: str) -> dict[str, Any]:
         symbol = ticker.upper().strip()
@@ -73,9 +147,9 @@ class FMPProvider:
             "cash_flow": ("/stable/cash-flow-statement", {"symbol": symbol, "limit": 8}, 24),
             "key_metrics": ("/stable/key-metrics", {"symbol": symbol, "limit": 8}, 24),
             "financial_ratios": ("/stable/ratios", {"symbol": symbol, "limit": 8}, 24),
-            "analyst_estimates": ("/stable/analyst-estimates", {"symbol": symbol, "limit": 8}, 12),
+            "analyst_estimates": ("/stable/analyst-estimates", {"symbol": symbol, "period": "annual", "page": 0, "limit": 8}, 12),
             "peers": ("/stable/stock-peers", {"symbol": symbol}, 168),
-            "earnings_calendar": ("/stable/earnings-calendar", {"symbol": symbol}, 12),
+            "earnings_calendar": ("/stable/earnings", {"symbol": symbol, "limit": 40}, 12),
         }
         results: dict[str, Any] = {}
         for name, (endpoint, params, ttl) in endpoints.items():
@@ -87,4 +161,34 @@ class FMPProvider:
             "configured": self.configured,
             "fetched_at": datetime.utcnow().isoformat(),
             "endpoints": results,
+        }
+
+    def debug_bundle(self, ticker: str) -> dict[str, Any]:
+        bundle = self.fundamentals_bundle(ticker)
+        debug = {}
+        for name, result in (bundle.get("endpoints") or {}).items():
+            data = result.get("data")
+            rows = data if isinstance(data, list) else ([data] if isinstance(data, dict) else [])
+            fields = sorted({str(k) for row in rows[:5] if isinstance(row, dict) for k in row.keys()})
+            symbols = sorted({str(row.get("symbol") or row.get("ticker")) for row in rows if isinstance(row, dict) and (row.get("symbol") or row.get("ticker"))})
+            debug[name] = {
+                "ok": result.get("ok"),
+                "cached": result.get("cached"),
+                "error": result.get("error"),
+                "endpoint": result.get("endpoint"),
+                "url": result.get("url"),
+                "params": result.get("params"),
+                "row_count": len(rows),
+                "symbols_seen": symbols[:20],
+                "fields_sample": fields,
+                "raw_sample": rows[:3],
+                "fetched_at": result.get("fetched_at"),
+            }
+        return {
+            "ok": bundle.get("ok"),
+            "ticker": bundle.get("ticker"),
+            "provider": "FMP",
+            "configured": self.configured,
+            "fetched_at": bundle.get("fetched_at"),
+            "endpoints": debug,
         }

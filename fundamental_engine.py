@@ -57,7 +57,15 @@ def _rating_from_score(score: float) -> str:
     return "Low"
 
 
-def _section(rating: str, items: list[str], bundle: dict[str, Any], key: str, confidence: float, data_requirements: list[str] | None = None) -> dict[str, Any]:
+def _section(
+    rating: str,
+    items: list[str],
+    bundle: dict[str, Any],
+    key: str,
+    confidence: float,
+    data_requirements: list[str] | None = None,
+    calculation: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     meta = _meta(bundle, key)
     return {
         "rating": rating,
@@ -68,6 +76,7 @@ def _section(rating: str, items: list[str], bundle: dict[str, Any], key: str, co
         "data_requirements": data_requirements or [],
         "provider_ok": meta["ok"],
         "provider_error": meta["error"],
+        "calculation": calculation or {},
     }
 
 
@@ -95,7 +104,19 @@ def revenue_analysis(bundle: dict[str, Any]) -> dict[str, Any]:
         "Business segment analysis requires segment-level data; FMP statement data does not always include segment breakdowns.",
         "Growth driver analysis requires filings, earnings transcripts, and management commentary.",
     ]
-    return _section(rating, items, bundle, "income_statement", 0.65 if growth is not None else 0.35, ["segment revenue", "filings/transcripts for drivers"])
+    return _section(
+        rating,
+        items,
+        bundle,
+        "income_statement",
+        0.65 if growth is not None else 0.35,
+        ["segment revenue", "filings/transcripts for drivers"],
+        {
+            "formula": "(latest revenue - prior revenue) / prior revenue",
+            "inputs": {"latest_revenue": rev_latest, "prior_revenue": rev_prev, "growth": growth},
+            "rating_logic": "Revenue growth improves rating; missing or declining revenue lowers confidence/rating.",
+        },
+    )
 
 
 def earnings_quality(bundle: dict[str, Any]) -> dict[str, Any]:
@@ -129,7 +150,18 @@ def earnings_quality(bundle: dict[str, Any]) -> dict[str, Any]:
     elif free_cf is not None:
         score -= 10
         items.append("Free cash flow is negative.")
-    return _section(_rating_from_score(score), items or ["Earnings quality evidence limited."], bundle, "cash_flow", 0.65)
+    return _section(
+        _rating_from_score(score),
+        items or ["Earnings quality evidence limited."],
+        bundle,
+        "cash_flow",
+        0.65,
+        calculation={
+            "formula": "cash-flow support + free cash flow positivity",
+            "inputs": {"net_income": net_income, "operating_cash_flow": operating_cf, "free_cash_flow": free_cf, "score": score},
+            "rating_logic": "Operating cash flow supporting net income and positive free cash flow improve rating.",
+        },
+    )
 
 
 def margin_analysis(bundle: dict[str, Any]) -> dict[str, Any]:
@@ -156,7 +188,18 @@ def margin_analysis(bundle: dict[str, Any]) -> dict[str, Any]:
             score += 8
         elif trend is not None and trend < -0.05:
             score -= 8
-    return _section(_rating_from_score(score), items, bundle, "financial_ratios", 0.60)
+    return _section(
+        _rating_from_score(score),
+        items,
+        bundle,
+        "financial_ratios",
+        0.60,
+        calculation={
+            "formula": "gross/operating/net margin level + net margin trend",
+            "inputs": {"gross_margin": gross, "operating_margin": operating, "net_margin": net, "score": score},
+            "rating_logic": "Higher/stable margins improve rating; deterioration lowers score.",
+        },
+    )
 
 
 def balance_sheet_analysis(bundle: dict[str, Any]) -> dict[str, Any]:
@@ -192,7 +235,18 @@ def balance_sheet_analysis(bundle: dict[str, Any]) -> dict[str, Any]:
             score -= 12
             items.append("Current ratio below 1.0 indicates liquidity pressure.")
     risk_rating = "Low" if score >= 70 else "Medium" if score >= 45 else "High"
-    return _section(risk_rating, items, bundle, "balance_sheet", 0.65)
+    return _section(
+        risk_rating,
+        items,
+        bundle,
+        "balance_sheet",
+        0.65,
+        calculation={
+            "formula": "cash vs debt + current ratio + assets/liabilities context",
+            "inputs": {"cash": cash, "debt": debt, "assets": assets, "liabilities": liabilities, "current_ratio": current_ratio, "score": score},
+            "rating_logic": "Balance-sheet rating is risk-oriented: Low risk is better than High risk.",
+        },
+    )
 
 
 def analyst_expectations(bundle: dict[str, Any]) -> dict[str, Any]:
@@ -201,16 +255,27 @@ def analyst_expectations(bundle: dict[str, Any]) -> dict[str, Any]:
     if not rows and not earnings:
         return _section("Data Unavailable", ["Analyst expectations require FMP analyst estimates or earnings calendar data."], bundle, "analyst_estimates", 0.15, ["FMP analyst estimates", "FMP earnings calendar"])
     latest = rows[0] if rows else {}
-    eps = _num(latest.get("estimatedEpsAvg") or latest.get("epsAvg"))
-    revenue = _num(latest.get("estimatedRevenueAvg") or latest.get("revenueAvg"))
+    eps = _num(latest.get("estimatedEpsAvg") or latest.get("epsAvg") or latest.get("epsEstimatedAvg"))
+    revenue = _num(latest.get("estimatedRevenueAvg") or latest.get("revenueAvg") or latest.get("revenueEstimatedAvg"))
     items = [
         f"Estimated EPS avg: {eps:.2f}" if eps is not None else "Estimated EPS unavailable.",
         f"Estimated revenue avg: ${revenue:,.0f}" if revenue is not None else "Estimated revenue unavailable.",
     ]
     if earnings:
-        items.append(f"Earnings calendar records available: {len(earnings)}")
+        items.append(f"Company earnings records available: {len(earnings)}")
     rating = "High" if eps is not None and revenue is not None else "Medium"
-    return _section(rating, items, bundle, "analyst_estimates", 0.55)
+    return _section(
+        rating,
+        items,
+        bundle,
+        "analyst_estimates",
+        0.55 if eps is not None or revenue is not None else 0.30,
+        calculation={
+            "formula": "presence of EPS/revenue consensus estimates + company earnings records",
+            "inputs": {"estimated_eps_avg": eps, "estimated_revenue_avg": revenue, "earnings_record_count": len(earnings)},
+            "rating_logic": "Both EPS and revenue estimates available = High. Partial estimates = Medium.",
+        },
+    )
 
 
 def sector_benchmarking(bundle: dict[str, Any]) -> dict[str, Any]:
@@ -231,7 +296,18 @@ def sector_benchmarking(bundle: dict[str, Any]) -> dict[str, Any]:
             items.append(f"EV/Sales: {ev_sales:.2f}")
     if not items:
         return _section("Data Unavailable", ["Peer/benchmark data unavailable from FMP response."], bundle, "peers", 0.15, ["FMP stock peers", "FMP key metrics"])
-    return _section("Medium", items, bundle, "peers", 0.45)
+    return _section(
+        "Medium",
+        items,
+        bundle,
+        "peers",
+        0.45,
+        calculation={
+            "formula": "peer list + key valuation metrics availability",
+            "inputs": {"peer_count": len(peers), "key_metric_records": len(metrics)},
+            "rating_logic": "Peer list and valuation metrics enable baseline benchmarking; full peer comparison requires fetching peer metrics.",
+        },
+    )
 
 
 def build_fundamental_analysis(bundle: dict[str, Any]) -> dict[str, Any]:
