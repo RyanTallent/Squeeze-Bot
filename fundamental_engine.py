@@ -3,6 +3,11 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+from data_coverage_engine import build_data_coverage
+from peer_benchmarking_engine import build_peer_benchmarking
+from sector_frameworks import select_sector_framework
+from valuation_engine import build_valuation_analysis
+
 
 def _rows(bundle: dict[str, Any], key: str) -> list[dict[str, Any]]:
     endpoint = ((bundle or {}).get("endpoints") or {}).get(key) or {}
@@ -310,19 +315,30 @@ def sector_benchmarking(bundle: dict[str, Any]) -> dict[str, Any]:
     )
 
 
-def build_fundamental_analysis(bundle: dict[str, Any]) -> dict[str, Any]:
+def build_fundamental_analysis(bundle: dict[str, Any], profile: dict[str, Any] | None = None) -> dict[str, Any]:
+    sector_framework = select_sector_framework(profile=profile, fundamentals=bundle)
+    peer_benchmarking = build_peer_benchmarking(bundle, profile=profile)
+    valuation = build_valuation_analysis(bundle, profile=profile, peer_benchmarking=peer_benchmarking)
+    sections = {
+        "revenue_business": revenue_analysis(bundle),
+        "earnings_quality": earnings_quality(bundle),
+        "margin_analysis": margin_analysis(bundle),
+        "balance_sheet": balance_sheet_analysis(bundle),
+        "sector_benchmarking": sector_benchmarking(bundle),
+        "peer_benchmarking": peer_benchmarking,
+        "valuation_analysis": valuation,
+        "analyst_expectations": analyst_expectations(bundle),
+    }
+    data_coverage = build_data_coverage(bundle, profile=profile, sections=sections, sector_framework=sector_framework)
     return {
         "ok": bool(bundle.get("ok")),
         "provider": "FMP",
         "ticker": bundle.get("ticker"),
+        "provider_symbol": bundle.get("provider_symbol"),
+        "ticker_normalization": bundle.get("ticker_normalization") or {},
         "fetched_at": bundle.get("fetched_at"),
-        "sections": {
-            "revenue_business": revenue_analysis(bundle),
-            "earnings_quality": earnings_quality(bundle),
-            "margin_analysis": margin_analysis(bundle),
-            "balance_sheet": balance_sheet_analysis(bundle),
-            "sector_benchmarking": sector_benchmarking(bundle),
-            "analyst_expectations": analyst_expectations(bundle),
-        },
+        "sector_framework": sector_framework,
+        "data_coverage": data_coverage,
+        "sections": sections,
         "raw_endpoints": bundle.get("endpoints") or {},
     }

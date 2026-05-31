@@ -45,6 +45,12 @@ def _recent_journal_lesson(journal: dict[str, Any] | None) -> dict[str, Any] | N
     return None
 
 
+def _latest_research(reports: list[dict[str, Any]] | None) -> dict[str, Any] | None:
+    if not reports:
+        return None
+    return sorted(reports, key=lambda x: str(x.get("created_at_utc") or ""), reverse=True)[0]
+
+
 def _feed_item(kind: str, title: str, description: str, priority: str = "Medium") -> dict[str, Any]:
     return {
         "kind": kind,
@@ -69,6 +75,8 @@ def build_command_center(data: dict[str, Any]) -> dict[str, Any]:
     journal = data.get("journal") or {}
     memory = data.get("memory") or []
     portfolio = data.get("portfolio") or {}
+    wealth = data.get("wealth") or {}
+    research_reports = data.get("research_reports") or []
 
     highest_alert = _first(sorted(active_alerts, key=_priority_rank))
     top_discovery = _first(sorted(discoveries, key=lambda d: (d.get("priority") != "Critical", d.get("priority") != "High", -(d.get("impact_score") or 0))))
@@ -76,6 +84,7 @@ def build_command_center(data: dict[str, Any]) -> dict[str, Any]:
     latest_committee = _latest_by_created(committee_runs)
     top_risk = _top_risk_warning(risk)
     recent_lesson = _recent_journal_lesson(journal)
+    latest_research = _latest_research(research_reports)
 
     strengths = stats.get("strengths") or []
     weaknesses = stats.get("weaknesses") or []
@@ -98,6 +107,36 @@ def build_command_center(data: dict[str, Any]) -> dict[str, Any]:
         feed.append(_feed_item("learning", "Playbook weakness detected", weaknesses[0].get("description") or weaknesses[0].get("title") or "", "High"))
     if portfolio.get("risk", {}).get("warnings"):
         feed.append(_feed_item("portfolio", "Portfolio risk note", portfolio["risk"]["warnings"][0], "Medium"))
+    if portfolio.get("risk_adjusted_portfolio_score") is not None:
+        feed.append(
+            _feed_item(
+                "portfolio",
+                "Portfolio system score",
+                f"Risk-adjusted portfolio score: {portfolio.get('risk_adjusted_portfolio_score')}/100. {((portfolio.get('portfolio_recommendations') or [''])[0])}",
+                "High" if (portfolio.get("portfolio_risk_score") or 100) < 55 else "Medium",
+            )
+        )
+    if wealth.get("scores"):
+        scores = wealth.get("scores") or {}
+        feed.append(
+            _feed_item(
+                "wealth",
+                "Wealth allocation read",
+                f"Health {scores.get('health_score', 'n/a')}/100. {(wealth.get('cash_recommendations') or {}).get('best_use_of_capital', 'Review Wealth dashboard.')}",
+                "High" if (scores.get("health_score") or 100) < 50 else "Medium",
+            )
+        )
+    if latest_research:
+        report = latest_research.get("report_json") or {}
+        conviction = report.get("conviction") or {}
+        feed.append(
+            _feed_item(
+                "research",
+                f"Research conviction: {report.get('ticker') or latest_research.get('ticker')}",
+                f"{report.get('verdict') or latest_research.get('verdict')} | {conviction.get('rating', 'Conviction pending')} ({conviction.get('score', 'n/a')}/100).",
+                "High" if (conviction.get("score") or 0) >= 68 else "Medium",
+            )
+        )
 
     if highest_alert:
         rec = f"Address the highest priority alert first: {highest_alert.get('message')}"
@@ -105,8 +144,18 @@ def build_command_center(data: dict[str, Any]) -> dict[str, Any]:
     elif top_risk:
         rec = f"Focus on risk control: {top_risk.get('warning')}"
         rec_priority = "High"
+    elif portfolio.get("portfolio_risk_score") is not None and portfolio.get("portfolio_risk_score") < 55:
+        rec = f"Portfolio risk is elevated: {(portfolio.get('portfolio_recommendations') or ['Review concentration and position sizing.'])[0]}"
+        rec_priority = "High"
+    elif wealth.get("scores") and (wealth.get("scores") or {}).get("health_score", 100) < 50:
+        rec = f"Wealth health is weak: {(wealth.get('portfolio_recommendations') or ['Review allocation and missing research data.'])[0]}"
+        rec_priority = "High"
     elif latest_committee and latest_committee.get("consensus") in ("Bearish", "Strong Bearish"):
         rec = f"Committee is cautious: {latest_committee.get('final_recommendation')}"
+        rec_priority = "High"
+    elif latest_research and ((latest_research.get("report_json") or {}).get("conviction") or {}).get("score", 50) < 45:
+        report = latest_research.get("report_json") or {}
+        rec = f"Research conviction is weak for {report.get('ticker') or latest_research.get('ticker')}; review valuation, peer rank, and reasons against before adding exposure."
         rec_priority = "High"
     elif top_discovery:
         rec = f"Review top discovery: {top_discovery.get('title')}"
@@ -142,6 +191,34 @@ def build_command_center(data: dict[str, Any]) -> dict[str, Any]:
             "top_holding": portfolio.get("top_holding"),
             "sector_exposure": (portfolio.get("sector_exposure") or [])[:3],
             "risk": portfolio.get("risk"),
+            "portfolio_conviction_score": portfolio.get("portfolio_conviction_score"),
+            "portfolio_risk_score": portfolio.get("portfolio_risk_score"),
+            "risk_adjusted_portfolio_score": portfolio.get("risk_adjusted_portfolio_score"),
+            "strongest_position": portfolio.get("strongest_position"),
+            "weakest_position": portfolio.get("weakest_position"),
+            "most_overvalued_holding": portfolio.get("most_overvalued_holding"),
+            "highest_conviction_holding": portfolio.get("highest_conviction_holding"),
+            "concentration_warnings": portfolio.get("concentration_warnings") or [],
+            "diversification_warnings": portfolio.get("diversification_warnings") or [],
+            "recommendations": portfolio.get("portfolio_recommendations") or [],
+        },
+        "wealth_overview": {
+            "scores": wealth.get("scores"),
+            "cash_recommendations": wealth.get("cash_recommendations"),
+            "holding_recommendations": wealth.get("holding_recommendations") or [],
+            "portfolio_recommendations": wealth.get("portfolio_recommendations") or [],
+            "confidence": wealth.get("confidence"),
+            "missing_data": wealth.get("missing_data") or [],
+            "disclaimer": wealth.get("disclaimer"),
+        },
+        "research_overview": {
+            "latest": latest_research,
+            "latest_ticker": (latest_research.get("report_json") or {}).get("ticker") if latest_research else None,
+            "verdict": (latest_research.get("report_json") or {}).get("verdict") if latest_research else None,
+            "conviction": (latest_research.get("report_json") or {}).get("conviction") if latest_research else None,
+            "valuation": (latest_research.get("report_json") or {}).get("valuation") if latest_research else None,
+            "peer_benchmarking": (latest_research.get("report_json") or {}).get("peer_benchmarking") if latest_research else None,
+            "report_count": len(research_reports),
         },
         "learning_progress": {
             "strengths": strengths[:3],

@@ -41,11 +41,14 @@ from committee_engine import run_investment_committee
 from command_center_engine import build_command_center
 from monitor_scheduler import build_monitoring_health
 from portfolio_engine import analyze_portfolio
+from wealth_engine import build_wealth_plan
 from research_engine import build_institutional_research
 from fundamental_engine import build_fundamental_analysis
 from ai_synthesis_engine import synthesize as synthesize_ai
 from data_providers.fmp_provider import FMPProvider, fmp_status
 from data_providers.sec_provider import sec_status
+from sector_frameworks import available_sector_frameworks
+from ticker_normalization import ticker_normalization_metadata
 from services.praetor_orchestrator import PraetorDataLoaders, PraetorOrchestrator, PraetorRepositories
 from repositories.alert_repository import AlertRepository
 from repositories.briefing_repository import BriefingRepository
@@ -933,9 +936,9 @@ def fmp_provider() -> FMPProvider:
     return FMPProvider(cache_get=provider_cache_get, cache_set=provider_cache_set)
 
 
-def get_fundamental_analysis(ticker: str) -> dict[str, Any]:
+def get_fundamental_analysis(ticker: str, profile: dict[str, Any] | None = None) -> dict[str, Any]:
     bundle = fmp_provider().fundamentals_bundle(ticker)
-    return build_fundamental_analysis(bundle)
+    return build_fundamental_analysis(bundle, profile=profile)
 
 
 def praetor_orchestrator() -> PraetorOrchestrator:
@@ -947,10 +950,13 @@ def praetor_orchestrator() -> PraetorOrchestrator:
             discovery_repo=discovery_repo(),
             briefing_repo=briefing_repo(),
             committee_repo=committee_repo(),
+            research_repo=research_repo(),
         ),
         PraetorDataLoaders(
             learning=run_praetor_learning_update,
             journal=run_praetor_journal_update,
+            portfolio=get_portfolio_analysis,
+            wealth=get_wealth_analysis,
         ),
     )
 
@@ -1206,15 +1212,46 @@ def get_portfolio_analysis(user_id: str) -> dict[str, Any]:
     portfolio = portfolio_repo().get_or_create_default_portfolio(user_id)
     holdings = portfolio_repo().list_holdings(user_id, portfolio_id=portfolio["id"])
     goals = portfolio.get("goals_json") if isinstance(portfolio.get("goals_json"), dict) else {}
-    analysis = analyze_portfolio(holdings, goals=goals)
+    reports = research_repo().list_reports(user_id, limit=50)
+    analysis = analyze_portfolio(holdings, goals=goals, research_reports=reports)
     portfolio_repo().save_snapshot(user_id, portfolio["id"], analysis)
     return {"ok": True, "portfolio": portfolio, "analysis": analysis}
+
+
+def get_wealth_analysis(user_id: str, available_cash: float = 0, objective: str = "") -> dict[str, Any]:
+    portfolio_result = get_portfolio_analysis(user_id)
+    reports = research_repo().list_reports(user_id, limit=50)
+    wealth = build_wealth_plan(
+        portfolio_result.get("analysis") or {},
+        research_reports=reports,
+        available_cash=available_cash,
+        objective=objective,
+    )
+    return {"ok": True, "wealth": wealth, "portfolio": portfolio_result.get("analysis"), "research_report_count": len(reports)}
+
+
+def _research_opinion_debug(report: dict[str, Any]) -> dict[str, Any]:
+    institutional = (report or {}).get("institutional") or {}
+    opinion = institutional.get("opinion") or {}
+    return {
+        "backend_path": "api_research_report:opinion-v2",
+        "institutional_opinion_exists": bool(institutional.get("opinion")),
+        "opinion_keys": sorted(opinion.keys()),
+        "has_final_recommendation": bool(opinion.get("final_recommendation")),
+        "has_what_praetor_would_do_today": bool(opinion.get("what_praetor_would_do_today")),
+        "has_score_conflicts": isinstance(opinion.get("score_conflicts"), list),
+        "has_opportunity_ranking": isinstance(opinion.get("opportunity_ranking"), list),
+        "static_cache_check": "/__ui_version",
+    }
 
 
 def build_command_center_context(user_id: str) -> dict[str, Any]:
     orchestrator = praetor_orchestrator()
     data = orchestrator.build_context(user_id)
-    data["portfolio"] = get_portfolio_analysis(user_id)["analysis"]
+    if not data.get("portfolio"):
+        data["portfolio"] = get_portfolio_analysis(user_id)["analysis"]
+    if not data.get("wealth"):
+        data["wealth"] = get_wealth_analysis(user_id)["wealth"]
     data["research_reports"] = research_repo().list_reports(user_id, limit=10)
     return {"sources": data, "command_center": build_command_center(data)}
 
@@ -2609,10 +2646,18 @@ def api_fundamentals_status():
             "/stable/analyst-estimates",
             "/stable/stock-peers",
             "/stable/earnings",
+            "/stable/key-metrics for each peer",
+            "/stable/ratios for each peer",
         ],
         "providers": {
             "fmp": fmp,
             "sec": sec,
+        },
+        "ticker_normalization": {
+            "examples": {
+                "BRK.B": ticker_normalization_metadata("BRK.B"),
+                "BF.B": ticker_normalization_metadata("BF.B"),
+            }
         },
     }
 
@@ -2627,6 +2672,53 @@ def api_fundamentals_debug(ticker: str, request: Request):
     debug = fmp_provider().debug_bundle(ticker)
     analysis = build_fundamental_analysis(fmp_provider().fundamentals_bundle(ticker))
     return {"ok": True, "debug": debug, "analysis": analysis}
+
+
+def _research_validation_row(row: dict[str, Any]) -> dict[str, Any]:
+    report = row.get("report_json") or {}
+    coverage = report.get("data_coverage") or {}
+    peer = report.get("peer_benchmarking") or {}
+    valuation = report.get("valuation") or {}
+    conviction = report.get("conviction") or {}
+    framework = report.get("sector_framework") or {}
+    provider_status = coverage.get("provider_status") or {}
+    return {
+        "ticker": report.get("ticker") or row.get("ticker"),
+        "created_at_utc": row.get("created_at_utc"),
+        "verdict": report.get("verdict") or row.get("verdict"),
+        "peer_count": coverage.get("peer_count") if coverage.get("peer_count") is not None else len(peer.get("peer_ranking") or []),
+        "data_coverage_score": coverage.get("score"),
+        "data_coverage_rating": coverage.get("rating"),
+        "missing_data": coverage.get("missing_data") or report.get("data_gaps") or [],
+        "provider_status": provider_status,
+        "valuation_framework_used": framework.get("name") or "General Equity Framework",
+        "valuation_framework_key": framework.get("key") or "general",
+        "valuation_rating": valuation.get("rating"),
+        "valuation_score": valuation.get("score"),
+        "confidence_level": conviction.get("confidence"),
+        "conviction_score": conviction.get("score"),
+        "conviction_rating": conviction.get("rating"),
+    }
+
+
+@app.get("/api/research/validation-dashboard")
+def api_research_validation_dashboard(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    if (auth_user.get("plan_code") or "") != "founder":
+        return JSONResponse({"ok": False, "error": "Founder access required"}, status_code=403)
+    reports = research_repo().list_reports(auth_user["id"], limit=50)
+    rows = [_research_validation_row(row) for row in reports]
+    return {
+        "ok": True,
+        "rows": rows,
+        "frameworks": available_sector_frameworks(),
+        "normalization_examples": {
+            "BRK.B": ticker_normalization_metadata("BRK.B"),
+            "BF.B": ticker_normalization_metadata("BF.B"),
+        },
+    }
 
 
 @app.post("/clear_log")
@@ -2962,10 +3054,11 @@ def _research_range_days(range_name: str) -> int:
 
 
 def _research_daily_aggs(ticker: str, range_name: str = "1y") -> list[dict[str, Any]]:
+    provider_ticker = ticker_normalization_metadata(ticker)["providers"]["polygon"]
     end_dt = datetime.now(timezone.utc).date()
     start_dt = end_dt - timedelta(days=_research_range_days(range_name))
     url = (
-        f"https://api.polygon.io/v2/aggs/ticker/{ticker.upper().strip()}"
+        f"https://api.polygon.io/v2/aggs/ticker/{provider_ticker}"
         f"/range/1/day/{start_dt.isoformat()}/{end_dt.isoformat()}"
     )
     data = scanner.polygon_get(url, {"adjusted": "true", "sort": "asc", "limit": 50000})
@@ -3108,6 +3201,7 @@ def build_research_profile(ticker: str, range_name: str = "1y") -> dict[str, Any
     return {
         "ok": True,
         "ticker": ticker,
+        "ticker_normalization": ticker_normalization_metadata(ticker),
         "range": range_name,
         "chart": chart,
         "metrics": metrics,
@@ -3115,7 +3209,13 @@ def build_research_profile(ticker: str, range_name: str = "1y") -> dict[str, Any
     }
 
 
-def generate_research_report(profile: dict[str, Any], report_type: str, objective: str = "", fundamentals: dict[str, Any] | None = None) -> dict[str, Any]:
+def generate_research_report(
+    profile: dict[str, Any],
+    report_type: str,
+    objective: str = "",
+    fundamentals: dict[str, Any] | None = None,
+    opportunity_context: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     m = profile["metrics"]
     ticker = profile["ticker"]
     report_type = (report_type or "full").lower()
@@ -3195,7 +3295,16 @@ def generate_research_report(profile: dict[str, Any], report_type: str, objectiv
     ]
 
     base = {"type": report_type, "sections": sections, "plain_english": plain_english}
-    return {**base, "institutional": build_institutional_research(profile, base, objective, fundamentals=fundamentals)}
+    return {
+        **base,
+        "institutional": build_institutional_research(
+            profile,
+            base,
+            objective,
+            fundamentals=fundamentals,
+            opportunity_context=opportunity_context,
+        ),
+    }
 
 
 def build_portfolio_plan(payload: dict[str, Any]) -> dict[str, Any]:
@@ -3292,10 +3401,14 @@ async def api_research_report(request: Request):
     objective = payload.get("objective") or ""
     try:
         profile = build_research_profile(ticker, range_name)
-        fundamentals = get_fundamental_analysis(ticker)
-        report = generate_research_report(profile, report_type, objective, fundamentals=fundamentals)
+        fundamentals = get_fundamental_analysis(ticker, profile=profile)
+        opportunity_context = [r.get("report_json") or {} for r in research_repo().list_reports(auth_user["id"], limit=12)]
+        report = generate_research_report(profile, report_type, objective, fundamentals=fundamentals, opportunity_context=opportunity_context)
         research_repo().save_report(auth_user["id"], report.get("institutional") or {}, profile=profile)
-        return {"ok": True, "report": report}
+        response = {"ok": True, "report": report}
+        if (auth_user.get("plan_code") or "") == "founder":
+            response["research_debug"] = _research_opinion_debug(report)
+        return response
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=500)
 
@@ -3312,8 +3425,9 @@ async def api_praetor_ai_research(request: Request):
     objective = payload.get("objective") or ""
     try:
         profile = build_research_profile(ticker, range_name)
-        fundamentals = get_fundamental_analysis(ticker)
-        deterministic_report = generate_research_report(profile, report_type, objective, fundamentals=fundamentals)
+        fundamentals = get_fundamental_analysis(ticker, profile=profile)
+        opportunity_context = [r.get("report_json") or {} for r in research_repo().list_reports(auth_user["id"], limit=12)]
+        deterministic_report = generate_research_report(profile, report_type, objective, fundamentals=fundamentals, opportunity_context=opportunity_context)
         institutional = deterministic_report.get("institutional") or {}
         ai = synthesize_ai(
             "research",
@@ -3328,13 +3442,16 @@ async def api_praetor_ai_research(request: Request):
             },
         )
         research_repo().save_report(auth_user["id"], institutional, profile=profile, ai=ai)
-        return {
+        response = {
             "ok": True,
             "profile": profile,
             "deterministic_report": deterministic_report,
             "institutional_report": institutional,
             "ai": ai,
         }
+        if (auth_user.get("plan_code") or "") == "founder":
+            response["research_debug"] = _research_opinion_debug(deterministic_report)
+        return response
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=500)
 
@@ -3360,6 +3477,29 @@ def api_get_portfolio(request: Request):
         return get_portfolio_analysis(auth_user["id"])
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=500)
+
+
+@app.get("/api/wealth")
+def api_get_wealth(request: Request, available_cash: float = 0, objective: str = ""):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    try:
+        return get_wealth_analysis(auth_user["id"], available_cash=available_cash, objective=objective)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=500)
+
+
+@app.post("/api/wealth/allocate")
+async def api_wealth_allocate(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    payload = await request.json()
+    try:
+        return get_wealth_analysis(auth_user["id"], available_cash=float(payload.get("available_cash") or 0), objective=payload.get("objective") or "")
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=400)
 
 
 @app.post("/api/portfolio/holdings")
@@ -3544,6 +3684,10 @@ async def api_praetor_ask(request: Request):
     context.extra["client_context"] = payload.get("client_context") or {}
     if page == "command_center":
         context.extra["command_center"] = build_command_center_context(auth_user["id"])["command_center"]
+    if page == "portfolio":
+        context.extra["portfolio"] = get_portfolio_analysis(auth_user["id"])["analysis"]
+    if page == "wealth":
+        context.extra["wealth"] = get_wealth_analysis(auth_user["id"])["wealth"]
     service = PraetorService()
     result = service.ask(question or "Help me understand this page.", context)
     return response_to_dict(result)

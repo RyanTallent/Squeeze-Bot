@@ -259,6 +259,8 @@
           <button type="button" data-page="Dashboard" class="active">Dashboard</button>
           <button type="button" data-page="Scanner">Scanner</button>
           <button type="button" data-page="Research">Research</button>
+          <button type="button" data-page="Wealth">Wealth</button>
+          <button type="button" data-page="ResearchValidation" class="founderOnly hidden">Research QA</button>
           <button type="button" data-page="Journal">Journal</button>
           <button type="button" data-page="Pricing">Pricing</button>
         </nav>
@@ -379,12 +381,14 @@
         <button class="sideBtn" data-page="Signals">Signals</button>
         <button class="sideBtn" data-page="Research">Research</button>
         <button class="sideBtn" data-page="Portfolio">Portfolio</button>
+        <button class="sideBtn" data-page="Wealth">Wealth</button>
         <button class="sideBtn" data-page="Playbook">Playbook</button>
         <button class="sideBtn" data-page="Alerts">Alerts</button>
         <button class="sideBtn" data-page="Briefings">Briefings</button>
         <button class="sideBtn" data-page="Committee">Committee</button>
         <button class="sideBtn" data-page="Journal">Journal</button>
         <button class="sideBtn" data-page="Risk">Risk</button>
+        <button class="sideBtn founderOnly hidden" data-page="ResearchValidation">Research QA</button>
         <button class="sideBtn" data-page="Pricing">Pricing</button>
       </aside>
 
@@ -651,16 +655,52 @@
             <div class="usageBox"><b id="portfolioPnl">-</b><span>Unrealized P/L</span></div>
             <div class="usageBox"><b id="portfolioRisk">-</b><span>Risk</span></div>
             <div class="usageBox"><b id="portfolioConfidence">-</b><span>Confidence</span></div>
+            <div class="usageBox"><b id="portfolioConviction">-</b><span>Portfolio Conviction</span></div>
+            <div class="usageBox"><b id="portfolioRiskAdjusted">-</b><span>Risk-Adjusted Score</span></div>
           </div>
           <div class="researchGrid">
             <div class="card"><h3>Exposure Summary</h3><div id="portfolioExposure" class="fineprint">No exposure data yet.</div></div>
             <div class="card"><h3>Risk Summary</h3><div id="portfolioRiskSummary" class="fineprint">No risk data yet.</div></div>
             <div class="card"><h3>Praetor Portfolio Notes</h3><div id="portfolioNotes" class="fineprint">No notes yet.</div></div>
-            <div class="card"><h3>Allocation Chart Placeholder</h3><div id="portfolioChartPlaceholder" class="fineprint">Chart hooks ready: sector exposure, allocation, concentration, correlation later.</div></div>
+            <div class="card"><h3>Strongest / Weakest Positions</h3><div id="portfolioPositionSummary" class="fineprint">No position summary yet.</div></div>
+            <div class="card"><h3>Correlation Analysis</h3><div id="portfolioCorrelation" class="fineprint">No correlation data yet.</div></div>
+            <div class="card"><h3>Stress Testing</h3><div id="portfolioStress" class="fineprint">No stress tests yet.</div></div>
+            <div class="card"><h3>Buy/Sell Impact</h3><div id="portfolioImpact" class="fineprint">No impact analysis yet.</div></div>
+            <div class="card"><h3>Recommendations</h3><div id="portfolioRecommendations" class="fineprint">No recommendations yet.</div></div>
           </div>
           <div class="card">
             <div class="eyebrow">Holdings</div>
             <div class="tableWrap"><table><thead><tr><th>Ticker</th><th>Shares</th><th>Avg Cost</th><th>Price</th><th>Value</th><th>Alloc</th><th>Unrealized P/L</th><th>Sector</th><th>Industry</th></tr></thead><tbody id="portfolioHoldingsBody"></tbody></table></div>
+          </div>
+        </div>
+
+        <div class="page" id="pageWealth">
+          <div class="card">
+            <div class="eyebrow">Wealth AI v1</div>
+            <h2>Capital allocation and portfolio construction.</h2>
+            <p>Praetor uses Research, Conviction, Valuation, Data Coverage, and Portfolio Intelligence V2 as source of truth. No guarantees are provided.</p>
+            <div class="portfolioForm">
+              <div class="field"><label>Available cash ($)</label><input id="wealthCash" type="number" min="0" step="1" placeholder="5000" /></div>
+              <div class="field"><label>Objective</label><input id="wealthObjective" placeholder="What should I do with $5,000?" /></div>
+              <div class="field"><label>&nbsp;</label><button class="btn primary" id="wealthRunBtn" type="button">Run Wealth AI</button></div>
+            </div>
+            <div id="wealthDisclaimer" class="fineprint">Enter available cash to generate deployment recommendations.</div>
+          </div>
+          <div class="usageGrid" style="margin-top:14px">
+            <div class="usageBox"><b id="wealthHealth">-</b><span>Health Score</span></div>
+            <div class="usageBox"><b id="wealthDiversification">-</b><span>Diversification</span></div>
+            <div class="usageBox"><b id="wealthConviction">-</b><span>Conviction</span></div>
+            <div class="usageBox"><b id="wealthConcentration">-</b><span>Concentration</span></div>
+          </div>
+          <div class="researchGrid">
+            <div class="card"><h3>Best Use of Cash</h3><div id="wealthCashUse" class="fineprint">No cash analysis yet.</div></div>
+            <div class="card"><h3>Highest Conviction Opportunities</h3><div id="wealthOpportunities" class="fineprint">No opportunities yet.</div></div>
+            <div class="card"><h3>Portfolio Recommendations</h3><div id="wealthPortfolioRecs" class="fineprint">No recommendations yet.</div></div>
+            <div class="card"><h3>Missing Data</h3><div id="wealthMissing" class="fineprint">No missing data yet.</div></div>
+          </div>
+          <div class="card">
+            <div class="eyebrow">Holding recommendations</div>
+            <div class="tableWrap"><table><thead><tr><th>Ticker</th><th>Action</th><th>Score</th><th>Confidence</th><th>Reasoning</th><th>Evidence</th><th>Missing</th></tr></thead><tbody id="wealthHoldingsBody"></tbody></table></div>
           </div>
         </div>
 
@@ -969,6 +1009,28 @@
             <p class="fineprint">Stripe checkout will plug into these plan records in the next payment build.</p>
           </div>
         </div>
+
+        <div class="page" id="pageResearchValidation">
+          <div class="card">
+            <div class="eyebrow">Founder-only Research Quality</div>
+            <h2>Research Validation Dashboard.</h2>
+            <p>Audit saved Research reports for peer count, data coverage, provider health, valuation framework routing, and confidence quality.</p>
+            <div class="toolbar"><button class="btn primary" id="refreshResearchValidationBtn" type="button">Refresh validation</button></div>
+            <div id="researchValidationMeta" class="fineprint">Founder access required.</div>
+          </div>
+          <div class="card">
+            <div class="tableWrap">
+              <table>
+                <thead><tr><th>Ticker</th><th>Peer Count</th><th>Coverage</th><th>Provider</th><th>Valuation Framework</th><th>Valuation</th><th>Confidence</th><th>Conviction</th><th>Missing Data</th></tr></thead>
+                <tbody id="researchValidationBody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card">
+            <h3>Ticker normalization examples</h3>
+            <div id="researchValidationNormalization" class="fineprint">Loading...</div>
+          </div>
+        </div>
       </section>
     </div>
   </main>
@@ -1046,6 +1108,7 @@
   </aside>
 
 <script>
+  const APP_BUILD_VERSION = "research-opinion-v2-debug-2026-05-31";
   const $ = (id) => document.getElementById(id);
   const state = {
     user:null,
@@ -1060,6 +1123,7 @@
     scanned:null,
     results:{ SQUEEZE:[], MOMENTUM:[] },
     researchProfile:null,
+    lastResearchDebug:null,
     resultLimit:5,
     copilotHistory:[],
     commandSnapshot:null
@@ -1342,8 +1406,10 @@
     if(name === "Briefings") loadBriefings();
     if(name === "Committee") loadCommittee();
     if(name === "Portfolio") loadPortfolio();
+    if(name === "Wealth") loadWealth();
     if(name === "Dashboard") loadCommandCenter();
     if(name === "Risk") loadRiskAI();
+    if(name === "ResearchValidation") loadResearchValidation();
     if(name === "Pricing") paintPricing("appPricing");
     updateCopilotContext();
   }
@@ -1359,12 +1425,14 @@
     Research:["Build a hedge-fund thesis.","Explain the bull/base/bear case.","What are the key risks?","Simplify this research."],
     Journal:["Review my recent trades.","What mistakes am I repeating?","What should I improve next?"],
     Portfolio:["Where am I concentrated?","What is my biggest risk?","Does this portfolio fit my goals?","What position is oversized?","What should I review first?"],
+    Wealth:["I have $5,000. What should I do with it?","What should I buy, hold, reduce, or avoid?","Where should cash go first?","How healthy is my portfolio?"],
     Playbook:["What are my strengths?","What are my weakest setups?","What hypotheses are forming?"],
     Alerts:["Which alert matters most?","Why did this alert fire?","What should I check before acting?"],
     Briefings:["Summarize today.","What changed since the last briefing?","What should I prepare for next?"],
     Committee:["Where does the committee disagree?","What is the strongest bear case?","What is the strongest bull case?"],
     Risk:["Analyze my current risk.","Where am I concentrated?","What risk limit matters most?"],
     Signals:["What signals need review?","Which signal quality is strongest?"],
+    ResearchValidation:["Which reports have weak coverage?","Which peer sets look suspicious?","Where is confidence overstated?"],
     Pricing:["Which plan fits my usage?"]
   };
 
@@ -1374,12 +1442,14 @@
     Research:["Generate Thesis","Run Committee","Simplify"],
     Journal:["Review Trade","Find Mistakes","Update Playbook"],
     Portfolio:["Analyze Exposure","Check Allocation","Stress Test"],
+    Wealth:["Run Wealth AI","Open Portfolio","Run Committee"],
     Playbook:["Refresh Playbook","Show Risk Breakdown","Run Committee"],
     Alerts:["Run Monitor Check","Dismiss Resolved","Open Playbook"],
     Briefings:["Generate Morning Briefing","Generate Weekly Briefing","Run Committee"],
     Committee:["Run Committee","Show Risk Breakdown","Open Briefings"],
     Risk:["Show Risk Breakdown","Open Playbook","Open Alerts"],
     Signals:["Open Scanner","Ask About Signals"],
+    ResearchValidation:["Refresh Validation","Open Research","Run Committee"],
     Pricing:["Open Plans"]
   };
 
@@ -1550,6 +1620,20 @@
       body:JSON.stringify({ticker, range, report_type:reportType, objective})
     }).catch(()=>null);
     const report = reportResp ? await safeJson(reportResp) : {ok:false,error:"Could not generate report."};
+    state.lastResearchDebug = report.research_debug || null;
+    if(state.user?.plan_code === "founder"){
+      const inst = report.report?.institutional || {};
+      console.log("[Research QA Debug] response", {
+        build: APP_BUILD_VERSION,
+        ok: report.ok,
+        ticker,
+        institutional_opinion_exists: !!inst.opinion,
+        opinion_keys: Object.keys(inst.opinion || {}),
+        backend_debug: report.research_debug || null,
+        sections_keys: Object.keys(inst.sections || {}),
+        ui_version_endpoint: "/__ui_version"
+      });
+    }
     renderResearchReport(report.ok ? report.report : null, report.error);
     loadResearchAI();
   }
@@ -1574,6 +1658,19 @@
       return;
     }
     renderResearch(data.profile);
+    state.lastResearchDebug = data.research_debug || null;
+    if(state.user?.plan_code === "founder"){
+      const inst = data.deterministic_report?.institutional || {};
+      console.log("[Research QA Debug] AI deterministic response", {
+        build: APP_BUILD_VERSION,
+        ticker,
+        institutional_opinion_exists: !!inst.opinion,
+        opinion_keys: Object.keys(inst.opinion || {}),
+        backend_debug: data.research_debug || null,
+        sections_keys: Object.keys(inst.sections || {}),
+        render_path_expected: "renderResearchReport:opinion-v2"
+      });
+    }
     renderResearchReport(data.deterministic_report, null);
     $("researchAiReport").innerHTML = `
       <div class="reportSection">
@@ -1647,6 +1744,26 @@
     const sections = inst.sections || {};
     const frameworks = inst.frameworks || {};
     const scores = inst.scores || {};
+    const conviction = inst.conviction || {};
+    const coverage = inst.data_coverage || {};
+    const sectorFramework = inst.sector_framework || {};
+    const opinion = inst.opinion || {};
+    const opinionExists = !!inst.opinion;
+    const opinionKeys = Object.keys(opinion);
+    const renderPath = "renderResearchReport:opinion-v2";
+    if(state.user?.plan_code === "founder"){
+      console.log("[Research QA Debug] render path reached", {
+        build: APP_BUILD_VERSION,
+        render_path: renderPath,
+        institutional_opinion_exists: opinionExists,
+        opinion_keys: opinionKeys,
+        has_final_recommendation: !!opinion.final_recommendation,
+        has_today_action: !!opinion.what_praetor_would_do_today,
+        has_score_conflicts: Array.isArray(opinion.score_conflicts),
+        has_opportunity_ranking: Array.isArray(opinion.opportunity_ranking),
+        static_cache_check: "/__ui_version"
+      });
+    }
     const scoreCards = Object.values(scores).map(s => metricCard(s.name || "Score", `${s.score ?? "-"} ${s.label ? "(" + s.label + ")" : ""}`)).join("");
     const scenarios = (inst.scenarios || []).map(s => `
       <div class="reportSection"><h3>${s.name} <span class="scoreBadge">${fmtPct(s.probability)}</span></h3>
@@ -1663,15 +1780,83 @@
       ${f.provider_error ? `<p class="fineprint bad">Provider note: ${escHtml(f.provider_error)}</p>` : ""}
       </details>
     `).join("");
+    const opinionList = arr => `<ul>${(arr || []).map(x => `<li>${escHtml(x)}</li>`).join("") || "<li>Not enough evidence yet.</li>"}</ul>`;
+    const conflictCards = (opinion.score_conflicts || []).map(c => `
+      <div class="reportSection"><h4>${escHtml(c.title || "Score conflict")}</h4>
+        <p>${escHtml(c.explanation || "")}</p>
+        <p class="fineprint">${Object.entries(c.scores || {}).map(([k,v]) => `${escHtml(k)}: ${escHtml(String(v))}`).join(" | ")}</p>
+      </div>
+    `).join("") || `<p>No major score conflicts detected.</p>`;
+    const rankingRows = (opinion.opportunity_ranking || []).map(r => `
+      <tr><td>${r.rank}</td><td><b>${escHtml(r.ticker || "")}</b></td><td>${r.rank_score ?? "-"}</td><td>${escHtml(r.stance || "")}</td><td>${r.conviction_score ?? "-"}</td><td>${escHtml(r.valuation_rating || "n/a")} (${r.valuation_score ?? "-"})</td><td>${r.data_coverage_score ?? "-"}</td><td>${escHtml(r.explanation || "")}</td></tr>
+    `).join("");
+    const founderDebug = state.user?.plan_code === "founder" ? `
+      <details class="explainer" open>
+        <summary>Founder Research QA Debug</summary>
+        <p><b>Frontend build:</b> ${escHtml(APP_BUILD_VERSION)}</p>
+        <p><b>Render path reached:</b> ${escHtml(renderPath)}</p>
+        <p><b>Backend debug path:</b> ${escHtml(state.lastResearchDebug?.backend_path || "not returned")}</p>
+        <p><b>institutional.opinion exists:</b> ${opinionExists ? "true" : "false"}</p>
+        <p><b>Opinion keys returned:</b> ${opinionKeys.map(escHtml).join(", ") || "none"}</p>
+        <p><b>Backend opinion exists:</b> ${state.lastResearchDebug?.institutional_opinion_exists === true ? "true" : state.lastResearchDebug ? "false" : "not returned"}</p>
+        <p><b>Backend opinion keys:</b> ${(state.lastResearchDebug?.opinion_keys || []).map(escHtml).join(", ") || "none/not returned"}</p>
+        <p><b>Required v2 fields:</b>
+          final_recommendation=${opinion.final_recommendation ? "true" : "false"};
+          what_praetor_would_do_today=${opinion.what_praetor_would_do_today ? "true" : "false"};
+          score_conflicts=${Array.isArray(opinion.score_conflicts) ? "true" : "false"};
+          opportunity_ranking=${Array.isArray(opinion.opportunity_ranking) ? "true" : "false"}
+        </p>
+        <p class="fineprint">Cache check: open <code>/__ui_version</code> and hard refresh if this build/version is not visible.</p>
+      </details>
+    ` : "";
     $("researchReport").innerHTML = `
-      <div class="reportSection"><h3>Executive View <span class="scoreBadge">${escHtml(inst.verdict || "Needs Confirmation")}</span></h3><p>${escHtml(sections.executive_view?.body || "No executive view available.")}</p></div>
+      ${founderDebug}
+      <div class="reportSection"><h3>Praetor Final Recommendation <span class="scoreBadge">${escHtml(opinion.final_recommendation?.label || opinion.final_stance || inst.verdict || "Needs Confirmation")}</span></h3><p>${escHtml(opinion.final_recommendation?.body || opinion.final_stance_body || sections.executive_view?.body || "No executive view available.")}</p></div>
       <div class="metricGrid">${scoreCards}</div>
+      <div class="researchGrid">
+        <div class="reportSection"><h3>Buy / Hold / Avoid View</h3><p>${escHtml(opinion.buy_hold_avoid_view || "n/a")}</p></div>
+        <div class="reportSection"><h3>What Would Praetor Do Today?</h3><p>${escHtml(opinion.what_praetor_would_do_today || "n/a")}</p></div>
+        <div class="reportSection"><h3>Long-Term Investment View</h3><p><b>${escHtml(opinion.long_term_investment_view?.label || "n/a")}</b>: ${escHtml(opinion.long_term_investment_view?.body || "")}</p></div>
+        <div class="reportSection"><h3>Trade View</h3><p><b>${escHtml(opinion.trade_view?.label || "n/a")}</b>: ${escHtml(opinion.trade_view?.body || "")}</p></div>
+        <div class="reportSection"><h3>Confidence Level</h3><p>${fmtPct(opinion.confidence_level)} | Conviction ${opinion.conviction?.score ?? conviction.score ?? "-"} / 100</p></div>
+      </div>
+      <div class="researchGrid">
+        <div class="reportSection"><h3>Highest Conviction Bull Argument</h3><p>${escHtml(opinion.highest_conviction_bull_argument || "No bull argument established.")}</p></div>
+        <div class="reportSection"><h3>Highest Conviction Bear Argument</h3><p>${escHtml(opinion.highest_conviction_bear_argument || "No bear argument established.")}</p></div>
+        <div class="reportSection"><h3>Key Risks</h3>${opinionList(opinion.key_risks)}</div>
+        <div class="reportSection"><h3>Key Opportunities</h3>${opinionList(opinion.key_opportunities)}</div>
+      </div>
+      <div class="researchGrid">
+        <div class="reportSection"><h3>What Would Change My Mind</h3>${opinionList(opinion.what_would_change_my_mind)}</div>
+        <div class="reportSection"><h3>What Matters Most</h3>${opinionList(opinion.what_matters_most)}</div>
+        <div class="reportSection"><h3>What Is Noise</h3>${opinionList(opinion.what_is_noise)}</div>
+        <div class="reportSection"><h3>What Investors May Be Overlooking</h3>${opinionList(opinion.what_investors_may_be_overlooking)}</div>
+      </div>
+      <div class="reportSection"><h3>Resolve Score Conflicts</h3>${conflictCards}</div>
+      <div class="reportSection"><h3>Opportunity Ranking</h3>
+        <div class="tableWrap"><table><thead><tr><th>Rank</th><th>Ticker</th><th>Rank Score</th><th>Stance</th><th>Conviction</th><th>Valuation</th><th>Coverage</th><th>Why</th></tr></thead><tbody>${rankingRows || `<tr><td colspan="8">Generate more Research reports to compare opportunities.</td></tr>`}</tbody></table></div>
+      </div>
       <div class="reportSection"><h3>Institutional View</h3><p>${escHtml(sections.institutional_view?.body || "")}</p></div>
+      <div class="researchGrid">
+        <div class="reportSection"><h3>Data Coverage <span class="scoreBadge">${escHtml(coverage.rating || "n/a")}</span></h3>
+          <p><b>Score:</b> ${coverage.score ?? "-"} / 100</p>
+          <p><b>Missing:</b> ${(coverage.missing_data || []).map(escHtml).join(", ") || "No major missing data detected."}</p>
+        </div>
+        <div class="reportSection"><h3>Valuation Framework</h3>
+          <p><b>${escHtml(sectorFramework.name || "General Equity Framework")}</b></p>
+          <p>${escHtml((sectorFramework.notes || [])[0] || "General routing active.")}</p>
+        </div>
+      </div>
       <div class="researchGrid">
         <div class="reportSection"><h3>Bull Case</h3><p>${escHtml(sections.bull_case?.body || "")}</p></div>
         <div class="reportSection"><h3>Bear Case</h3><p>${escHtml(sections.bear_case?.body || "")}</p></div>
         <div class="reportSection"><h3>Risks</h3><p>${escHtml(sections.risks?.body || "")}</p></div>
         <div class="reportSection"><h3>Portfolio Fit</h3><p>${escHtml(sections.portfolio_fit?.body || "")}</p></div>
+      </div>
+      <div class="reportSection"><h3>Conviction Engine <span class="scoreBadge">${escHtml(conviction.rating || "Pending")}</span></h3>
+        <p><b>Score:</b> ${conviction.score ?? "-"} / 100</p>
+        <p><b>Reasons For:</b> ${(conviction.reasons_for || []).map(escHtml).join("; ") || "No positive drivers available."}</p>
+        <p><b>Reasons Against:</b> ${(conviction.reasons_against || []).map(escHtml).join("; ") || "No major objections available."}</p>
       </div>
       <div class="reportSection"><h3>Scenario Analysis</h3>${scenarios}</div>
       <div class="reportSection"><h3>Research Frameworks</h3>${frameworkCards}</div>
@@ -1681,6 +1866,38 @@
       <div class="reportSection"><h3>What Praetor Would Do</h3><p>${escHtml(sections.what_praetor_would_do?.body || "")}</p></div>
       <details class="explainer" open><summary>Plain-English explanation</summary><ul>${(report.plain_english || []).map(x => `<li>${x}</li>`).join("")}</ul></details>
     `;
+  }
+
+  async function loadResearchValidation(){
+    if(!state.user) return;
+    const resp = await fetch("/api/research/validation-dashboard").catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false,error:"Research validation unavailable."};
+    if(!data.ok){
+      $("researchValidationMeta").textContent = data.error || "Research validation unavailable.";
+      $("researchValidationBody").innerHTML = "";
+      return;
+    }
+    $("researchValidationMeta").textContent = `${(data.rows || []).length} saved report(s) audited.`;
+    $("researchValidationBody").innerHTML = (data.rows || []).map(row => {
+      const provider = row.provider_status || {};
+      const badProviders = Object.entries(provider).filter(([_, v]) => !v.ok).map(([k]) => k);
+      const providerText = badProviders.length ? `Issues: ${badProviders.join(", ")}` : "OK";
+      return `
+        <tr>
+          <td><b>${escHtml(row.ticker || "")}</b><br><span class="muted">${escHtml(row.verdict || "")}</span></td>
+          <td>${row.peer_count ?? "-"}</td>
+          <td>${row.data_coverage_score ?? "-"} / 100<br><span class="muted">${escHtml(row.data_coverage_rating || "n/a")}</span></td>
+          <td>${escHtml(providerText)}</td>
+          <td>${escHtml(row.valuation_framework_used || "n/a")}<br><span class="muted">${escHtml(row.valuation_framework_key || "")}</span></td>
+          <td>${escHtml(row.valuation_rating || "n/a")} (${row.valuation_score ?? "-"})</td>
+          <td>${fmtPct(row.confidence_level)}</td>
+          <td>${row.conviction_score ?? "-"}<br><span class="muted">${escHtml(row.conviction_rating || "")}</span></td>
+          <td>${(row.missing_data || []).map(escHtml).join(", ") || "None flagged"}</td>
+        </tr>
+      `;
+    }).join("") || `<tr><td colspan="9">No saved Research reports yet. Generate reports first.</td></tr>`;
+    const examples = data.normalization_examples || {};
+    $("researchValidationNormalization").innerHTML = Object.entries(examples).map(([ticker, meta]) => `<p><b>${escHtml(ticker)}</b>: FMP ${escHtml(meta.providers?.fmp || "")}, Polygon ${escHtml(meta.providers?.polygon || "")}</p>`).join("");
   }
 
   function drawResearchChart(){
@@ -1790,6 +2007,8 @@
     setText("portfolioPnl", fmtMoney(analysis.total_unrealized_pnl));
     setText("portfolioRisk", analysis.risk?.label || "-");
     setText("portfolioConfidence", fmtPct(analysis.risk?.confidence));
+    setText("portfolioConviction", analysis.portfolio_conviction_score != null ? `${Math.round(analysis.portfolio_conviction_score)}/100` : "-");
+    setText("portfolioRiskAdjusted", analysis.risk_adjusted_portfolio_score != null ? `${analysis.risk_adjusted_portfolio_score}/100` : "-");
     $("portfolioHoldingsBody").innerHTML = (analysis.holdings || []).map(h => `
       <tr>
         <td><b>${escHtml(h.ticker)}</b></td>
@@ -1806,6 +2025,61 @@
     $("portfolioExposure").innerHTML = `<h4>Sector</h4>${simpleList((analysis.sector_exposure || []).map(x => ({title:x.name, description:`${fmtPct(x.allocation_pct)} / ${fmtDollar(x.market_value)}`})), "No sector exposure.")}<h4>Industry</h4>${simpleList((analysis.industry_exposure || []).map(x => ({title:x.name, description:`${fmtPct(x.allocation_pct)} / ${fmtDollar(x.market_value)}`})), "No industry exposure.")}`;
     $("portfolioRiskSummary").innerHTML = simpleList((analysis.risk?.warnings || []).map(x => ({title:analysis.risk?.label || "Risk", description:x})), "No portfolio risk warnings.");
     $("portfolioNotes").innerHTML = simpleList((analysis.portfolio_fit?.opportunities || []).map(x => ({title:"Praetor note", description:x})), "No portfolio notes.");
+    const strongest = analysis.strongest_position || {};
+    const weakest = analysis.weakest_position || {};
+    const overvalued = analysis.most_overvalued_holding || {};
+    const highConv = analysis.highest_conviction_holding || {};
+    $("portfolioPositionSummary").innerHTML = simpleList([
+      strongest.ticker ? {title:`Strongest: ${strongest.ticker}`, description:`Position strength ${fmtNum(strongest.position_strength_score,0)}/100`} : null,
+      weakest.ticker ? {title:`Weakest: ${weakest.ticker}`, description:`Position strength ${fmtNum(weakest.position_strength_score,0)}/100`} : null,
+      overvalued.ticker ? {title:`Most overvalued: ${overvalued.ticker}`, description:`${overvalued.research?.valuation_rating || "n/a"}`} : null,
+      highConv.ticker ? {title:`Highest conviction: ${highConv.ticker}`, description:`${highConv.research?.conviction_score ?? "n/a"}/100`} : null,
+    ].filter(Boolean), "No position intelligence yet.");
+    $("portfolioCorrelation").innerHTML = `<p>${escHtml(analysis.correlation_analysis?.summary || "Correlation analysis unavailable.")}</p>${simpleList((analysis.correlation_analysis?.high_correlation_pairs || []).map(p => ({title:p.pair?.join(" / "), description:`Correlation ${fmtNum(p.correlation,2)} | combined allocation ${fmtPct(p.combined_allocation_pct)}`})), "No high-correlation pairs flagged.")}`;
+    $("portfolioStress").innerHTML = simpleList((analysis.portfolio_stress_testing?.scenarios || []).map(s => ({title:s.name, description:`Estimated impact ${fmtPct(s.estimated_impact_pct)}. ${(s.notes || []).join(" ")}`})), "No stress testing available.");
+    $("portfolioImpact").innerHTML = `<h4>Add candidates</h4>${simpleList((analysis.buy_sell_impact_analysis?.best_add_candidates || []).map(x => ({title:x.ticker, description:`Buy impact ${x.buy_impact}/100 - ${x.interpretation}`})), "No add candidates.")}<h4>Trim/review candidates</h4>${simpleList((analysis.buy_sell_impact_analysis?.best_trim_candidates || []).map(x => ({title:x.ticker, description:`Trim impact ${x.trim_impact}/100 - ${x.interpretation}`})), "No trim candidates.")}`;
+    $("portfolioRecommendations").innerHTML = simpleList((analysis.portfolio_recommendations || []).map(x => ({title:"Recommendation", description:x})), "No recommendations yet.");
+  }
+
+  async function loadWealth(){
+    if(!state.user) return;
+    const cash = $("wealthCash")?.value || "0";
+    const objective = $("wealthObjective")?.value || "";
+    const resp = await fetch(`/api/wealth?available_cash=${encodeURIComponent(cash)}&objective=${encodeURIComponent(objective)}`).catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false,error:"Wealth AI unavailable."};
+    if(!data.ok){
+      $("wealthDisclaimer").textContent = data.error || "Wealth AI unavailable.";
+      return;
+    }
+    renderWealth(data.wealth || {});
+  }
+
+  function renderWealth(wealth){
+    const scores = wealth.scores || {};
+    const cash = wealth.cash_recommendations || {};
+    $("wealthDisclaimer").textContent = wealth.disclaimer || "No guarantees. Review all evidence before acting.";
+    setText("wealthHealth", scores.health_score != null ? `${scores.health_score}/100` : "-");
+    setText("wealthDiversification", scores.diversification_score != null ? `${scores.diversification_score}/100` : "-");
+    setText("wealthConviction", scores.conviction_score != null ? `${scores.conviction_score}/100` : "-");
+    setText("wealthConcentration", scores.concentration_score != null ? `${scores.concentration_score}/100` : "-");
+    $("wealthCashUse").innerHTML = `
+      <p><b>Best use:</b> ${escHtml(cash.best_use_of_capital || "Enter cash amount to generate deployment guidance.")}</p>
+      ${simpleList((cash.cash_deployment_notes || []).map(x => ({title:"Note", description:x})), "")}
+    `;
+    $("wealthOpportunities").innerHTML = simpleList((cash.highest_conviction_opportunities || []).map(x => ({title:`${x.ticker}: ${x.recommendation}`, description:`Score ${x.score}/100 | confidence ${fmtPct(x.confidence)} | ${x.supporting_evidence?.join(" ") || ""}`})), "No opportunities available.");
+    $("wealthPortfolioRecs").innerHTML = simpleList((wealth.portfolio_recommendations || []).map(x => ({title:"Recommendation", description:x})), "No recommendations yet.");
+    $("wealthMissing").innerHTML = simpleList((wealth.missing_data || []).map(x => ({title:"Missing data", description:x})), "No major missing data flagged.");
+    $("wealthHoldingsBody").innerHTML = (wealth.holding_recommendations || []).map(row => `
+      <tr>
+        <td><b>${escHtml(row.ticker || "")}</b></td>
+        <td>${escHtml(row.action || "")}</td>
+        <td>${row.score ?? "-"}/100</td>
+        <td>${fmtPct(row.confidence)}</td>
+        <td>${escHtml(row.reasoning || "")}</td>
+        <td>${(row.supporting_evidence || []).map(escHtml).join("<br>")}</td>
+        <td>${(row.missing_data || []).map(escHtml).join(", ") || "None"}</td>
+      </tr>
+    `).join("") || `<tr><td colspan="7">No holdings found. Add holdings and generate Research reports first.</td></tr>`;
   }
 
   async function saveHolding(){
@@ -2709,10 +2983,12 @@
     $("commandAskBtn").addEventListener("click", askCommandPraetor);
     $("researchRunBtn").addEventListener("click", loadResearch);
     $("researchAiBtn").addEventListener("click", loadResearchAI);
+    $("refreshResearchValidationBtn").addEventListener("click", loadResearchValidation);
     $("researchTicker").addEventListener("keydown", e => { if(e.key === "Enter") loadResearch(); });
     $("researchChart").addEventListener("mousemove", showResearchTip);
     $("researchChart").addEventListener("mouseleave", () => { $("researchChartTip").style.display = "none"; });
     $("pfRunBtn").addEventListener("click", buildPortfolioPlan);
+    $("wealthRunBtn").addEventListener("click", loadWealth);
     $("saveHoldingBtn").addEventListener("click", saveHolding);
     window.addEventListener("resize", drawResearchChart);
   }

@@ -75,14 +75,42 @@ def _briefings(context: dict[str, Any]) -> list[dict[str, Any]]:
     return context.get("briefings") or []
 
 
+def _research_reports(context: dict[str, Any]) -> list[dict[str, Any]]:
+    return context.get("research_reports") or []
+
+
+def _latest_research_report(context: dict[str, Any]) -> dict[str, Any] | None:
+    reports = _research_reports(context)
+    if not reports:
+        return None
+    return sorted(reports, key=lambda r: str(r.get("created_at_utc") or ""), reverse=True)[0]
+
+
 def research_analyst_vote(context: dict[str, Any]) -> CommitteeVote:
+    latest = _latest_research_report(context)
     discoveries = _discoveries(context)
     edge = [d for d in discoveries if d.get("category") in ("Edge", "Opportunity")]
     risk = [d for d in discoveries if d.get("category") in ("Risk", "Behavioral")]
     evidence = [f"{d.get('title')}: {d.get('description')}" for d in _top(edge, 3)]
     concerns = [f"{d.get('title')}: {d.get('description')}" for d in _top(risk, 3)]
     score = len(edge) * 0.55 - len(risk) * 0.45
-    if not discoveries:
+    if latest:
+        report = latest.get("report_json") or {}
+        conviction = report.get("conviction") or {}
+        valuation = report.get("valuation") or {}
+        peer = report.get("peer_benchmarking") or {}
+        conviction_score = conviction.get("score")
+        if conviction_score is not None:
+            score += ((conviction_score - 50) / 50) * 1.15
+        evidence.append(
+            f"{report.get('ticker')}: {report.get('verdict')} / {conviction.get('rating')} ({conviction.get('score')} conviction)."
+        )
+        if valuation.get("rating"):
+            evidence.append(f"Valuation: {valuation.get('rating')} ({valuation.get('score')}/100).")
+        if peer.get("rating"):
+            evidence.append(f"Peer benchmarking: {peer.get('rating')} ({peer.get('score')}/100).")
+        concerns.extend((conviction.get("reasons_against") or [])[:3])
+    if not discoveries and not latest:
         concerns.append("Research/discovery evidence is limited.")
     return CommitteeVote(
         member="Research Analyst",
@@ -142,12 +170,30 @@ def risk_officer_vote(context: dict[str, Any]) -> CommitteeVote:
 
 
 def portfolio_manager_vote(context: dict[str, Any]) -> CommitteeVote:
+    portfolio = context.get("portfolio") or {}
     plans = _plans(context)
     active = [p for p in plans if p.get("status") in ("ACTIVE", "TRIGGERED")]
     tickers = {p.get("ticker") for p in active if p.get("ticker")}
     evidence = [f"{len(active)} active/triggered plan(s), {len(tickers)} unique ticker(s)."]
     concerns = []
     score = 0.15
+    if portfolio:
+        risk_score = portfolio.get("portfolio_risk_score")
+        ra_score = portfolio.get("risk_adjusted_portfolio_score")
+        conviction = portfolio.get("portfolio_conviction_score")
+        evidence.append(f"Portfolio risk-adjusted score: {ra_score if ra_score is not None else 'n/a'}; risk score: {risk_score if risk_score is not None else 'n/a'}; conviction: {conviction if conviction is not None else 'n/a'}.")
+        strongest = portfolio.get("strongest_position") or {}
+        weakest = portfolio.get("weakest_position") or {}
+        if strongest:
+            evidence.append(f"Strongest holding: {strongest.get('ticker')} ({(strongest.get('position_strength_score') or 0):.0f}/100).")
+        if weakest:
+            concerns.append(f"Weakest holding: {weakest.get('ticker')} ({(weakest.get('position_strength_score') or 0):.0f}/100).")
+        concerns.extend((portfolio.get("concentration_warnings") or [])[:2])
+        concerns.extend((portfolio.get("diversification_warnings") or [])[:2])
+        if risk_score is not None:
+            score += ((risk_score - 60) / 60) * 0.85
+        if ra_score is not None:
+            score += ((ra_score - 60) / 60) * 0.55
     if len(active) >= 8:
         score -= 1.0
         concerns.append("Many active plans may stretch attention and concentration.")
@@ -162,6 +208,46 @@ def portfolio_manager_vote(context: dict[str, Any]) -> CommitteeVote:
         supporting_evidence=evidence,
         concerns=concerns or ["No major active-plan concentration issue detected."],
         recommendation="Keep total exposure aligned with portfolio-level risk, not just single-setup excitement.",
+    )
+
+
+def wealth_allocator_vote(context: dict[str, Any]) -> CommitteeVote:
+    wealth = context.get("wealth") or {}
+    scores = wealth.get("scores") or {}
+    holding_recs = wealth.get("holding_recommendations") or []
+    cash = wealth.get("cash_recommendations") or {}
+    evidence = [
+        f"Wealth health score: {scores.get('health_score', 'n/a')}/100.",
+        f"Diversification score: {scores.get('diversification_score', 'n/a')}/100.",
+        f"Conviction score: {scores.get('conviction_score', 'n/a')}/100.",
+        f"Best use of cash: {cash.get('best_use_of_capital', 'n/a')}",
+    ]
+    concerns = []
+    score = 0.0
+    health = scores.get("health_score")
+    concentration = scores.get("concentration_score")
+    conviction = scores.get("conviction_score")
+    if health is not None:
+        score += ((health - 55) / 55) * 0.9
+    if concentration is not None:
+        score += ((concentration - 55) / 55) * 0.45
+    if conviction is not None:
+        score += ((conviction - 55) / 55) * 0.55
+    for rec in holding_recs[:5]:
+        action = rec.get("action")
+        if action in ("Reduce", "Avoid"):
+            concerns.append(f"{rec.get('ticker')}: {action} - {rec.get('reasoning')}")
+        elif action == "Buy":
+            evidence.append(f"{rec.get('ticker')}: Buy - {rec.get('reasoning')}")
+    concerns.extend((wealth.get("missing_data") or [])[:3])
+    return CommitteeVote(
+        member="Wealth Allocator",
+        role="Capital allocation, cash deployment, and portfolio health",
+        stance=_stance_from_score(score),
+        confidence=wealth.get("confidence") or _confidence(len(evidence) + len(concerns), 0.2),
+        supporting_evidence=evidence,
+        concerns=concerns or ["No major wealth-allocation concern detected from connected data."],
+        recommendation="Use Wealth outputs as allocation guidance only; no guarantees. Deploy cash gradually and respect missing-data warnings.",
     )
 
 
@@ -214,6 +300,7 @@ COMMITTEE_MEMBERS = (
     momentum_trader_vote,
     risk_officer_vote,
     portfolio_manager_vote,
+    wealth_allocator_vote,
     macro_strategist_vote,
     behavioral_coach_vote,
 )
