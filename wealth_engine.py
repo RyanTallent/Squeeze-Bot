@@ -63,6 +63,7 @@ def _holding_action(row: dict[str, Any]) -> dict[str, Any]:
     valuation_score = research.get("valuation_score")
     valuation_rating = research.get("valuation_rating")
     coverage = research.get("data_coverage_score")
+    coverage_missing = research.get("data_coverage_missing") or []
     allocation = row.get("allocation_pct") or 0
     strength = row.get("position_strength_score")
     evidence = []
@@ -80,6 +81,9 @@ def _holding_action(row: dict[str, Any]) -> dict[str, Any]:
         missing.append("Data coverage")
     else:
         evidence.append(f"Data coverage: {coverage}/100 ({research.get('data_coverage_rating') or 'n/a'}).")
+        if coverage < 50:
+            missing.append("Low data coverage")
+            missing.extend(str(item) for item in coverage_missing)
     if strength is not None:
         evidence.append(f"Position strength: {strength:.0f}/100.")
     evidence.append(f"Current allocation: {allocation * 100:.1f}%.")
@@ -97,8 +101,12 @@ def _holding_action(row: dict[str, Any]) -> dict[str, Any]:
         score -= 5
 
     if missing:
-        action = "Hold" if allocation > 0 else "Avoid"
-        reasoning = "Recommendation is conservative because required research evidence is incomplete."
+        if allocation >= 0.25:
+            action = "Reduce"
+            reasoning = "Recommendation is conservative because required research evidence is incomplete and the position is large."
+        else:
+            action = "Hold" if allocation > 0 else "Avoid"
+            reasoning = "Recommendation is conservative because required research evidence is incomplete."
     elif score >= 72 and allocation < 0.18:
         action = "Buy"
         reasoning = "Research quality, conviction, and sizing leave room for incremental capital."
@@ -142,6 +150,8 @@ def _opportunity_from_report(report: dict[str, Any], holding_allocations: dict[s
         f"Data coverage: {coverage.get('score', 'n/a')}/100 ({coverage.get('rating', 'n/a')}).",
     ]
     missing = coverage.get("missing_data") or report.get("data_gaps") or []
+    if missing:
+        score -= min(18, len(missing) * 3)
     return {
         "ticker": ticker,
         "score": round(_clamp(score)),
@@ -164,6 +174,8 @@ def _cash_recommendations(available_cash: float, portfolio: dict[str, Any], rese
     concentration_warnings = portfolio.get("concentration_warnings") or []
     if available_cash <= 0:
         best_use = "No available cash entered. Add available capital to generate deployment sizing."
+    elif not holdings and opportunities and opportunities[0]["score"] >= 65:
+        best_use = f"Starting from cash, deploy gradually toward the highest risk-adjusted opportunity: {opportunities[0]['ticker']}."
     elif risk_score is not None and risk_score < 55:
         best_use = "Hold cash or use it to reduce concentration before adding new risk."
     elif concentration_warnings:
@@ -190,6 +202,23 @@ def _portfolio_scores(portfolio: dict[str, Any]) -> dict[str, Any]:
     conviction = _num(portfolio.get("portfolio_conviction_score"), 50)
     risk = _num(portfolio.get("portfolio_risk_score"), 50)
     holdings = portfolio.get("holdings") or []
+    coverage_quality = ((portfolio.get("research_overlay") or {}).get("coverage_quality"))
+    if not holdings:
+        return {
+            "health_score": 35,
+            "health_rating": "Weak",
+            "diversification_score": 0,
+            "diversification_rating": "Poor",
+            "conviction_score": 50,
+            "conviction_rating": "Fair",
+            "concentration_score": 0,
+            "concentration_rating": "Poor",
+            "portfolio_risk_score": 50,
+            "risk_rating": "Fair",
+        }
+    if coverage_quality is not None:
+        coverage_multiplier = 0.50 + (_clamp(_num(coverage_quality), 0, 100) / 200)
+        conviction = conviction * coverage_multiplier
     sector_count = len(portfolio.get("sector_exposure") or [])
     top_alloc = max([h.get("allocation_pct") or 0 for h in holdings] or [0])
     top_sector = max([s.get("allocation_pct") or 0 for s in portfolio.get("sector_exposure") or []] or [0])
@@ -226,6 +255,16 @@ def build_wealth_plan(
         missing.append("saved Research reports")
     if not any(h.get("research") for h in holdings):
         missing.append("holding-level Research overlays")
+    for rec in holding_recommendations:
+        for item in rec.get("missing_data") or []:
+            label = f"{rec.get('ticker')}: {item}"
+            if label not in missing:
+                missing.append(label)
+    for opportunity in cash.get("highest_conviction_opportunities") or []:
+        for item in opportunity.get("missing_data") or []:
+            label = f"{opportunity.get('ticker')}: {item}"
+            if label not in missing:
+                missing.append(label)
     recommendations = []
     for rec in holding_recommendations:
         recommendations.append(f"{rec['ticker']}: {rec['action']} - {rec['reasoning']}")

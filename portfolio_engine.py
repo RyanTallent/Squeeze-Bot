@@ -300,6 +300,7 @@ def analyze_portfolio(holdings: list[dict[str, Any]], goals: dict[str, Any] | No
         peer = research.get("peer_benchmarking") or {}
         coverage = research.get("data_coverage") or {}
         framework = research.get("sector_framework") or {}
+        coverage_missing = coverage.get("missing_data") or research.get("data_gaps") or []
         row["research"] = {
             "verdict": research.get("verdict"),
             "conviction_score": conviction.get("score"),
@@ -310,6 +311,7 @@ def analyze_portfolio(holdings: list[dict[str, Any]], goals: dict[str, Any] | No
             "peer_score": peer.get("score"),
             "data_coverage_score": coverage.get("score"),
             "data_coverage_rating": coverage.get("rating"),
+            "data_coverage_missing": coverage_missing,
             "sector_framework": framework.get("key"),
             "generated_at_utc": research.get("generated_at_utc"),
         } if research else None
