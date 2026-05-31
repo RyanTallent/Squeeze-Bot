@@ -573,6 +573,34 @@
               <div class="usageBox"><b id="sumTotal">-</b><span>Total P/L</span></div>
               <div class="usageBox"><b id="sumAvg">-</b><span>Avg closed</span></div>
             </div>
+            <div class="card" style="margin-bottom:14px">
+              <div class="eyebrow">Journal AI v1</div>
+              <h3>Execution and behavior review</h3>
+              <div class="usageGrid" style="margin-bottom:14px">
+                <div class="usageBox"><b id="journalExecutionScore">-</b><span>Execution Score</span></div>
+                <div class="usageBox"><b id="journalDisciplineScore">-</b><span>Discipline Score</span></div>
+                <div class="usageBox"><b id="journalProcessScore">-</b><span>Process Score</span></div>
+                <div class="usageBox"><b id="journalEvidenceCount">-</b><span>Reviewed Trades</span></div>
+              </div>
+              <div class="researchGrid">
+                <div class="card">
+                  <h3>Recent Lessons</h3>
+                  <div id="journalLessons" class="fineprint">No journal lessons yet.</div>
+                </div>
+                <div class="card">
+                  <h3>Recurring Mistakes</h3>
+                  <div id="journalMistakes" class="fineprint">No recurring mistakes yet.</div>
+                </div>
+                <div class="card">
+                  <h3>Recurring Strengths</h3>
+                  <div id="journalStrengths" class="fineprint">No recurring strengths yet.</div>
+                </div>
+                <div class="card">
+                  <h3>Behavioral Observations</h3>
+                  <div id="journalBehavior" class="fineprint">No behavioral observations yet.</div>
+                </div>
+              </div>
+            </div>
             <div class="tableWrap">
               <table>
                 <thead>
@@ -1456,6 +1484,30 @@
       });
     });
     renderJournalSummary(rows);
+    loadJournalAI();
+  }
+
+  async function loadJournalAI(){
+    if(!state.user) return;
+    const resp = await fetch("/api/praetor/journal/learning").catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false};
+    if(!data.ok){
+      return;
+    }
+    renderJournalAI(data.journal || {});
+  }
+
+  function renderJournalAI(report){
+    setText("journalExecutionScore", report.execution_score == null ? "-" : fmtNum(report.execution_score,0));
+    setText("journalDisciplineScore", report.discipline_score == null ? "-" : fmtNum(report.discipline_score,0));
+    setText("journalProcessScore", report.process_score == null ? "-" : fmtNum(report.process_score,0));
+    setText("journalEvidenceCount", String(report.sample_size || 0));
+    const lessons = [];
+    (report.recent_reviews || []).slice(-5).forEach(r => (r.lessons || []).forEach(x => lessons.push({title:r.ticker, description:x, confidence:report.confidence, evidence_count:1})));
+    renderLearningList("journalLessons", lessons, "No journal lessons yet.");
+    renderLearningList("journalMistakes", report.recurring_mistakes || [], "No recurring mistakes yet.");
+    renderLearningList("journalStrengths", report.recurring_strengths || [], "No recurring strengths yet.");
+    renderLearningList("journalBehavior", report.behavioral_observations || [], "No behavioral observations yet.");
   }
 
   function renderJournalSummary(rows){

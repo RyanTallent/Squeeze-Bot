@@ -57,3 +57,38 @@ def build_discovery_candidates(playbook_stats: dict[str, Any]) -> list[Discovery
                 )
             )
     return discoveries
+
+
+def build_journal_discovery_candidates(journal_report: dict[str, Any]) -> list[Discovery]:
+    discoveries: list[Discovery] = []
+    for mistake in journal_report.get("recurring_mistakes") or []:
+        if mistake.get("evidence_count", 0) >= 2:
+            discoveries.append(
+                Discovery(
+                    id=str(uuid.uuid4()),
+                    discovery_type="behavioral_risk",
+                    title=f"Recurring journal mistake: {mistake['title']}",
+                    description=mistake.get("description") or mistake["title"],
+                    confidence=mistake.get("confidence") or 0.2,
+                    evidence_count=mistake.get("evidence_count") or 0,
+                    source_module="journal_engine",
+                    evidence=mistake,
+                    created_at_utc=datetime.utcnow().isoformat(),
+                )
+            )
+    for strength in journal_report.get("recurring_strengths") or []:
+        if strength.get("evidence_count", 0) >= 2:
+            discoveries.append(
+                Discovery(
+                    id=str(uuid.uuid4()),
+                    discovery_type="behavioral_strength",
+                    title=f"Recurring journal strength: {strength['title']}",
+                    description=strength.get("description") or strength["title"],
+                    confidence=strength.get("confidence") or 0.2,
+                    evidence_count=strength.get("evidence_count") or 0,
+                    source_module="journal_engine",
+                    evidence=strength,
+                    created_at_utc=datetime.utcnow().isoformat(),
+                )
+            )
+    return discoveries

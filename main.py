@@ -29,7 +29,8 @@ from praetor_context import build_scanner_context
 from praetor_service import PraetorService, response_to_dict
 from playbook_engine import calculate_playbook_stats
 from memory_engine import build_memory_updates
-from discovery_engine import build_discovery_candidates
+from discovery_engine import build_discovery_candidates, build_journal_discovery_candidates
+from journal_engine import build_journal_memory_updates, build_journal_report
 from risk_engine import build_risk_report
 from repositories.alert_repository import AlertRepository
 from repositories.discovery_repository import DiscoveryRepository
@@ -630,6 +631,34 @@ def run_praetor_learning_update(user_id: str) -> dict[str, Any]:
         "memory_ids": memory_ids,
         "discovery_ids": discovery_ids,
         "risk": risk,
+    }
+
+
+def run_praetor_journal_update(user_id: str) -> dict[str, Any]:
+    maybe_import_founder_past_trades(user_by_id(user_id) or {"id": user_id})
+    trades = trades_select(view="all", user_id=user_id)
+    plans = trade_plan_repo().list_plans(user_id, limit=1000)
+    learning = run_praetor_learning_update(user_id)
+    memory = memory_repo().list_memory(user_id)
+    discoveries = discovery_repo().list_discoveries(user_id)
+    journal_report = build_journal_report(trades, plans, learning["stats"], memory, discoveries, learning["risk"])
+
+    memory_ids: list[str] = []
+    for item in build_journal_memory_updates(journal_report):
+        memory_ids.append(memory_repo().upsert_memory(user_id, item))
+
+    discovery_ids: list[str] = []
+    for discovery in build_journal_discovery_candidates(journal_report):
+        discovery_ids.append(discovery_repo().save_discovery(user_id, discovery))
+
+    return {
+        "ok": True,
+        "journal": journal_report,
+        "memory_ids": memory_ids,
+        "discovery_ids": discovery_ids,
+        "memory": memory_repo().list_memory(user_id),
+        "discoveries": discovery_repo().list_discoveries(user_id),
+        "risk": learning["risk"],
     }
 
 
@@ -2908,6 +2937,17 @@ def api_praetor_risk(request: Request):
         return auth_user
     learning = run_praetor_learning_update(auth_user["id"])
     return {"ok": True, "risk": learning.get("risk"), "learning": learning}
+
+
+@app.get("/api/praetor/journal/learning")
+def api_praetor_journal_learning(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    try:
+        return run_praetor_journal_update(auth_user["id"])
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=500)
 
 
 @app.get("/api/praetor/trade-plans")
