@@ -2600,11 +2600,33 @@ def api_fundamentals_status():
         "fmp_configured": fmp["configured"],
         "sec_available": sec["available"],
         "cache_enabled": True,
+        "fmp_endpoints": [
+            "/stable/income-statement",
+            "/stable/balance-sheet-statement",
+            "/stable/cash-flow-statement",
+            "/stable/key-metrics",
+            "/stable/ratios",
+            "/stable/analyst-estimates",
+            "/stable/stock-peers",
+            "/stable/earnings",
+        ],
         "providers": {
             "fmp": fmp,
             "sec": sec,
         },
     }
+
+
+@app.get("/api/fundamentals/debug/{ticker}")
+def api_fundamentals_debug(ticker: str, request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    if (auth_user.get("plan_code") or "") != "founder":
+        return JSONResponse({"ok": False, "error": "Founder access required"}, status_code=403)
+    debug = fmp_provider().debug_bundle(ticker)
+    analysis = build_fundamental_analysis(fmp_provider().fundamentals_bundle(ticker))
+    return {"ok": True, "debug": debug, "analysis": analysis}
 
 
 @app.post("/clear_log")
