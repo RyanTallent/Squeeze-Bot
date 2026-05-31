@@ -7,7 +7,7 @@ from praetor_providers import AIProvider, get_ai_provider
 
 
 AI_SYNTHESIS_SYSTEM_PROMPT = """
-You are Praetor, Cardo Praevisio's AI synthesis layer.
+You are Praetor, Cardo Praevisio's synthesis layer.
 You do not replace deterministic financial calculations.
 Use only the evidence provided in the context.
 Do not fabricate data, catalysts, fundamentals, prices, or guarantees.
@@ -24,7 +24,7 @@ def _fallback(kind: str, context: dict[str, Any]) -> str:
         sections = report.get("sections") or []
         first = sections[0].get("body") if sections else "Deterministic research report is available, but AI synthesis is unavailable."
         return (
-            "AI synthesis unavailable. Deterministic research summary:\n\n"
+            "Praetor synthesis unavailable. Deterministic research summary:\n\n"
             f"{first}\n\n"
             f"Research verdict: {institutional.get('verdict', 'n/a')}\n"
             "Use the metric tables, scenario framework, and risk notes as the source of truth."
@@ -32,7 +32,7 @@ def _fallback(kind: str, context: dict[str, Any]) -> str:
     if kind == "committee":
         s = (context.get("committee") or {}).get("synthesis") or {}
         return (
-            "AI synthesis unavailable. Deterministic committee synthesis:\n\n"
+            "Praetor synthesis unavailable. Deterministic committee synthesis:\n\n"
             f"Consensus: {s.get('consensus', 'n/a')}\n"
             f"Recommendation: {s.get('final_recommendation', 'n/a')}\n"
             f"Disagreement: {s.get('disagreement_summary', 'n/a')}"
@@ -40,14 +40,14 @@ def _fallback(kind: str, context: dict[str, Any]) -> str:
     if kind == "risk":
         r = context.get("risk") or {}
         return (
-            "AI synthesis unavailable. Deterministic risk read:\n\n"
+            "Praetor synthesis unavailable. Deterministic risk read:\n\n"
             f"Overall risk: {r.get('overall_risk_label', 'n/a')} ({r.get('overall_risk_score', 'n/a')}).\n"
             "Review current risks and high-confidence warnings before adding exposure."
         )
     if kind == "journal":
         j = context.get("journal") or {}
         return (
-            "AI synthesis unavailable. Deterministic journal read:\n\n"
+            "Praetor synthesis unavailable. Deterministic journal read:\n\n"
             f"Execution score: {j.get('execution_score', 'n/a')}\n"
             f"Discipline score: {j.get('discipline_score', 'n/a')}\n"
             f"Process score: {j.get('process_score', 'n/a')}\n"
@@ -56,7 +56,7 @@ def _fallback(kind: str, context: dict[str, Any]) -> str:
     if kind == "briefing":
         b = context.get("briefing") or {}
         return (
-            "AI synthesis unavailable. Deterministic briefing:\n\n"
+            "Praetor synthesis unavailable. Deterministic briefing:\n\n"
             f"{b.get('title', 'Briefing')}: {b.get('lead', 'No lead summary available.')}"
         )
     if kind == "command_center":
@@ -64,12 +64,12 @@ def _fallback(kind: str, context: dict[str, Any]) -> str:
         rec = (cc.get("recommendation_of_day") or {}).get("text")
         risk = (cc.get("risk_overview") or {}).get("overall_risk_label")
         return (
-            "AI synthesis unavailable. Deterministic command-center read:\n\n"
+            "Praetor synthesis unavailable. Deterministic command-center read:\n\n"
             f"Recommendation: {rec or 'No critical recommendation.'}\n"
             f"Risk posture: {risk or 'n/a'}\n"
             "Review Command Center cards for source evidence."
         )
-    return "AI synthesis unavailable. Deterministic outputs remain available."
+    return "Praetor synthesis unavailable. Deterministic outputs remain available."
 
 
 def _prompt(kind: str, context: dict[str, Any]) -> str:
@@ -79,7 +79,7 @@ def _prompt(kind: str, context: dict[str, Any]) -> str:
         "risk": "Explain the risk profile like a risk officer. Challenge dangerous assumptions and identify the highest-priority risk.",
         "journal": "Coach the user from journal evidence. Identify repeated mistakes, strengths, lessons, and next behavior change.",
         "briefing": "Create an executive briefing summary. Prioritize what matters now, what changed, and what the user should review first.",
-        "command_center": "Create three concise outputs: AI Recommendation of the Day, AI Risk Insight, and AI Opportunity Insight from the command-center evidence.",
+        "command_center": "Create three concise outputs with these headings: Praetor Recommendation of the Day, Praetor Risk Insight, and Praetor Opportunity Insight. Use the command-center evidence.",
     }.get(kind, "Synthesize the provided deterministic evidence carefully.")
     return (
         f"Task: {guidance}\n\n"
