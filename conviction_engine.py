@@ -109,6 +109,7 @@ def build_conviction(
     valuation: dict[str, Any] | None,
     peer_benchmarking: dict[str, Any] | None,
     research_scores: dict[str, Any] | None = None,
+    data_coverage: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     sections = (fundamentals or {}).get("sections") or {}
     earnings = sections.get("earnings_quality") or {}
@@ -157,7 +158,10 @@ def build_conviction(
             reasons_against.append(f"{label}: {item or (section or {}).get('rating') or 'weak evidence.'}")
 
     evidence_count = sum(1 for value in component_scores.values() if value is not None)
-    confidence = min(0.90, 0.25 + evidence_count * 0.08)
+    coverage_score = _num((data_coverage or {}).get("score"), 0) or 0
+    coverage_ceiling = _num((data_coverage or {}).get("confidence_ceiling"), coverage_score / 100) or 0.20
+    base_confidence = min(0.90, 0.25 + evidence_count * 0.08)
+    confidence = round(min(base_confidence, max(0.20, coverage_ceiling)), 2)
     return {
         "score": round(_clamp(score)),
         "rating": _rating(score),
@@ -166,6 +170,8 @@ def build_conviction(
         "component_scores": {k: round(_clamp(v)) for k, v in component_scores.items()},
         "weights": weights,
         "confidence": confidence,
+        "data_coverage_score": round(coverage_score),
+        "data_coverage_rating": (data_coverage or {}).get("rating"),
         "source": "Deterministic Research Engine",
         "timestamp": datetime.utcnow().isoformat(),
         "calculation": {

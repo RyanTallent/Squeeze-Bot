@@ -7,6 +7,8 @@ from urllib.parse import urlencode
 
 import requests
 
+from ticker_normalization import normalize_ticker_for_provider, ticker_normalization_metadata
+
 
 FMP_BASE_URL = "https://financialmodelingprep.com"
 FMP_API_KEY = (os.getenv("FMP_API_KEY") or "").strip()
@@ -50,8 +52,8 @@ class FMPProvider:
             if not isinstance(row, dict):
                 filtered.append(row)
                 continue
-            row_symbol = str(row.get("symbol") or row.get("ticker") or "").upper()
-            if not row_symbol or row_symbol == symbol.upper():
+            row_symbol = normalize_ticker_for_provider(str(row.get("symbol") or row.get("ticker") or ""), "fmp")
+            if not row_symbol or row_symbol == normalize_ticker_for_provider(symbol, "fmp"):
                 filtered.append(row)
         return filtered
 
@@ -77,7 +79,7 @@ class FMPProvider:
             if not isinstance(raw, list):
                 continue
             for item in raw:
-                peer = str(item or "").upper().strip()
+                peer = normalize_ticker_for_provider(str(item or "").upper().strip(), "fmp")
                 if peer and peer != symbol and peer not in symbols:
                     symbols.append(peer)
                 if len(symbols) >= limit:
@@ -169,7 +171,8 @@ class FMPProvider:
         }
 
     def fundamentals_bundle(self, ticker: str) -> dict[str, Any]:
-        symbol = ticker.upper().strip()
+        display_symbol = ticker.upper().strip()
+        symbol = normalize_ticker_for_provider(display_symbol, "fmp")
         endpoints = {
             "income_statement": ("/stable/income-statement", {"symbol": symbol, "limit": 8}, 24),
             "balance_sheet": ("/stable/balance-sheet-statement", {"symbol": symbol, "limit": 8}, 24),
@@ -217,7 +220,9 @@ class FMPProvider:
         }
         return {
             "ok": any(v.get("ok") for v in results.values()),
-            "ticker": symbol,
+            "ticker": display_symbol,
+            "provider_symbol": symbol,
+            "ticker_normalization": ticker_normalization_metadata(display_symbol),
             "provider": "FMP",
             "configured": self.configured,
             "fetched_at": datetime.utcnow().isoformat(),

@@ -259,6 +259,7 @@
           <button type="button" data-page="Dashboard" class="active">Dashboard</button>
           <button type="button" data-page="Scanner">Scanner</button>
           <button type="button" data-page="Research">Research</button>
+          <button type="button" data-page="ResearchValidation" class="founderOnly hidden">Research QA</button>
           <button type="button" data-page="Journal">Journal</button>
           <button type="button" data-page="Pricing">Pricing</button>
         </nav>
@@ -385,6 +386,7 @@
         <button class="sideBtn" data-page="Committee">Committee</button>
         <button class="sideBtn" data-page="Journal">Journal</button>
         <button class="sideBtn" data-page="Risk">Risk</button>
+        <button class="sideBtn founderOnly hidden" data-page="ResearchValidation">Research QA</button>
         <button class="sideBtn" data-page="Pricing">Pricing</button>
       </aside>
 
@@ -969,6 +971,28 @@
             <p class="fineprint">Stripe checkout will plug into these plan records in the next payment build.</p>
           </div>
         </div>
+
+        <div class="page" id="pageResearchValidation">
+          <div class="card">
+            <div class="eyebrow">Founder-only Research Quality</div>
+            <h2>Research Validation Dashboard.</h2>
+            <p>Audit saved Research reports for peer count, data coverage, provider health, valuation framework routing, and confidence quality.</p>
+            <div class="toolbar"><button class="btn primary" id="refreshResearchValidationBtn" type="button">Refresh validation</button></div>
+            <div id="researchValidationMeta" class="fineprint">Founder access required.</div>
+          </div>
+          <div class="card">
+            <div class="tableWrap">
+              <table>
+                <thead><tr><th>Ticker</th><th>Peer Count</th><th>Coverage</th><th>Provider</th><th>Valuation Framework</th><th>Valuation</th><th>Confidence</th><th>Conviction</th><th>Missing Data</th></tr></thead>
+                <tbody id="researchValidationBody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card">
+            <h3>Ticker normalization examples</h3>
+            <div id="researchValidationNormalization" class="fineprint">Loading...</div>
+          </div>
+        </div>
       </section>
     </div>
   </main>
@@ -1344,6 +1368,7 @@
     if(name === "Portfolio") loadPortfolio();
     if(name === "Dashboard") loadCommandCenter();
     if(name === "Risk") loadRiskAI();
+    if(name === "ResearchValidation") loadResearchValidation();
     if(name === "Pricing") paintPricing("appPricing");
     updateCopilotContext();
   }
@@ -1365,6 +1390,7 @@
     Committee:["Where does the committee disagree?","What is the strongest bear case?","What is the strongest bull case?"],
     Risk:["Analyze my current risk.","Where am I concentrated?","What risk limit matters most?"],
     Signals:["What signals need review?","Which signal quality is strongest?"],
+    ResearchValidation:["Which reports have weak coverage?","Which peer sets look suspicious?","Where is confidence overstated?"],
     Pricing:["Which plan fits my usage?"]
   };
 
@@ -1380,6 +1406,7 @@
     Committee:["Run Committee","Show Risk Breakdown","Open Briefings"],
     Risk:["Show Risk Breakdown","Open Playbook","Open Alerts"],
     Signals:["Open Scanner","Ask About Signals"],
+    ResearchValidation:["Refresh Validation","Open Research","Run Committee"],
     Pricing:["Open Plans"]
   };
 
@@ -1648,6 +1675,8 @@
     const frameworks = inst.frameworks || {};
     const scores = inst.scores || {};
     const conviction = inst.conviction || {};
+    const coverage = inst.data_coverage || {};
+    const sectorFramework = inst.sector_framework || {};
     const scoreCards = Object.values(scores).map(s => metricCard(s.name || "Score", `${s.score ?? "-"} ${s.label ? "(" + s.label + ")" : ""}`)).join("");
     const scenarios = (inst.scenarios || []).map(s => `
       <div class="reportSection"><h3>${s.name} <span class="scoreBadge">${fmtPct(s.probability)}</span></h3>
@@ -1669,6 +1698,16 @@
       <div class="metricGrid">${scoreCards}</div>
       <div class="reportSection"><h3>Institutional View</h3><p>${escHtml(sections.institutional_view?.body || "")}</p></div>
       <div class="researchGrid">
+        <div class="reportSection"><h3>Data Coverage <span class="scoreBadge">${escHtml(coverage.rating || "n/a")}</span></h3>
+          <p><b>Score:</b> ${coverage.score ?? "-"} / 100</p>
+          <p><b>Missing:</b> ${(coverage.missing_data || []).map(escHtml).join(", ") || "No major missing data detected."}</p>
+        </div>
+        <div class="reportSection"><h3>Valuation Framework</h3>
+          <p><b>${escHtml(sectorFramework.name || "General Equity Framework")}</b></p>
+          <p>${escHtml((sectorFramework.notes || [])[0] || "General routing active.")}</p>
+        </div>
+      </div>
+      <div class="researchGrid">
         <div class="reportSection"><h3>Bull Case</h3><p>${escHtml(sections.bull_case?.body || "")}</p></div>
         <div class="reportSection"><h3>Bear Case</h3><p>${escHtml(sections.bear_case?.body || "")}</p></div>
         <div class="reportSection"><h3>Risks</h3><p>${escHtml(sections.risks?.body || "")}</p></div>
@@ -1687,6 +1726,38 @@
       <div class="reportSection"><h3>What Praetor Would Do</h3><p>${escHtml(sections.what_praetor_would_do?.body || "")}</p></div>
       <details class="explainer" open><summary>Plain-English explanation</summary><ul>${(report.plain_english || []).map(x => `<li>${x}</li>`).join("")}</ul></details>
     `;
+  }
+
+  async function loadResearchValidation(){
+    if(!state.user) return;
+    const resp = await fetch("/api/research/validation-dashboard").catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false,error:"Research validation unavailable."};
+    if(!data.ok){
+      $("researchValidationMeta").textContent = data.error || "Research validation unavailable.";
+      $("researchValidationBody").innerHTML = "";
+      return;
+    }
+    $("researchValidationMeta").textContent = `${(data.rows || []).length} saved report(s) audited.`;
+    $("researchValidationBody").innerHTML = (data.rows || []).map(row => {
+      const provider = row.provider_status || {};
+      const badProviders = Object.entries(provider).filter(([_, v]) => !v.ok).map(([k]) => k);
+      const providerText = badProviders.length ? `Issues: ${badProviders.join(", ")}` : "OK";
+      return `
+        <tr>
+          <td><b>${escHtml(row.ticker || "")}</b><br><span class="muted">${escHtml(row.verdict || "")}</span></td>
+          <td>${row.peer_count ?? "-"}</td>
+          <td>${row.data_coverage_score ?? "-"} / 100<br><span class="muted">${escHtml(row.data_coverage_rating || "n/a")}</span></td>
+          <td>${escHtml(providerText)}</td>
+          <td>${escHtml(row.valuation_framework_used || "n/a")}<br><span class="muted">${escHtml(row.valuation_framework_key || "")}</span></td>
+          <td>${escHtml(row.valuation_rating || "n/a")} (${row.valuation_score ?? "-"})</td>
+          <td>${fmtPct(row.confidence_level)}</td>
+          <td>${row.conviction_score ?? "-"}<br><span class="muted">${escHtml(row.conviction_rating || "")}</span></td>
+          <td>${(row.missing_data || []).map(escHtml).join(", ") || "None flagged"}</td>
+        </tr>
+      `;
+    }).join("") || `<tr><td colspan="9">No saved Research reports yet. Generate reports first.</td></tr>`;
+    const examples = data.normalization_examples || {};
+    $("researchValidationNormalization").innerHTML = Object.entries(examples).map(([ticker, meta]) => `<p><b>${escHtml(ticker)}</b>: FMP ${escHtml(meta.providers?.fmp || "")}, Polygon ${escHtml(meta.providers?.polygon || "")}</p>`).join("");
   }
 
   function drawResearchChart(){
@@ -2715,6 +2786,7 @@
     $("commandAskBtn").addEventListener("click", askCommandPraetor);
     $("researchRunBtn").addEventListener("click", loadResearch);
     $("researchAiBtn").addEventListener("click", loadResearchAI);
+    $("refreshResearchValidationBtn").addEventListener("click", loadResearchValidation);
     $("researchTicker").addEventListener("keydown", e => { if(e.key === "Enter") loadResearch(); });
     $("researchChart").addEventListener("mousemove", showResearchTip);
     $("researchChart").addEventListener("mouseleave", () => { $("researchChartTip").style.display = "none"; });

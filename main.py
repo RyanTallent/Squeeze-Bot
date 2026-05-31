@@ -46,6 +46,8 @@ from fundamental_engine import build_fundamental_analysis
 from ai_synthesis_engine import synthesize as synthesize_ai
 from data_providers.fmp_provider import FMPProvider, fmp_status
 from data_providers.sec_provider import sec_status
+from sector_frameworks import available_sector_frameworks
+from ticker_normalization import ticker_normalization_metadata
 from services.praetor_orchestrator import PraetorDataLoaders, PraetorOrchestrator, PraetorRepositories
 from repositories.alert_repository import AlertRepository
 from repositories.briefing_repository import BriefingRepository
@@ -2618,6 +2620,12 @@ def api_fundamentals_status():
             "fmp": fmp,
             "sec": sec,
         },
+        "ticker_normalization": {
+            "examples": {
+                "BRK.B": ticker_normalization_metadata("BRK.B"),
+                "BF.B": ticker_normalization_metadata("BF.B"),
+            }
+        },
     }
 
 
@@ -2631,6 +2639,53 @@ def api_fundamentals_debug(ticker: str, request: Request):
     debug = fmp_provider().debug_bundle(ticker)
     analysis = build_fundamental_analysis(fmp_provider().fundamentals_bundle(ticker))
     return {"ok": True, "debug": debug, "analysis": analysis}
+
+
+def _research_validation_row(row: dict[str, Any]) -> dict[str, Any]:
+    report = row.get("report_json") or {}
+    coverage = report.get("data_coverage") or {}
+    peer = report.get("peer_benchmarking") or {}
+    valuation = report.get("valuation") or {}
+    conviction = report.get("conviction") or {}
+    framework = report.get("sector_framework") or {}
+    provider_status = coverage.get("provider_status") or {}
+    return {
+        "ticker": report.get("ticker") or row.get("ticker"),
+        "created_at_utc": row.get("created_at_utc"),
+        "verdict": report.get("verdict") or row.get("verdict"),
+        "peer_count": coverage.get("peer_count") if coverage.get("peer_count") is not None else len(peer.get("peer_ranking") or []),
+        "data_coverage_score": coverage.get("score"),
+        "data_coverage_rating": coverage.get("rating"),
+        "missing_data": coverage.get("missing_data") or report.get("data_gaps") or [],
+        "provider_status": provider_status,
+        "valuation_framework_used": framework.get("name") or "General Equity Framework",
+        "valuation_framework_key": framework.get("key") or "general",
+        "valuation_rating": valuation.get("rating"),
+        "valuation_score": valuation.get("score"),
+        "confidence_level": conviction.get("confidence"),
+        "conviction_score": conviction.get("score"),
+        "conviction_rating": conviction.get("rating"),
+    }
+
+
+@app.get("/api/research/validation-dashboard")
+def api_research_validation_dashboard(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    if (auth_user.get("plan_code") or "") != "founder":
+        return JSONResponse({"ok": False, "error": "Founder access required"}, status_code=403)
+    reports = research_repo().list_reports(auth_user["id"], limit=50)
+    rows = [_research_validation_row(row) for row in reports]
+    return {
+        "ok": True,
+        "rows": rows,
+        "frameworks": available_sector_frameworks(),
+        "normalization_examples": {
+            "BRK.B": ticker_normalization_metadata("BRK.B"),
+            "BF.B": ticker_normalization_metadata("BF.B"),
+        },
+    }
 
 
 @app.post("/clear_log")
@@ -2966,10 +3021,11 @@ def _research_range_days(range_name: str) -> int:
 
 
 def _research_daily_aggs(ticker: str, range_name: str = "1y") -> list[dict[str, Any]]:
+    provider_ticker = ticker_normalization_metadata(ticker)["providers"]["polygon"]
     end_dt = datetime.now(timezone.utc).date()
     start_dt = end_dt - timedelta(days=_research_range_days(range_name))
     url = (
-        f"https://api.polygon.io/v2/aggs/ticker/{ticker.upper().strip()}"
+        f"https://api.polygon.io/v2/aggs/ticker/{provider_ticker}"
         f"/range/1/day/{start_dt.isoformat()}/{end_dt.isoformat()}"
     )
     data = scanner.polygon_get(url, {"adjusted": "true", "sort": "asc", "limit": 50000})
@@ -3112,6 +3168,7 @@ def build_research_profile(ticker: str, range_name: str = "1y") -> dict[str, Any
     return {
         "ok": True,
         "ticker": ticker,
+        "ticker_normalization": ticker_normalization_metadata(ticker),
         "range": range_name,
         "chart": chart,
         "metrics": metrics,

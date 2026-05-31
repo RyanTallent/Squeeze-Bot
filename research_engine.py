@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Any
 
 from conviction_engine import build_conviction
+from sector_frameworks import select_sector_framework
 
 
 def _num(value: Any, default: float = 0.0) -> float:
@@ -251,7 +252,9 @@ def build_institutional_research(profile: dict[str, Any], deterministic_report: 
     frameworks = build_framework_sections(profile, fundamentals=fundamentals)
     valuation = frameworks.get("valuation_analysis") or {}
     peer_benchmarking = frameworks.get("peer_benchmarking") or {}
-    conviction = build_conviction(profile, fundamentals, valuation, peer_benchmarking, scores)
+    data_coverage = (fundamentals or {}).get("data_coverage") or {}
+    sector_framework = (fundamentals or {}).get("sector_framework") or select_sector_framework(profile=profile, fundamentals=fundamentals)
+    conviction = build_conviction(profile, fundamentals, valuation, peer_benchmarking, scores, data_coverage=data_coverage)
     scores["conviction_score"] = _score(
         "Conviction Score",
         conviction.get("score") or 0,
@@ -277,6 +280,8 @@ def build_institutional_research(profile: dict[str, Any], deterministic_report: 
         "valuation": valuation,
         "peer_benchmarking": peer_benchmarking,
         "conviction": conviction,
+        "data_coverage": data_coverage,
+        "sector_framework": sector_framework,
         "scenarios": scenarios,
         "sections": {
             "executive_view": {
