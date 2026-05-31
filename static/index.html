@@ -1647,6 +1647,7 @@
     const sections = inst.sections || {};
     const frameworks = inst.frameworks || {};
     const scores = inst.scores || {};
+    const conviction = inst.conviction || {};
     const scoreCards = Object.values(scores).map(s => metricCard(s.name || "Score", `${s.score ?? "-"} ${s.label ? "(" + s.label + ")" : ""}`)).join("");
     const scenarios = (inst.scenarios || []).map(s => `
       <div class="reportSection"><h3>${s.name} <span class="scoreBadge">${fmtPct(s.probability)}</span></h3>
@@ -1672,6 +1673,11 @@
         <div class="reportSection"><h3>Bear Case</h3><p>${escHtml(sections.bear_case?.body || "")}</p></div>
         <div class="reportSection"><h3>Risks</h3><p>${escHtml(sections.risks?.body || "")}</p></div>
         <div class="reportSection"><h3>Portfolio Fit</h3><p>${escHtml(sections.portfolio_fit?.body || "")}</p></div>
+      </div>
+      <div class="reportSection"><h3>Conviction Engine <span class="scoreBadge">${escHtml(conviction.rating || "Pending")}</span></h3>
+        <p><b>Score:</b> ${conviction.score ?? "-"} / 100</p>
+        <p><b>Reasons For:</b> ${(conviction.reasons_for || []).map(escHtml).join("; ") || "No positive drivers available."}</p>
+        <p><b>Reasons Against:</b> ${(conviction.reasons_against || []).map(escHtml).join("; ") || "No major objections available."}</p>
       </div>
       <div class="reportSection"><h3>Scenario Analysis</h3>${scenarios}</div>
       <div class="reportSection"><h3>Research Frameworks</h3>${frameworkCards}</div>

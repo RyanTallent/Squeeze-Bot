@@ -21,12 +21,14 @@ def _fallback(kind: str, context: dict[str, Any]) -> str:
     if kind == "research":
         report = context.get("deterministic_report") or {}
         institutional = context.get("institutional_report") or {}
+        conviction = institutional.get("conviction") or {}
         sections = report.get("sections") or []
         first = sections[0].get("body") if sections else "Deterministic research report is available, but AI synthesis is unavailable."
         return (
             "Praetor synthesis unavailable. Deterministic research summary:\n\n"
             f"{first}\n\n"
             f"Research verdict: {institutional.get('verdict', 'n/a')}\n"
+            f"Conviction: {conviction.get('score', 'n/a')} ({conviction.get('rating', 'n/a')})\n"
             "Use the metric tables, scenario framework, and risk notes as the source of truth."
         )
     if kind == "committee":
@@ -74,7 +76,7 @@ def _fallback(kind: str, context: dict[str, Any]) -> str:
 
 def _prompt(kind: str, context: dict[str, Any]) -> str:
     guidance = {
-        "research": "Create an institutional thesis, simple-English explanation, strongest bull argument, strongest bear argument, hidden risks, hidden opportunities, and what the market may be overlooking.",
+        "research": "Create an institutional thesis, simple-English explanation, strongest bull argument, strongest bear argument, hidden risks, hidden opportunities, what the market may be overlooking, and how the deterministic conviction score should influence action.",
         "committee": "Synthesize committee votes, identify disagreement, strongest bull/bear evidence, and a careful final view.",
         "risk": "Explain the risk profile like a risk officer. Challenge dangerous assumptions and identify the highest-priority risk.",
         "journal": "Coach the user from journal evidence. Identify repeated mistakes, strengths, lessons, and next behavior change.",

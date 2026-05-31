@@ -3,6 +3,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+from peer_benchmarking_engine import build_peer_benchmarking
+from valuation_engine import build_valuation_analysis
+
 
 def _rows(bundle: dict[str, Any], key: str) -> list[dict[str, Any]]:
     endpoint = ((bundle or {}).get("endpoints") or {}).get(key) or {}
@@ -310,7 +313,9 @@ def sector_benchmarking(bundle: dict[str, Any]) -> dict[str, Any]:
     )
 
 
-def build_fundamental_analysis(bundle: dict[str, Any]) -> dict[str, Any]:
+def build_fundamental_analysis(bundle: dict[str, Any], profile: dict[str, Any] | None = None) -> dict[str, Any]:
+    peer_benchmarking = build_peer_benchmarking(bundle, profile=profile)
+    valuation = build_valuation_analysis(bundle, profile=profile, peer_benchmarking=peer_benchmarking)
     return {
         "ok": bool(bundle.get("ok")),
         "provider": "FMP",
@@ -322,6 +327,8 @@ def build_fundamental_analysis(bundle: dict[str, Any]) -> dict[str, Any]:
             "margin_analysis": margin_analysis(bundle),
             "balance_sheet": balance_sheet_analysis(bundle),
             "sector_benchmarking": sector_benchmarking(bundle),
+            "peer_benchmarking": peer_benchmarking,
+            "valuation_analysis": valuation,
             "analyst_expectations": analyst_expectations(bundle),
         },
         "raw_endpoints": bundle.get("endpoints") or {},

@@ -92,6 +92,23 @@ def _plan_bullets(plans: list[dict[str, Any]]) -> list[str]:
     ]
 
 
+def _research_bullets(reports: list[dict[str, Any]]) -> list[str]:
+    if not reports:
+        return ["No saved research report yet. Generate a Research report to feed valuation, peer benchmarking, and conviction into briefings."]
+    out = []
+    for row in _top(reports, 5):
+        report = row.get("report_json") or {}
+        conviction = report.get("conviction") or {}
+        valuation = report.get("valuation") or {}
+        peer = report.get("peer_benchmarking") or {}
+        out.append(
+            f"{report.get('ticker') or row.get('ticker')}: {report.get('verdict') or row.get('verdict')} | "
+            f"Conviction {conviction.get('score', 'n/a')} ({conviction.get('rating', 'n/a')}) | "
+            f"Valuation {valuation.get('rating', 'n/a')} | Peers {peer.get('rating', 'n/a')}"
+        )
+    return out
+
+
 def build_briefing(briefing_type: str, context: dict[str, Any]) -> dict[str, Any]:
     briefing_type = (briefing_type or "morning").lower()
     if briefing_type not in BRIEFING_TYPES:
@@ -104,6 +121,7 @@ def build_briefing(briefing_type: str, context: dict[str, Any]) -> dict[str, Any
     journal = context.get("journal") or {}
     learning = context.get("learning") or {}
     plans = context.get("trade_plans") or []
+    research_reports = context.get("research_reports") or []
 
     priority = _priority_from_sources(open_alerts, risk, discoveries)
     generated_at = datetime.utcnow().isoformat()
@@ -117,6 +135,7 @@ def build_briefing(briefing_type: str, context: dict[str, Any]) -> dict[str, Any
             _section("Highest priority alerts", _alert_bullets(open_alerts), "Critical" if priority == "Critical" else "High"),
             _section("Top discoveries", _discovery_bullets(discoveries), "High"),
             _section("Top risks", _risk_bullets(risk), "High"),
+            _section("Research conviction", _research_bullets(research_reports), "High" if research_reports else "Low"),
             _section("Personalized coaching", _playbook_bullets(learning), "Medium"),
         ]
     elif briefing_type == "midday":
@@ -126,6 +145,7 @@ def build_briefing(briefing_type: str, context: dict[str, Any]) -> dict[str, Any
             _section("Triggered / open alerts", _alert_bullets(open_alerts), "High"),
             _section("Changing conditions", _risk_bullets(risk), "High"),
             _section("Active opportunities", _plan_bullets(plans), "Medium"),
+            _section("Research watchlist", _research_bullets(research_reports), "Medium"),
             _section("Discovery updates", _discovery_bullets(discoveries), "Medium"),
         ]
     elif briefing_type == "end_of_day":
@@ -136,6 +156,7 @@ def build_briefing(briefing_type: str, context: dict[str, Any]) -> dict[str, Any
             _section("Risk summary", _risk_bullets(risk), "High"),
             _section("Lessons learned", _playbook_bullets(learning), "Medium"),
             _section("Discoveries generated", _discovery_bullets(discoveries), "Medium"),
+            _section("Research generated", _research_bullets(research_reports), "Medium"),
             _section("Tomorrow preparation", ["Carry forward only the plans that remain valid. Remove stale plans and review high-risk warnings first."], "Medium"),
         ]
     else:
@@ -146,6 +167,7 @@ def build_briefing(briefing_type: str, context: dict[str, Any]) -> dict[str, Any
             _section("Memory graph changes", [f"{len(context.get('memory') or [])} memory item(s) currently available."], "Medium"),
             _section("Strengths and weaknesses", _playbook_bullets(learning), "High"),
             _section("Highest impact discoveries", _discovery_bullets(discoveries), "High"),
+            _section("Research conviction changes", _research_bullets(research_reports), "High"),
             _section("Risk posture", _risk_bullets(risk), "High"),
         ]
 
@@ -170,6 +192,7 @@ def build_briefing(briefing_type: str, context: dict[str, Any]) -> dict[str, Any
             "discoveries": len(discoveries),
             "trade_plans": len(plans),
             "memory_items": len(context.get("memory") or []),
+            "research_reports": len(research_reports),
         },
         "generated_at_utc": generated_at,
     }

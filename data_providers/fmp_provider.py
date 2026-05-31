@@ -55,6 +55,35 @@ class FMPProvider:
                 filtered.append(row)
         return filtered
 
+    @staticmethod
+    def _rows(data: Any) -> list[dict[str, Any]]:
+        if isinstance(data, list):
+            return [r for r in data if isinstance(r, dict)]
+        if isinstance(data, dict):
+            rows = data.get("data") or data.get("results") or data.get("rows")
+            if isinstance(rows, list):
+                return [r for r in rows if isinstance(r, dict)]
+            return [data]
+        return []
+
+    @classmethod
+    def _peer_symbols(cls, peers_result: dict[str, Any], symbol: str, limit: int = 6) -> list[str]:
+        rows = cls._rows(peers_result.get("data"))
+        symbols: list[str] = []
+        for row in rows:
+            raw = row.get("peersList") or row.get("peers") if isinstance(row, dict) else None
+            if not raw and isinstance(row, dict):
+                raw = [row.get("symbol") or row.get("ticker")]
+            if not isinstance(raw, list):
+                continue
+            for item in raw:
+                peer = str(item or "").upper().strip()
+                if peer and peer != symbol and peer not in symbols:
+                    symbols.append(peer)
+                if len(symbols) >= limit:
+                    return symbols
+        return symbols
+
     def get(self, endpoint: str, params: dict[str, Any] | None = None, ttl_hours: int = 24) -> dict[str, Any]:
         params = dict(params or {})
         cache_key = self._cache_key(endpoint, params)
@@ -154,6 +183,38 @@ class FMPProvider:
         results: dict[str, Any] = {}
         for name, (endpoint, params, ttl) in endpoints.items():
             results[name] = self.get(endpoint, params, ttl_hours=ttl)
+        peer_symbols = self._peer_symbols(results.get("peers") or {}, symbol)
+        peer_metrics = []
+        for peer in peer_symbols:
+            key_metrics = self.get("/stable/key-metrics", {"symbol": peer, "limit": 1}, ttl_hours=48)
+            ratios = self.get("/stable/ratios", {"symbol": peer, "limit": 1}, ttl_hours=48)
+            peer_metrics.append(
+                {
+                    "symbol": peer,
+                    "key_metrics": (self._rows(key_metrics.get("data")) or [{}])[0],
+                    "financial_ratios": (self._rows(ratios.get("data")) or [{}])[0],
+                    "sources": {
+                        "key_metrics": {k: key_metrics.get(k) for k in ("ok", "cached", "error", "url", "fetched_at")},
+                        "financial_ratios": {k: ratios.get(k) for k in ("ok", "cached", "error", "url", "fetched_at")},
+                    },
+                }
+            )
+        results["peer_metrics"] = {
+            "ok": bool(peer_metrics),
+            "source": "FMP",
+            "cached": all(
+                bool((p.get("sources") or {}).get(src, {}).get("cached"))
+                for p in peer_metrics
+                for src in ("key_metrics", "financial_ratios")
+            )
+            if peer_metrics
+            else False,
+            "fetched_at": datetime.utcnow().isoformat(),
+            "endpoint": "peer metric enrichment",
+            "params": {"symbol": symbol, "peers": peer_symbols, "limit": 1},
+            "url": "multiple cached FMP peer metric requests",
+            "data": peer_metrics,
+        }
         return {
             "ok": any(v.get("ok") for v in results.values()),
             "ticker": symbol,

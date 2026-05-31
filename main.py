@@ -933,9 +933,9 @@ def fmp_provider() -> FMPProvider:
     return FMPProvider(cache_get=provider_cache_get, cache_set=provider_cache_set)
 
 
-def get_fundamental_analysis(ticker: str) -> dict[str, Any]:
+def get_fundamental_analysis(ticker: str, profile: dict[str, Any] | None = None) -> dict[str, Any]:
     bundle = fmp_provider().fundamentals_bundle(ticker)
-    return build_fundamental_analysis(bundle)
+    return build_fundamental_analysis(bundle, profile=profile)
 
 
 def praetor_orchestrator() -> PraetorOrchestrator:
@@ -947,6 +947,7 @@ def praetor_orchestrator() -> PraetorOrchestrator:
             discovery_repo=discovery_repo(),
             briefing_repo=briefing_repo(),
             committee_repo=committee_repo(),
+            research_repo=research_repo(),
         ),
         PraetorDataLoaders(
             learning=run_praetor_learning_update,
@@ -1206,7 +1207,8 @@ def get_portfolio_analysis(user_id: str) -> dict[str, Any]:
     portfolio = portfolio_repo().get_or_create_default_portfolio(user_id)
     holdings = portfolio_repo().list_holdings(user_id, portfolio_id=portfolio["id"])
     goals = portfolio.get("goals_json") if isinstance(portfolio.get("goals_json"), dict) else {}
-    analysis = analyze_portfolio(holdings, goals=goals)
+    reports = research_repo().list_reports(user_id, limit=50)
+    analysis = analyze_portfolio(holdings, goals=goals, research_reports=reports)
     portfolio_repo().save_snapshot(user_id, portfolio["id"], analysis)
     return {"ok": True, "portfolio": portfolio, "analysis": analysis}
 
@@ -2609,6 +2611,8 @@ def api_fundamentals_status():
             "/stable/analyst-estimates",
             "/stable/stock-peers",
             "/stable/earnings",
+            "/stable/key-metrics for each peer",
+            "/stable/ratios for each peer",
         ],
         "providers": {
             "fmp": fmp,
@@ -3292,7 +3296,7 @@ async def api_research_report(request: Request):
     objective = payload.get("objective") or ""
     try:
         profile = build_research_profile(ticker, range_name)
-        fundamentals = get_fundamental_analysis(ticker)
+        fundamentals = get_fundamental_analysis(ticker, profile=profile)
         report = generate_research_report(profile, report_type, objective, fundamentals=fundamentals)
         research_repo().save_report(auth_user["id"], report.get("institutional") or {}, profile=profile)
         return {"ok": True, "report": report}
@@ -3312,7 +3316,7 @@ async def api_praetor_ai_research(request: Request):
     objective = payload.get("objective") or ""
     try:
         profile = build_research_profile(ticker, range_name)
-        fundamentals = get_fundamental_analysis(ticker)
+        fundamentals = get_fundamental_analysis(ticker, profile=profile)
         deterministic_report = generate_research_report(profile, report_type, objective, fundamentals=fundamentals)
         institutional = deterministic_report.get("institutional") or {}
         ai = synthesize_ai(

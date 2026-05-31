@@ -75,14 +75,42 @@ def _briefings(context: dict[str, Any]) -> list[dict[str, Any]]:
     return context.get("briefings") or []
 
 
+def _research_reports(context: dict[str, Any]) -> list[dict[str, Any]]:
+    return context.get("research_reports") or []
+
+
+def _latest_research_report(context: dict[str, Any]) -> dict[str, Any] | None:
+    reports = _research_reports(context)
+    if not reports:
+        return None
+    return sorted(reports, key=lambda r: str(r.get("created_at_utc") or ""), reverse=True)[0]
+
+
 def research_analyst_vote(context: dict[str, Any]) -> CommitteeVote:
+    latest = _latest_research_report(context)
     discoveries = _discoveries(context)
     edge = [d for d in discoveries if d.get("category") in ("Edge", "Opportunity")]
     risk = [d for d in discoveries if d.get("category") in ("Risk", "Behavioral")]
     evidence = [f"{d.get('title')}: {d.get('description')}" for d in _top(edge, 3)]
     concerns = [f"{d.get('title')}: {d.get('description')}" for d in _top(risk, 3)]
     score = len(edge) * 0.55 - len(risk) * 0.45
-    if not discoveries:
+    if latest:
+        report = latest.get("report_json") or {}
+        conviction = report.get("conviction") or {}
+        valuation = report.get("valuation") or {}
+        peer = report.get("peer_benchmarking") or {}
+        conviction_score = conviction.get("score")
+        if conviction_score is not None:
+            score += ((conviction_score - 50) / 50) * 1.15
+        evidence.append(
+            f"{report.get('ticker')}: {report.get('verdict')} / {conviction.get('rating')} ({conviction.get('score')} conviction)."
+        )
+        if valuation.get("rating"):
+            evidence.append(f"Valuation: {valuation.get('rating')} ({valuation.get('score')}/100).")
+        if peer.get("rating"):
+            evidence.append(f"Peer benchmarking: {peer.get('rating')} ({peer.get('score')}/100).")
+        concerns.extend((conviction.get("reasons_against") or [])[:3])
+    if not discoveries and not latest:
         concerns.append("Research/discovery evidence is limited.")
     return CommitteeVote(
         member="Research Analyst",
