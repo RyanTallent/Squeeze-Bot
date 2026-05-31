@@ -30,6 +30,7 @@ from praetor_service import PraetorService, response_to_dict
 from playbook_engine import calculate_playbook_stats
 from memory_engine import build_memory_updates
 from discovery_engine import build_discovery_candidates
+from risk_engine import build_risk_report
 from repositories.alert_repository import AlertRepository
 from repositories.discovery_repository import DiscoveryRepository
 from repositories.memory_repository import MemoryRepository
@@ -618,12 +619,17 @@ def run_praetor_learning_update(user_id: str) -> dict[str, Any]:
     for discovery in build_discovery_candidates(stats):
         discovery_ids.append(discovery_repo().save_discovery(user_id, discovery))
 
+    memory = memory_repo().list_memory(user_id)
+    discoveries = discovery_repo().list_discoveries(user_id)
+    risk = build_risk_report(plans, stats, memory, discoveries)
+
     return {
         "ok": True,
         "snapshot_id": snapshot_id,
         "stats": stats,
         "memory_ids": memory_ids,
         "discovery_ids": discovery_ids,
+        "risk": risk,
     }
 
 
@@ -2893,6 +2899,15 @@ def api_praetor_playbook_learning(request: Request):
         "memory": memory_repo().list_memory(auth_user["id"]),
         "discoveries": discovery_repo().list_discoveries(auth_user["id"]),
     }
+
+
+@app.get("/api/praetor/risk")
+def api_praetor_risk(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    learning = run_praetor_learning_update(auth_user["id"])
+    return {"ok": True, "risk": learning.get("risk"), "learning": learning}
 
 
 @app.get("/api/praetor/trade-plans")

@@ -623,6 +623,28 @@
                 <div id="playbookRankings" class="fineprint">No setup rankings yet.</div>
               </div>
             </div>
+            <div class="card" style="margin-top:14px">
+              <div class="eyebrow">Risk AI v1</div>
+              <h3 id="riskOverall">Risk profile loading...</h3>
+              <div class="researchGrid">
+                <div class="card">
+                  <h3>Current Risks</h3>
+                  <div id="riskCurrent" class="fineprint">No risk analysis yet.</div>
+                </div>
+                <div class="card">
+                  <h3>Recurring Risks</h3>
+                  <div id="riskRecurring" class="fineprint">No recurring risks yet.</div>
+                </div>
+                <div class="card">
+                  <h3>Highest-Confidence Warnings</h3>
+                  <div id="riskWarnings" class="fineprint">No warnings yet.</div>
+                </div>
+                <div class="card">
+                  <h3>Intervention Levels</h3>
+                  <div class="fineprint">Level 1 = suggestion, Level 2 = professional disagreement, Level 3 = direct challenge, Level 4 = risk intervention.</div>
+                </div>
+              </div>
+            </div>
             <div class="tableWrap">
               <table>
                 <thead>
@@ -1516,6 +1538,7 @@
   function renderPlaybookLearning(data){
     const stats = data.learning?.stats || {};
     const memory = data.memory || [];
+    const risk = data.learning?.risk || {};
     setText("pbWinRate", stats.win_rate == null ? "-" : fmtPct(stats.win_rate));
     setText("pbExpectancy", stats.expectancy == null ? "-" : Number(stats.expectancy).toFixed(2));
     setText("pbEvidence", String(stats.sample_size || 0));
@@ -1529,6 +1552,33 @@
       confidence: r.confidence,
       evidence_count: r.sample_size
     })), "No setup rankings yet.");
+    renderRiskLearning(risk);
+  }
+
+  function renderRiskLearning(risk){
+    if(!risk || !risk.current_risks){
+      setText("riskOverall", "Risk profile unavailable.");
+      return;
+    }
+    setText("riskOverall", `${risk.overall_risk_label || "Medium Risk"} (${fmtNum(risk.overall_risk_score,0)})`);
+    renderLearningList("riskCurrent", (risk.current_risks || []).map(r => ({
+      title: `${r.title}: ${r.risk_label}`,
+      description: `${r.summary} ${(r.warnings || []).slice(0,2).join(" ")}`,
+      confidence: r.confidence,
+      evidence_count: (r.evidence || []).length
+    })), "No current risks.");
+    renderLearningList("riskRecurring", (risk.recurring_risks || []).map((x,idx) => ({
+      title: `Recurring risk ${idx+1}`,
+      description: x,
+      confidence: .45,
+      evidence_count: 1
+    })), "No recurring risks.");
+    renderLearningList("riskWarnings", (risk.highest_confidence_warnings || []).map(w => ({
+      title: `${w.source || "Risk"} - Level ${w.intervention_level || 1}`,
+      description: w.warning,
+      confidence: w.confidence,
+      evidence_count: w.intervention_level || 1
+    })), "No warnings yet.");
   }
 
   function renderPlaybook(plans){
