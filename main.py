@@ -3217,6 +3217,7 @@ async def api_praetor_ask(request: Request):
     context = build_scanner_context(auth_user, scanner_row or {}) if scanner_row else build_scanner_context(auth_user, {})
     context.page = page
     context.module = "global_praetor"
+    context.extra["client_context"] = payload.get("client_context") or {}
     if page == "command_center":
         context.extra["command_center"] = build_command_center_context(auth_user["id"])["command_center"]
     service = PraetorService()

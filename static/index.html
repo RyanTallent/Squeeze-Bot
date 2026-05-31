@@ -167,6 +167,23 @@
     .showMoreRow{display:flex;justify-content:center;padding:10px;border-top:1px solid var(--line)}
     .praetorBox{border:1px solid var(--line);border-radius:14px;background:var(--panel2);padding:12px;margin-top:12px;white-space:pre-wrap}
     .praetorActions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+    .copilotFab{
+      position:fixed;right:22px;bottom:22px;z-index:90;width:58px;height:58px;border-radius:999px;
+      border:1px solid color-mix(in srgb, var(--accent) 55%, var(--line));background:#020b1a;color:#fff;
+      box-shadow:0 18px 45px rgba(0,0,0,.30);cursor:pointer;font-weight:950;display:none;place-items:center;
+    }
+    .copilotFab.visible{display:grid}
+    .copilotDrawer{
+      position:fixed;top:0;right:0;height:100vh;width:min(430px,100%);z-index:100;
+      background:var(--panel);border-left:1px solid var(--line);box-shadow:-18px 0 45px rgba(0,0,0,.22);
+      transform:translateX(105%);transition:transform .18s ease;display:flex;flex-direction:column;
+    }
+    .copilotDrawer.open{transform:translateX(0)}
+    .copilotHead{padding:16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+    .copilotBody{padding:16px;overflow:auto;display:grid;gap:14px}
+    .copilotPromptGrid{display:flex;gap:8px;flex-wrap:wrap}
+    .copilotPrompt{border:1px solid var(--line);border-radius:999px;background:var(--panel2);padding:7px 10px;cursor:pointer;font-size:12px;font-weight:850;color:var(--muted)}
+    .copilotResponse{white-space:pre-wrap;border:1px solid var(--line);border-radius:14px;background:var(--panel2);padding:12px;min-height:90px}
     .researchSubNav{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}
     .researchSubBtn{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:9px 13px;font-weight:900;cursor:pointer;color:var(--muted)}
     .researchSubBtn.active{color:var(--text);border-color:var(--accent);background:color-mix(in srgb, var(--accent) 12%, var(--panel))}
@@ -900,6 +917,38 @@
     </div>
   </div>
 
+  <button class="copilotFab" id="praetorCopilotBtn" type="button" title="Open Praetor">P</button>
+  <aside class="copilotDrawer" id="praetorCopilotDrawer" aria-label="Praetor Copilot">
+    <div class="copilotHead">
+      <div>
+        <div class="eyebrow">Praetor Copilot</div>
+        <h3 id="copilotTitle">Page-aware assistant</h3>
+        <p class="fineprint" id="copilotContext">Context: -</p>
+      </div>
+      <button class="x" id="closeCopilotBtn" type="button">&times;</button>
+    </div>
+    <div class="copilotBody">
+      <div class="card">
+        <h3>Ask Praetor</h3>
+        <textarea id="copilotInput" placeholder="Ask Praetor about this page, your risk, setup quality, research, or portfolio context."></textarea>
+        <div class="toolbar"><button class="btn primary" id="copilotAskBtn" type="button">Ask</button></div>
+      </div>
+      <div class="card">
+        <h3>Suggested questions</h3>
+        <div class="copilotPromptGrid" id="copilotPrompts"></div>
+      </div>
+      <div class="card">
+        <h3>Latest recommendation</h3>
+        <div class="fineprint" id="copilotRecommendation">Open Command Center for latest recommendation.</div>
+      </div>
+      <div class="card">
+        <h3>Top risk / discovery</h3>
+        <div class="fineprint" id="copilotSnapshot">No snapshot loaded yet.</div>
+      </div>
+      <div class="copilotResponse" id="copilotResponse">Praetor responses will appear here.</div>
+    </div>
+  </aside>
+
 <script>
   const $ = (id) => document.getElementById(id);
   const state = {
@@ -1028,6 +1077,7 @@
     $("ccHypotheses").innerHTML = simpleList(data.learning_progress?.hypotheses, "No hypotheses yet.");
     $("ccActivePlans").innerHTML = simpleList((data.active_trade_plans || []).map(p => ({title:`${p.ticker} ${p.plan_style}`, description:`${p.status} | trigger ${p.trigger_price} | stop ${p.stop_price}`})), "No active plans.");
     $("ccFeed").innerHTML = simpleList(data.intelligence_feed, "No feed items yet.");
+    updateCopilotContext(data);
   }
 
   async function askCommandPraetor(){
@@ -1080,6 +1130,8 @@
     document.querySelectorAll(".founderOnly").forEach(x => {
       x.classList.toggle("hidden", !authed || state.user?.plan_code !== "founder");
     });
+    $("praetorCopilotBtn").classList.toggle("visible", authed);
+    if(!authed) $("praetorCopilotDrawer").classList.remove("open");
     if(authed){
       $("userPill").textContent = `${state.user.email} - ${state.user.plan_name}`;
       applyOrtexDefault();
@@ -1161,6 +1213,44 @@
     if(name === "Committee") loadCommittee();
     if(name === "Dashboard") loadCommandCenter();
     if(name === "Pricing") paintPricing("appPricing");
+    updateCopilotContext();
+  }
+
+  function activePageName(){
+    const active = document.querySelector(".page.active");
+    return active ? active.id.replace("page","") : "Dashboard";
+  }
+
+  const COPILOT_PROMPTS = {
+    Dashboard:["What is the most important thing I need to know right now?","What risk should I address first?","What did Praetor learn recently?"],
+    Scanner:["Analyze this setup.","Am I chasing?","Build a trade plan.","Compare this to my playbook."],
+    Research:["Build a hedge-fund thesis.","Explain the bull/base/bear case.","What are the key risks?","Simplify this research."],
+    Journal:["Review my recent trades.","What mistakes am I repeating?","What should I improve next?"],
+    Playbook:["What are my strengths?","What are my weakest setups?","What hypotheses are forming?"],
+    Alerts:["Which alert matters most?","Why did this alert fire?","What should I check before acting?"],
+    Briefings:["Summarize today.","What changed since the last briefing?","What should I prepare for next?"],
+    Committee:["Where does the committee disagree?","What is the strongest bear case?","What is the strongest bull case?"],
+    Risk:["Analyze my current risk.","Where am I concentrated?","What risk limit matters most?"],
+    Signals:["What signals need review?","Which signal quality is strongest?"],
+    Pricing:["Which plan fits my usage?"]
+  };
+
+  function updateCopilotContext(snapshot){
+    const page = activePageName();
+    $("copilotTitle").textContent = `${page} Copilot`;
+    $("copilotContext").textContent = `Context: ${page}`;
+    const prompts = COPILOT_PROMPTS[page] || COPILOT_PROMPTS.Dashboard;
+    $("copilotPrompts").innerHTML = prompts.map(p => `<button class="copilotPrompt" type="button" data-copilot-prompt="${escHtml(p)}">${escHtml(p)}</button>`).join("");
+    document.querySelectorAll("[data-copilot-prompt]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        $("copilotInput").value = btn.dataset.copilotPrompt || "";
+        askCopilot();
+      });
+    });
+    if(snapshot){
+      $("copilotRecommendation").textContent = snapshot.recommendation_of_day?.text || "No recommendation loaded.";
+      $("copilotSnapshot").innerHTML = `Risk: ${escHtml(snapshot.top_risk_warning?.warning || "none")}<br>Discovery: ${escHtml(snapshot.top_discovery?.title || "none")}`;
+    }
   }
 
   function setResearchPage(name){
@@ -1390,6 +1480,47 @@
       state.scanned = Number(m[1]);
       $("resultMeta").textContent = `Updated now - scanned ${state.scanned.toLocaleString()}`;
     }
+  }
+
+  function copilotClientContext(){
+    return {
+      active_page: activePageName(),
+      visible_bucket: state.showing,
+      scanner_result_count: (state.results.SQUEEZE.length + state.results.MOMENTUM.length),
+      selected_research_ticker: $("researchTicker")?.value || "",
+      playbook_meta: $("playbookMeta")?.textContent || "",
+      alert_status: $("monitorStatus")?.textContent || "",
+      committee_status: $("committeeStatus")?.textContent || "",
+      briefing_status: $("briefingStatus")?.textContent || ""
+    };
+  }
+
+  async function askCopilot(){
+    if(!state.user){ openAuth("login"); return; }
+    const question = ($("copilotInput").value || "").trim();
+    if(!question){ $("copilotResponse").textContent = "Ask Praetor a question first."; return; }
+    $("copilotResponse").textContent = "Praetor is thinking...";
+    const page = activePageName();
+    const resp = await fetch("/api/praetor/ask", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({page: page === "Dashboard" ? "command_center" : page.toLowerCase(), question, client_context: copilotClientContext()})
+    }).catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false,error:"Praetor unavailable."};
+    if(!data.ok){
+      $("copilotResponse").textContent = data.error || "Praetor unavailable.";
+      return;
+    }
+    $("copilotResponse").textContent = `${data.fallback_used ? "Fallback Praetor" : "Praetor"}:\n\n${data.response}`;
+  }
+
+  function openCopilot(){
+    updateCopilotContext();
+    $("praetorCopilotDrawer").classList.add("open");
+  }
+
+  function closeCopilot(){
+    $("praetorCopilotDrawer").classList.remove("open");
   }
 
   function paintOrtex(){
@@ -2158,6 +2289,10 @@
     $("swapAuth").addEventListener("click", () => openAuth(state.authMode === "signup" ? "login" : "signup"));
     $("submitAuth").addEventListener("click", submitAuth);
     $("authPassword").addEventListener("keydown", e => { if(e.key === "Enter") submitAuth(); });
+    $("praetorCopilotBtn").addEventListener("click", openCopilot);
+    $("closeCopilotBtn").addEventListener("click", closeCopilot);
+    $("copilotAskBtn").addEventListener("click", askCopilot);
+    $("copilotInput").addEventListener("keydown", e => { if(e.key === "Enter" && (e.metaKey || e.ctrlKey)) askCopilot(); });
     $("logoutBtn").addEventListener("click", logout);
     document.querySelectorAll("[data-page]").forEach(b => b.addEventListener("click", () => setPage(b.dataset.page)));
     document.querySelectorAll("[data-jump]").forEach(b => b.addEventListener("click", () => setPage(b.dataset.jump)));
