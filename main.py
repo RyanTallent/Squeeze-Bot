@@ -27,6 +27,8 @@ from fastapi.staticfiles import StaticFiles
 import scanner  # your scanner.py
 from praetor_context import build_scanner_context
 from praetor_service import PraetorService, response_to_dict
+from repositories.alert_repository import AlertRepository
+from repositories.trade_plan_repository import TradePlanRepository
 
 # Optional Postgres (only used if DATABASE_URL is set)
 try:
@@ -139,6 +141,39 @@ def _ensure_schema_migrations():
                 pass
             finally:
                 conn.close()
+
+
+def _ensure_praetor_schema_migrations():
+    trade_plan_cols = {
+        "setup_grade": "TEXT",
+        "decision_status": "TEXT",
+        "outcome": "TEXT",
+        "user_notes": "TEXT",
+        "outcome_notes": "TEXT",
+    }
+
+    if using_postgres():
+        try:
+            with pg_conn() as conn:
+                with conn.cursor() as cur:
+                    for col, typ in trade_plan_cols.items():
+                        cur.execute(f"ALTER TABLE trade_plans ADD COLUMN IF NOT EXISTS {col} {typ};")
+                conn.commit()
+        except Exception:
+            pass
+        return
+
+    with DB_LOCK:
+        conn = sqlite_conn()
+        try:
+            for col, typ in trade_plan_cols.items():
+                if not _table_has_column_sqlite(conn, "trade_plans", col):
+                    conn.execute(f"ALTER TABLE trade_plans ADD COLUMN {col} {typ};")
+            conn.commit()
+        except Exception:
+            pass
+        finally:
+            conn.close()
 
 
 def db_init():
@@ -327,11 +362,35 @@ def db_init():
       confidence REAL,
       conviction REAL,
       status TEXT NOT NULL DEFAULT 'ACTIVE',
+      setup_grade TEXT,
+      decision_status TEXT,
+      outcome TEXT,
+      user_notes TEXT,
+      outcome_notes TEXT,
       valid_conditions TEXT,
       invalidation_conditions TEXT,
       plan_json TEXT,
       created_at_utc TEXT NOT NULL,
       updated_at_utc TEXT NOT NULL
+    );
+    """
+
+    alerts_sql = """
+    CREATE TABLE IF NOT EXISTS alerts (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      alert_type TEXT NOT NULL,
+      ticker TEXT,
+      related_entity_type TEXT,
+      related_entity_id TEXT,
+      urgency TEXT,
+      importance TEXT,
+      confidence REAL,
+      message TEXT NOT NULL,
+      evidence TEXT,
+      status TEXT NOT NULL DEFAULT 'OPEN',
+      delivered_at_utc TEXT,
+      created_at_utc TEXT NOT NULL
     );
     """
 
@@ -353,6 +412,7 @@ def db_init():
                 cur.execute(
                     trade_plans_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ").replace("updated_at_utc TEXT", "updated_at_utc TIMESTAMPTZ")
                 )
+                cur.execute(alerts_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ").replace("delivered_at_utc TEXT", "delivered_at_utc TIMESTAMPTZ"))
             conn.commit()
     else:
         with DB_LOCK:
@@ -367,9 +427,12 @@ def db_init():
                 conn.execute(praetor_memory_sql)
                 conn.execute(playbook_rules_sql)
                 conn.execute(trade_plans_sql)
+                conn.execute(alerts_sql)
                 conn.commit()
             finally:
                 conn.close()
+
+    _ensure_praetor_schema_migrations()
 
 
 # -------------------- KV helpers --------------------
@@ -481,105 +544,12 @@ def praetor_log_interaction(
     return row["id"]
 
 
-def praetor_save_trade_plan(user_id: str, plan: dict[str, Any], scanner_row: dict[str, Any] | None = None) -> str:
-    now = datetime.utcnow().isoformat()
-    plan_id = plan.get("id") or str(uuid.uuid4())
-    row = {
-        "id": plan_id,
-        "user_id": user_id,
-        "ticker": (plan.get("ticker") or "").upper(),
-        "source_scan_id": (scanner_row or {}).get("scan_id"),
-        "setup_type": plan.get("setup_type"),
-        "plan_style": plan.get("plan_style") or "balanced",
-        "entry_zone_low": plan.get("entry_zone_low"),
-        "entry_zone_high": plan.get("entry_zone_high"),
-        "trigger_price": plan.get("trigger_price"),
-        "chase_threshold": plan.get("chase_threshold"),
-        "stop_price": plan.get("stop_price"),
-        "target_1": plan.get("target_1"),
-        "target_2": plan.get("target_2"),
-        "target_3": plan.get("target_3"),
-        "risk_reward": plan.get("risk_reward"),
-        "confidence": plan.get("confidence"),
-        "conviction": plan.get("conviction"),
-        "status": "ACTIVE",
-        "valid_conditions": json.dumps(plan.get("valid_conditions") or []),
-        "invalidation_conditions": json.dumps(plan.get("invalidation_conditions") or []),
-        "plan_json": json.dumps(plan, default=str),
-        "created_at_utc": now,
-        "updated_at_utc": now,
-    }
+def trade_plan_repo() -> TradePlanRepository:
+    return TradePlanRepository(using_postgres, pg_conn, sqlite_conn, DB_LOCK)
 
-    if using_postgres():
-        with pg_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    INSERT INTO trade_plans (
-                      id, user_id, ticker, source_scan_id, setup_type, plan_style,
-                      entry_zone_low, entry_zone_high, trigger_price, chase_threshold,
-                      stop_price, target_1, target_2, target_3, risk_reward,
-                      confidence, conviction, status, valid_conditions,
-                      invalidation_conditions, plan_json, created_at_utc, updated_at_utc
-                    ) VALUES (
-                      %(id)s, %(user_id)s, %(ticker)s, %(source_scan_id)s, %(setup_type)s, %(plan_style)s,
-                      %(entry_zone_low)s, %(entry_zone_high)s, %(trigger_price)s, %(chase_threshold)s,
-                      %(stop_price)s, %(target_1)s, %(target_2)s, %(target_3)s, %(risk_reward)s,
-                      %(confidence)s, %(conviction)s, %(status)s, %(valid_conditions)s,
-                      %(invalidation_conditions)s, %(plan_json)s, %(created_at_utc)s, %(updated_at_utc)s
-                    )
-                    ON CONFLICT (id) DO UPDATE SET
-                      updated_at_utc=EXCLUDED.updated_at_utc,
-                      plan_json=EXCLUDED.plan_json
-                    """,
-                    row,
-                )
-            conn.commit()
-        return plan_id
 
-    with DB_LOCK:
-        conn = sqlite_conn()
-        try:
-            conn.execute(
-                """
-                INSERT OR REPLACE INTO trade_plans (
-                  id, user_id, ticker, source_scan_id, setup_type, plan_style,
-                  entry_zone_low, entry_zone_high, trigger_price, chase_threshold,
-                  stop_price, target_1, target_2, target_3, risk_reward,
-                  confidence, conviction, status, valid_conditions,
-                  invalidation_conditions, plan_json, created_at_utc, updated_at_utc
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    row["id"],
-                    row["user_id"],
-                    row["ticker"],
-                    row["source_scan_id"],
-                    row["setup_type"],
-                    row["plan_style"],
-                    row["entry_zone_low"],
-                    row["entry_zone_high"],
-                    row["trigger_price"],
-                    row["chase_threshold"],
-                    row["stop_price"],
-                    row["target_1"],
-                    row["target_2"],
-                    row["target_3"],
-                    row["risk_reward"],
-                    row["confidence"],
-                    row["conviction"],
-                    row["status"],
-                    row["valid_conditions"],
-                    row["invalidation_conditions"],
-                    row["plan_json"],
-                    row["created_at_utc"],
-                    row["updated_at_utc"],
-                ),
-            )
-            conn.commit()
-        finally:
-            conn.close()
-    return plan_id
+def alert_repo() -> AlertRepository:
+    return AlertRepository(using_postgres, pg_conn, sqlite_conn, DB_LOCK)
 
 
 # -------------------- Auth + plans --------------------
@@ -2814,13 +2784,16 @@ async def api_praetor_trade_plan(request: Request):
     service = PraetorService()
     result = service.scanner_trade_plan(scanner_row, style=style)
     result_dict = response_to_dict(result)
-    plan = (result.structured or {}).get("trade_plan")
-    if plan:
+    plans = (result.structured or {}).get("trade_plans") or []
+    saved_ids: list[str] = []
+    for plan in plans:
         try:
-            plan_id = praetor_save_trade_plan(auth_user["id"], plan, scanner_row=scanner_row)
-            result_dict["trade_plan_id"] = plan_id
+            saved_ids.append(trade_plan_repo().save_plan(auth_user["id"], plan, scanner_row=scanner_row))
         except Exception as e:
             result_dict["save_error"] = str(e)[:200]
+    result_dict["trade_plan_ids"] = saved_ids
+    if saved_ids:
+        result_dict["trade_plan_id"] = saved_ids[0]
     return result_dict
 
 
@@ -2831,6 +2804,98 @@ def api_praetor_playbook(request: Request):
         return auth_user
     service = PraetorService()
     return response_to_dict(service.playbook_summary())
+
+
+@app.get("/api/praetor/trade-plans")
+def api_praetor_trade_plans(request: Request, status: str | None = None):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    try:
+        return {"ok": True, "trade_plans": trade_plan_repo().list_plans(auth_user["id"], status=status)}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=500)
+
+
+@app.patch("/api/praetor/trade-plans/{plan_id}/decision")
+async def api_praetor_trade_plan_decision(plan_id: str, request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    payload = await request.json()
+    try:
+        updated = trade_plan_repo().update_decision(
+            auth_user["id"],
+            plan_id,
+            payload.get("decision_status") or "",
+            payload.get("notes") or "",
+        )
+        return {"ok": bool(updated)}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=400)
+
+
+@app.patch("/api/praetor/trade-plans/{plan_id}/outcome")
+async def api_praetor_trade_plan_outcome(plan_id: str, request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    payload = await request.json()
+    try:
+        updated = trade_plan_repo().update_outcome(
+            auth_user["id"],
+            plan_id,
+            payload.get("outcome") or "",
+            payload.get("notes") or "",
+        )
+        return {"ok": bool(updated)}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=400)
+
+
+@app.get("/api/praetor/alerts")
+def api_praetor_alerts(request: Request, status: str | None = None):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    return {"ok": True, "alerts": alert_repo().list_alerts(auth_user["id"], status=status)}
+
+
+@app.post("/api/praetor/alerts")
+async def api_praetor_create_alert(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    payload = await request.json()
+    try:
+        alert_id = alert_repo().create_alert(
+            user_id=auth_user["id"],
+            alert_type=payload.get("alert_type") or "Manual Alert",
+            ticker=payload.get("ticker") or "",
+            message=payload.get("message") or "",
+            urgency=payload.get("urgency") or "normal",
+            importance=payload.get("importance") or "watchlist",
+            confidence=payload.get("confidence"),
+            related_entity_type=payload.get("related_entity_type"),
+            related_entity_id=payload.get("related_entity_id"),
+            evidence=payload.get("evidence") or {},
+        )
+        return {"ok": True, "id": alert_id}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=400)
+
+
+@app.patch("/api/praetor/alerts/{alert_id}")
+async def api_praetor_update_alert(alert_id: str, request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    payload = await request.json()
+    try:
+        updated = alert_repo().update_status(auth_user["id"], alert_id, payload.get("status") or "")
+        return {"ok": bool(updated)}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=400)
 
 
 @app.get("/api/founder/past-trades/seed")

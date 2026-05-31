@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import json
-import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import Any
 
 from praetor_context import PraetorContext
 from praetor_providers import AIProvider, AIResult, get_ai_provider
+from trade_plan_engine import build_trade_plan, build_trade_plan_set, summarize_trade_plan
 
 
 PRAETOR_SYSTEM_PROMPT = """
@@ -39,12 +39,6 @@ def _num(value: Any, default: float = 0.0) -> float:
         return float(value)
     except Exception:
         return default
-
-
-def _fmt(value: float | None, digits: int = 2) -> str:
-    if value is None:
-        return "n/a"
-    return f"{value:.{digits}f}"
 
 
 def _row_summary(row: dict[str, Any]) -> dict[str, Any]:
@@ -96,64 +90,6 @@ def deterministic_scanner_answer(question: str, row: dict[str, Any]) -> str:
     return "\n\n".join(lines)
 
 
-def build_trade_plan(scanner_row: dict[str, Any], style: str = "balanced") -> dict[str, Any]:
-    style = (style or "balanced").lower()
-    price = _num(scanner_row.get("close"))
-    trigger = _num(scanner_row.get("trigger"), price)
-    stop = _num(scanner_row.get("stop"), price * 0.92 if price else 0)
-    vwap = _num(scanner_row.get("vwap"), price)
-    risk_per_share = max(trigger - stop, trigger * 0.02, 0.0001)
-
-    multiplier = {"aggressive": 0.6, "balanced": 1.0, "conservative": 1.35}.get(style, 1.0)
-    entry_low = max(stop, trigger - risk_per_share * 0.30 * multiplier)
-    entry_high = trigger + risk_per_share * 0.10
-    chase_threshold = trigger + risk_per_share * (0.65 if style == "aggressive" else 0.45)
-
-    target_1 = trigger + risk_per_share * 1.5
-    target_2 = trigger + risk_per_share * 2.25
-    target_3 = trigger + risk_per_share * 3.0
-    rr = (target_2 - trigger) / risk_per_share if risk_per_share else None
-
-    intel = scanner_row.get("intelligence") or {}
-    confidence = _num(intel.get("confluence_score"), _num(scanner_row.get("confidence"), 50))
-    conviction = max(0, min(100, confidence - (10 if "High" in str(intel.get("risk_flag")) else 0)))
-
-    return {
-        "id": str(uuid.uuid4()),
-        "ticker": scanner_row.get("ticker"),
-        "plan_style": style,
-        "setup_type": intel.get("setup_type") or scanner_row.get("subtype"),
-        "entry_zone_low": entry_low,
-        "entry_zone_high": entry_high,
-        "trigger_price": trigger,
-        "chase_threshold": chase_threshold,
-        "stop_price": stop,
-        "target_1": target_1,
-        "target_2": target_2,
-        "target_3": target_3,
-        "risk_reward": rr,
-        "confidence": confidence,
-        "conviction": conviction,
-        "valid_conditions": [
-            "Relative volume remains elevated.",
-            "Liquidity/spread remain tradable.",
-            "Structure holds above invalidation.",
-            "Price is not materially beyond chase threshold.",
-        ],
-        "invalidation_conditions": [
-            "Price loses stop/invalidation zone.",
-            "Relative volume fades materially.",
-            "Structure breaks or reclaim fails.",
-            "Reward/risk deteriorates from chasing.",
-        ],
-        "notes": [
-            f"VWAP reference: {_fmt(vwap, 4)}.",
-            "Confirm liquidity and spread before entry.",
-            "This is a plan framework, not an instruction to buy or sell.",
-        ],
-    }
-
-
 def deterministic_playbook_summary() -> dict[str, Any]:
     return {
         "ok": True,
@@ -200,21 +136,21 @@ class PraetorService:
         )
 
     def scanner_trade_plan(self, scanner_row: dict[str, Any], style: str = "balanced") -> PraetorResponse:
-        plan = build_trade_plan(scanner_row, style=style)
-        response = (
-            f"{plan['ticker']} {plan['plan_style'].title()} Plan: "
-            f"entry zone {_fmt(plan['entry_zone_low'], 4)}-{_fmt(plan['entry_zone_high'], 4)}, "
-            f"trigger {_fmt(plan['trigger_price'], 4)}, stop {_fmt(plan['stop_price'], 4)}, "
-            f"targets {_fmt(plan['target_1'], 4)} / {_fmt(plan['target_2'], 4)} / {_fmt(plan['target_3'], 4)}. "
-            "Confirm liquidity, spread, and structure before acting."
-        )
+        if (style or "").lower() == "all":
+            plans = build_trade_plan_set(scanner_row)
+            response = "Generated aggressive, balanced, and conservative plans. Balanced is the default unless your playbook says otherwise."
+            structured = {"trade_plans": plans}
+        else:
+            plan = build_trade_plan(scanner_row, style=style)
+            response = summarize_trade_plan(plan)
+            structured = {"trade_plan": plan, "trade_plans": [plan]}
         return PraetorResponse(
             ok=True,
             mode="trade_plan",
             response=response,
             provider="deterministic",
             model="trade-plan-v1",
-            structured={"trade_plan": plan},
+            structured=structured,
         )
 
     def playbook_summary(self) -> PraetorResponse:

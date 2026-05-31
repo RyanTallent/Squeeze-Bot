@@ -351,6 +351,7 @@
         <button class="sideBtn" data-page="Scanner">Scanner</button>
         <button class="sideBtn" data-page="Signals">Signals</button>
         <button class="sideBtn" data-page="Research">Research</button>
+        <button class="sideBtn" data-page="Playbook">Playbook</button>
         <button class="sideBtn" data-page="Journal">Journal</button>
         <button class="sideBtn" data-page="Risk">Risk</button>
         <button class="sideBtn" data-page="Pricing">Pricing</button>
@@ -578,6 +579,50 @@
                   <tr><th>Ticker</th><th>Setup</th><th>Conf</th><th class="right">Entry</th><th class="right">Exit</th><th class="right">Shares</th><th class="right">P/L</th><th class="right">Actions</th></tr>
                 </thead>
                 <tbody id="noteBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="page" id="pagePlaybook">
+          <div class="card">
+            <div class="eyebrow">Praetor Playbook</div>
+            <h2>Trade plans, outcomes, and in-app alerts.</h2>
+            <p>This is the first learning-loop dashboard: scanner setup -> trade plan -> user decision -> outcome -> playbook update.</p>
+            <div class="toolbar">
+              <button class="btn primary" id="refreshPlaybookBtn" type="button">Refresh Playbook</button>
+              <span class="pill" id="playbookMeta">No plans loaded.</span>
+            </div>
+            <div class="usageGrid" style="margin-bottom:14px">
+              <div class="usageBox"><b id="pbActive">-</b><span>Active</span></div>
+              <div class="usageBox"><b id="pbCompleted">-</b><span>Completed</span></div>
+              <div class="usageBox"><b id="pbSkipped">-</b><span>Skipped</span></div>
+              <div class="usageBox"><b id="pbTotal">-</b><span>Total Plans</span></div>
+            </div>
+            <div class="tableWrap">
+              <table>
+                <thead>
+                  <tr><th>Ticker</th><th>Plan</th><th>Setup</th><th>Grade</th><th>Status</th><th>Decision</th><th>Outcome</th><th>Entry</th><th>Stop</th><th>Targets</th><th>Actions</th></tr>
+                </thead>
+                <tbody id="playbookBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="eyebrow">In-app alerts</div>
+            <h2>Manual alert foundation.</h2>
+            <div class="portfolioForm">
+              <div class="field"><label>Ticker</label><input id="alertTicker" placeholder="AAPL" /></div>
+              <div class="field"><label>Alert type</label><input id="alertType" placeholder="Entry Trigger Reached" /></div>
+              <div class="field"><label>Urgency</label><select id="alertUrgency"><option value="normal">Normal</option><option value="high">High</option><option value="immediate">Immediate</option><option value="low">Low</option></select></div>
+            </div>
+            <div class="field"><label>Message</label><textarea id="alertMessage" placeholder="What should Praetor remind you about?"></textarea></div>
+            <button class="btn primary" id="createAlertBtn" type="button">Create Alert</button>
+            <div class="tableWrap" style="margin-top:14px">
+              <table>
+                <thead><tr><th>Ticker</th><th>Type</th><th>Urgency</th><th>Status</th><th>Message</th><th>Actions</th></tr></thead>
+                <tbody id="alertsBody"></tbody>
               </table>
             </div>
           </div>
@@ -825,6 +870,7 @@
     if(page) page.classList.add("active");
     document.querySelectorAll("[data-page]").forEach(b => b.classList.toggle("active", b.dataset.page === name));
     if(name === "Journal") loadNotebook();
+    if(name === "Playbook") loadPlaybook();
     if(name === "Pricing") paintPricing("appPricing");
   }
 
@@ -1255,25 +1301,26 @@
   }
 
   async function savePraetorTradePlan(row){
-    showPraetorResponse("Praetor is building a balanced trade plan...");
+    showPraetorResponse("Praetor is building aggressive, balanced, and conservative trade plans...");
     const resp = await fetch("/api/praetor/trade-plan", {
       method:"POST",
       headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({scanner_row: row, style:"balanced"})
+      body:JSON.stringify({scanner_row: row, style:"all"})
     }).catch(()=>null);
     const data = resp ? await safeJson(resp) : {ok:false,error:"Could not reach Praetor."};
     if(!data.ok){
       showPraetorResponse(data.error || "Trade plan failed.");
       return;
     }
-    const plan = data.structured?.trade_plan || {};
+    const plans = data.structured?.trade_plans || [];
+    const plan = plans.find(p => p.plan_style === "balanced") || plans[0] || {};
     showPraetorResponse(
       `${data.response}\n\n` +
-      `Saved plan ID: ${data.trade_plan_id || "not saved"}\n` +
+      `Saved plans: ${(data.trade_plan_ids || []).length}\n` +
       `Entry zone: ${fmtNum(plan.entry_zone_low,4)} - ${fmtNum(plan.entry_zone_high,4)}\n` +
       `Trigger: ${fmtNum(plan.trigger_price,4)} | Stop: ${fmtNum(plan.stop_price,4)}\n` +
       `Targets: ${fmtNum(plan.target_1,4)} / ${fmtNum(plan.target_2,4)} / ${fmtNum(plan.target_3,4)}\n` +
-      `Conviction: ${fmtNum(plan.conviction,0)}`
+      `Conviction: ${fmtNum(plan.conviction,0)}\n\nOpen Playbook to mark watched/traded/skipped and track outcome.`
     );
   }
 
@@ -1409,6 +1456,122 @@
     loadNotebook();
   }
 
+  async function loadPlaybook(){
+    if(!state.user) return;
+    const plansResp = await fetch("/api/praetor/trade-plans").catch(()=>null);
+    const plansData = plansResp ? await safeJson(plansResp) : {ok:false, trade_plans:[]};
+    renderPlaybook(plansData.trade_plans || []);
+
+    const alertsResp = await fetch("/api/praetor/alerts").catch(()=>null);
+    const alertsData = alertsResp ? await safeJson(alertsResp) : {ok:false, alerts:[]};
+    renderAlerts(alertsData.alerts || []);
+  }
+
+  function renderPlaybook(plans){
+    const body = $("playbookBody");
+    if(!body) return;
+    body.innerHTML = "";
+    const active = plans.filter(p => p.status === "ACTIVE" || p.status === "TRIGGERED").length;
+    const completed = plans.filter(p => p.status === "COMPLETED").length;
+    const skipped = plans.filter(p => p.status === "SKIPPED").length;
+    setText("pbActive", String(active));
+    setText("pbCompleted", String(completed));
+    setText("pbSkipped", String(skipped));
+    setText("pbTotal", String(plans.length));
+    setText("playbookMeta", `${plans.length} saved plans`);
+
+    for(const p of plans){
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td><b>${p.ticker || ""}</b></td>
+        <td>${p.plan_style || ""}</td>
+        <td>${p.setup_type || ""}</td>
+        <td>${p.setup_grade || ""}</td>
+        <td>${p.status || ""}</td>
+        <td>${p.decision_status || ""}</td>
+        <td>${p.outcome || ""}</td>
+        <td>${fmtNum(p.entry_zone_low,4)}-${fmtNum(p.entry_zone_high,4)}</td>
+        <td>${fmtNum(p.stop_price,4)}</td>
+        <td>${fmtNum(p.target_1,4)} / ${fmtNum(p.target_2,4)} / ${fmtNum(p.target_3,4)}</td>
+        <td>
+          <button class="ghost" data-decision="watched" data-plan="${p.id}">Watched</button>
+          <button class="ghost" data-decision="traded" data-plan="${p.id}">Traded</button>
+          <button class="ghost" data-decision="skipped" data-plan="${p.id}">Skipped</button>
+          <button class="ghost" data-outcome="winner" data-plan="${p.id}">Win</button>
+          <button class="ghost" data-outcome="loser" data-plan="${p.id}">Loss</button>
+          <button class="ghost" data-outcome="break_even" data-plan="${p.id}">BE</button>
+        </td>
+      `;
+      body.appendChild(tr);
+    }
+
+    body.querySelectorAll("[data-decision]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const notes = prompt("Decision notes? (optional)", "") || "";
+        await fetch(`/api/praetor/trade-plans/${btn.dataset.plan}/decision`, {
+          method:"PATCH", headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({decision_status:btn.dataset.decision, notes})
+        }).catch(()=>{});
+        loadPlaybook();
+      });
+    });
+    body.querySelectorAll("[data-outcome]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const notes = prompt("Outcome notes? (optional)", "") || "";
+        await fetch(`/api/praetor/trade-plans/${btn.dataset.plan}/outcome`, {
+          method:"PATCH", headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({outcome:btn.dataset.outcome, notes})
+        }).catch(()=>{});
+        loadPlaybook();
+      });
+    });
+  }
+
+  function renderAlerts(alerts){
+    const body = $("alertsBody");
+    if(!body) return;
+    body.innerHTML = "";
+    for(const a of alerts){
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td><b>${a.ticker || ""}</b></td>
+        <td>${a.alert_type || ""}</td>
+        <td>${a.urgency || ""}</td>
+        <td>${a.status || ""}</td>
+        <td>${a.message || ""}</td>
+        <td><button class="ghost" data-alert="${a.id}">Dismiss</button></td>
+      `;
+      body.appendChild(tr);
+    }
+    body.querySelectorAll("[data-alert]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        await fetch(`/api/praetor/alerts/${btn.dataset.alert}`, {
+          method:"PATCH", headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({status:"DISMISSED"})
+        }).catch(()=>{});
+        loadPlaybook();
+      });
+    });
+  }
+
+  async function createManualAlert(){
+    const payload = {
+      ticker:$("alertTicker").value,
+      alert_type:$("alertType").value || "Manual Alert",
+      urgency:$("alertUrgency").value || "normal",
+      message:$("alertMessage").value
+    };
+    const resp = await fetch("/api/praetor/alerts", {
+      method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload)
+    }).catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false,error:"Could not create alert."};
+    if(!data.ok){ alert(data.error || "Alert failed."); return; }
+    $("alertTicker").value = "";
+    $("alertType").value = "";
+    $("alertMessage").value = "";
+    loadPlaybook();
+  }
+
   function bind(){
     $("themeBtn").addEventListener("click", () => setTheme(state.theme === "dark" ? "light" : "dark"));
     ["loginTop","heroLogin"].forEach(id => $(id)?.addEventListener("click", () => openAuth("login")));
@@ -1453,6 +1616,8 @@
     });
     $("noteView").addEventListener("change", loadNotebook);
     $("addPastBtn").addEventListener("click", addPastTrade);
+    $("refreshPlaybookBtn").addEventListener("click", loadPlaybook);
+    $("createAlertBtn").addEventListener("click", createManualAlert);
     $("researchRunBtn").addEventListener("click", loadResearch);
     $("researchTicker").addEventListener("keydown", e => { if(e.key === "Enter") loadResearch(); });
     $("researchChart").addEventListener("mousemove", showResearchTip);
