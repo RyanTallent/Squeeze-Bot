@@ -181,9 +181,17 @@
     .copilotDrawer.open{transform:translateX(0)}
     .copilotHead{padding:16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
     .copilotBody{padding:16px;overflow:auto;display:grid;gap:14px}
+    .copilotChips{display:flex;gap:6px;flex-wrap:wrap}
+    .copilotChip{border:1px solid var(--line);background:var(--panel2);color:var(--muted);border-radius:999px;padding:5px 8px;font-size:11px;font-weight:850}
     .copilotPromptGrid{display:flex;gap:8px;flex-wrap:wrap}
     .copilotPrompt{border:1px solid var(--line);border-radius:999px;background:var(--panel2);padding:7px 10px;cursor:pointer;font-size:12px;font-weight:850;color:var(--muted)}
     .copilotResponse{white-space:pre-wrap;border:1px solid var(--line);border-radius:14px;background:var(--panel2);padding:12px;min-height:90px}
+    .copilotHistory{display:grid;gap:10px}
+    .copilotTurn{border:1px solid var(--line);border-radius:14px;background:var(--panel2);padding:10px;white-space:pre-wrap}
+    .copilotTurn.user{background:color-mix(in srgb, var(--accent) 8%, var(--panel2))}
+    .copilotTurn .meta{display:block;color:var(--muted);font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px}
+    .copilotActionGrid{display:flex;gap:8px;flex-wrap:wrap}
+    .copilotAction{border:1px solid color-mix(in srgb, var(--accent) 40%, var(--line));border-radius:999px;background:color-mix(in srgb, var(--accent) 9%, var(--panel));padding:7px 10px;cursor:pointer;font-size:12px;font-weight:900}
     .researchSubNav{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}
     .researchSubBtn{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:9px 13px;font-weight:900;cursor:pointer;color:var(--muted)}
     .researchSubBtn.active{color:var(--text);border-color:var(--accent);background:color-mix(in srgb, var(--accent) 12%, var(--panel))}
@@ -229,6 +237,8 @@
       .intelSubgrid{grid-template-columns:1fr}
       .topbarInner{align-items:flex-start;flex-direction:column}
       .nav{width:100%}
+      .copilotDrawer{width:100%;height:100dvh}
+      .copilotFab{right:16px;bottom:16px}
     }
   </style>
 </head>
@@ -929,6 +939,11 @@
     </div>
     <div class="copilotBody">
       <div class="card">
+        <h3>Current context</h3>
+        <div class="copilotChips" id="copilotChips"></div>
+        <p class="fineprint" id="copilotEmptyState">Praetor is online. I'm reading your current page context.</p>
+      </div>
+      <div class="card">
         <h3>Ask Praetor</h3>
         <textarea id="copilotInput" placeholder="Ask Praetor about this page, your risk, setup quality, research, or portfolio context."></textarea>
         <div class="toolbar"><button class="btn primary" id="copilotAskBtn" type="button">Ask</button></div>
@@ -944,6 +959,14 @@
       <div class="card">
         <h3>Top risk / discovery</h3>
         <div class="fineprint" id="copilotSnapshot">No snapshot loaded yet.</div>
+      </div>
+      <div class="card">
+        <h3>Suggested actions</h3>
+        <div class="copilotActionGrid" id="copilotActions"></div>
+      </div>
+      <div class="card">
+        <h3>Conversation</h3>
+        <div class="copilotHistory" id="copilotHistory"></div>
       </div>
       <div class="copilotResponse" id="copilotResponse">Praetor responses will appear here.</div>
     </div>
@@ -964,7 +987,9 @@
     scanned:null,
     results:{ SQUEEZE:[], MOMENTUM:[] },
     researchProfile:null,
-    resultLimit:5
+    resultLimit:5,
+    copilotHistory:[],
+    commandSnapshot:null
   };
 
   function setTheme(theme){
@@ -1077,6 +1102,7 @@
     $("ccHypotheses").innerHTML = simpleList(data.learning_progress?.hypotheses, "No hypotheses yet.");
     $("ccActivePlans").innerHTML = simpleList((data.active_trade_plans || []).map(p => ({title:`${p.ticker} ${p.plan_style}`, description:`${p.status} | trigger ${p.trigger_price} | stop ${p.stop_price}`})), "No active plans.");
     $("ccFeed").innerHTML = simpleList(data.intelligence_feed, "No feed items yet.");
+    state.commandSnapshot = data;
     updateCopilotContext(data);
   }
 
@@ -1235,6 +1261,20 @@
     Pricing:["Which plan fits my usage?"]
   };
 
+  const COPILOT_ACTIONS = {
+    Dashboard:["Open Alerts","Run Committee","Generate Morning Briefing"],
+    Scanner:["Build Trade Plan","Save to Playbook","Set Alert"],
+    Research:["Generate Thesis","Run Committee","Simplify"],
+    Journal:["Review Trade","Find Mistakes","Update Playbook"],
+    Playbook:["Refresh Playbook","Show Risk Breakdown","Run Committee"],
+    Alerts:["Run Monitor Check","Dismiss Resolved","Open Playbook"],
+    Briefings:["Generate Morning Briefing","Generate Weekly Briefing","Run Committee"],
+    Committee:["Run Committee","Show Risk Breakdown","Open Briefings"],
+    Risk:["Show Risk Breakdown","Open Playbook","Open Alerts"],
+    Signals:["Open Scanner","Ask About Signals"],
+    Pricing:["Open Plans"]
+  };
+
   function updateCopilotContext(snapshot){
     const page = activePageName();
     $("copilotTitle").textContent = `${page} Copilot`;
@@ -1251,6 +1291,55 @@
       $("copilotRecommendation").textContent = snapshot.recommendation_of_day?.text || "No recommendation loaded.";
       $("copilotSnapshot").innerHTML = `Risk: ${escHtml(snapshot.top_risk_warning?.warning || "none")}<br>Discovery: ${escHtml(snapshot.top_discovery?.title || "none")}`;
     }
+    const snap = snapshot || state.commandSnapshot || {};
+    const chips = [
+      `Page: ${page}`,
+      `Ticker: ${$("researchTicker")?.value || activeScannerTicker() || "none"}`,
+      `Risk: ${snap.top_risk_warning?.warning ? "present" : "none"}`,
+      `Discovery: ${snap.top_discovery?.title ? "present" : "none"}`,
+      `Plans: ${snap.monitoring_summary?.monitored_plans ?? "-"}`
+    ];
+    $("copilotChips").innerHTML = chips.map(c => `<span class="copilotChip">${escHtml(c)}</span>`).join("");
+    renderCopilotActions(page);
+    renderCopilotHistory();
+  }
+
+  function activeScannerTicker(){
+    const list = state.results[state.showing] || [];
+    return list[0]?.ticker || "";
+  }
+
+  function renderCopilotActions(page){
+    const actions = COPILOT_ACTIONS[page] || COPILOT_ACTIONS.Dashboard;
+    $("copilotActions").innerHTML = actions.map(a => `<button class="copilotAction" type="button" data-copilot-action="${escHtml(a)}">${escHtml(a)}</button>`).join("");
+    document.querySelectorAll("[data-copilot-action]").forEach(btn => {
+      btn.addEventListener("click", () => runCopilotAction(btn.dataset.copilotAction || ""));
+    });
+  }
+
+  function renderCopilotHistory(){
+    const history = state.copilotHistory.slice(-10);
+    $("copilotHistory").innerHTML = history.length ? history.map(turn => `
+      <div class="copilotTurn ${turn.role === "user" ? "user" : ""}">
+        <span class="meta">${turn.role} | ${turn.time}</span>${escHtml(turn.text)}
+      </div>
+    `).join("") : `<div class="fineprint">Praetor is online. I'm reading your current page context.</div>`;
+  }
+
+  function addCopilotTurn(role, text){
+    state.copilotHistory.push({role, text, time:new Date().toLocaleTimeString([], {hour:"numeric", minute:"2-digit"})});
+    renderCopilotHistory();
+  }
+
+  function runCopilotAction(action){
+    if(action.includes("Trade Plan")) setPage("Scanner");
+    else if(action.includes("Alert") || action.includes("Monitor")) setPage("Alerts");
+    else if(action.includes("Committee")) setPage("Committee");
+    else if(action.includes("Briefing")) setPage("Briefings");
+    else if(action.includes("Risk")) setPage("Risk");
+    else if(action.includes("Playbook")) setPage("Playbook");
+    else if(action.includes("Thesis") || action.includes("Simplify")) setPage("Research");
+    $("copilotInput").value = action;
   }
 
   function setResearchPage(name){
@@ -1499,6 +1588,7 @@
     if(!state.user){ openAuth("login"); return; }
     const question = ($("copilotInput").value || "").trim();
     if(!question){ $("copilotResponse").textContent = "Ask Praetor a question first."; return; }
+    addCopilotTurn("user", question);
     $("copilotResponse").textContent = "Praetor is thinking...";
     const page = activePageName();
     const resp = await fetch("/api/praetor/ask", {
@@ -1509,9 +1599,13 @@
     const data = resp ? await safeJson(resp) : {ok:false,error:"Praetor unavailable."};
     if(!data.ok){
       $("copilotResponse").textContent = data.error || "Praetor unavailable.";
+      addCopilotTurn("praetor", data.error || "Praetor unavailable.");
       return;
     }
-    $("copilotResponse").textContent = `${data.fallback_used ? "Fallback Praetor" : "Praetor"}:\n\n${data.response}`;
+    const responseText = `${data.fallback_used ? "Fallback Praetor" : "Praetor"}:\n\n${data.response}`;
+    $("copilotResponse").textContent = responseText;
+    addCopilotTurn("praetor", data.response);
+    renderCopilotActions(activePageName());
   }
 
   function openCopilot(){
