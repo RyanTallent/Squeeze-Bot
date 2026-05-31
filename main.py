@@ -38,6 +38,8 @@ from alert_engine import build_smart_alert, smart_alert_to_repo_kwargs
 from briefing_engine import build_briefing
 from committee_engine import run_investment_committee
 from command_center_engine import build_command_center
+from monitor_scheduler import build_monitoring_health
+from services.praetor_orchestrator import PraetorDataLoaders, PraetorOrchestrator, PraetorRepositories
 from repositories.alert_repository import AlertRepository
 from repositories.briefing_repository import BriefingRepository
 from repositories.committee_repository import CommitteeRepository
@@ -513,6 +515,32 @@ def db_init():
     );
     """
 
+    monitoring_runs_sql = """
+    CREATE TABLE IF NOT EXISTS monitoring_runs (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      active_plan_count INTEGER NOT NULL DEFAULT 0,
+      stale_plan_count INTEGER NOT NULL DEFAULT 0,
+      open_alert_count INTEGER NOT NULL DEFAULT 0,
+      failed_check_count INTEGER NOT NULL DEFAULT 0,
+      health_json TEXT NOT NULL,
+      created_at_utc TEXT NOT NULL
+    );
+    """
+
+    notification_preferences_sql = """
+    CREATE TABLE IF NOT EXISTS notification_preferences (
+      user_id TEXT PRIMARY KEY,
+      alert_level TEXT NOT NULL DEFAULT 'high_and_critical',
+      cooldown_minutes INTEGER NOT NULL DEFAULT 20,
+      email_enabled INTEGER NOT NULL DEFAULT 0,
+      sms_enabled INTEGER NOT NULL DEFAULT 0,
+      push_enabled INTEGER NOT NULL DEFAULT 0,
+      quiet_hours_json TEXT,
+      updated_at_utc TEXT NOT NULL
+    );
+    """
+
     if using_postgres():
         with pg_conn() as conn:
             with conn.cursor() as cur:
@@ -538,6 +566,8 @@ def db_init():
                 )
                 cur.execute(briefing_runs_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ"))
                 cur.execute(committee_runs_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ"))
+                cur.execute(monitoring_runs_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ"))
+                cur.execute(notification_preferences_sql.replace("updated_at_utc TEXT", "updated_at_utc TIMESTAMPTZ"))
             conn.commit()
     else:
         with DB_LOCK:
@@ -557,6 +587,8 @@ def db_init():
                 conn.execute(discoveries_sql)
                 conn.execute(briefing_runs_sql)
                 conn.execute(committee_runs_sql)
+                conn.execute(monitoring_runs_sql)
+                conn.execute(notification_preferences_sql)
                 conn.commit()
             finally:
                 conn.close()
@@ -701,6 +733,175 @@ def committee_repo() -> CommitteeRepository:
     return CommitteeRepository(using_postgres, pg_conn, sqlite_conn, DB_LOCK)
 
 
+def praetor_orchestrator() -> PraetorOrchestrator:
+    return PraetorOrchestrator(
+        PraetorRepositories(
+            trade_plan_repo=trade_plan_repo(),
+            alert_repo=alert_repo(),
+            memory_repo=memory_repo(),
+            discovery_repo=discovery_repo(),
+            briefing_repo=briefing_repo(),
+            committee_repo=committee_repo(),
+        ),
+        PraetorDataLoaders(
+            learning=run_praetor_learning_update,
+            journal=run_praetor_journal_update,
+        ),
+    )
+
+
+def get_notification_preferences(user_id: str) -> dict[str, Any]:
+    sql = "SELECT * FROM notification_preferences WHERE user_id=%s"
+    if using_postgres():
+        with pg_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, (user_id,))
+                row = cur.fetchone()
+                return dict(row) if row else default_notification_preferences(user_id)
+    conn = sqlite_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(sql.replace("%s", "?"), (user_id,))
+        row = cur.fetchone()
+        return dict(row) if row else default_notification_preferences(user_id)
+    finally:
+        conn.close()
+
+
+def default_notification_preferences(user_id: str) -> dict[str, Any]:
+    return {
+        "user_id": user_id,
+        "alert_level": "high_and_critical",
+        "cooldown_minutes": 20,
+        "email_enabled": 0,
+        "sms_enabled": 0,
+        "push_enabled": 0,
+        "quiet_hours_json": None,
+        "updated_at_utc": datetime.utcnow().isoformat(),
+    }
+
+
+def save_notification_preferences(user_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    prefs = default_notification_preferences(user_id)
+    current = get_notification_preferences(user_id)
+    prefs.update(current)
+    if payload.get("alert_level") in ("critical", "high_and_critical", "all"):
+        prefs["alert_level"] = payload["alert_level"]
+    if payload.get("cooldown_minutes") is not None:
+        prefs["cooldown_minutes"] = max(1, min(int(payload["cooldown_minutes"]), 1440))
+    for key in ("email_enabled", "sms_enabled", "push_enabled"):
+        if key in payload:
+            prefs[key] = 1 if payload[key] else 0
+    prefs["updated_at_utc"] = datetime.utcnow().isoformat()
+
+    if using_postgres():
+        with pg_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO notification_preferences (
+                      user_id, alert_level, cooldown_minutes, email_enabled, sms_enabled, push_enabled, quiet_hours_json, updated_at_utc
+                    ) VALUES (
+                      %(user_id)s, %(alert_level)s, %(cooldown_minutes)s, %(email_enabled)s, %(sms_enabled)s, %(push_enabled)s, %(quiet_hours_json)s, %(updated_at_utc)s
+                    )
+                    ON CONFLICT (user_id) DO UPDATE SET
+                      alert_level=EXCLUDED.alert_level,
+                      cooldown_minutes=EXCLUDED.cooldown_minutes,
+                      email_enabled=EXCLUDED.email_enabled,
+                      sms_enabled=EXCLUDED.sms_enabled,
+                      push_enabled=EXCLUDED.push_enabled,
+                      quiet_hours_json=EXCLUDED.quiet_hours_json,
+                      updated_at_utc=EXCLUDED.updated_at_utc
+                    )
+                    """,
+                    prefs,
+                )
+            conn.commit()
+        return prefs
+
+    with DB_LOCK:
+        conn = sqlite_conn()
+        try:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO notification_preferences (
+                  user_id, alert_level, cooldown_minutes, email_enabled, sms_enabled, push_enabled, quiet_hours_json, updated_at_utc
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    prefs["user_id"],
+                    prefs["alert_level"],
+                    prefs["cooldown_minutes"],
+                    prefs["email_enabled"],
+                    prefs["sms_enabled"],
+                    prefs["push_enabled"],
+                    prefs["quiet_hours_json"],
+                    prefs["updated_at_utc"],
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    return prefs
+
+
+def save_monitoring_run(user_id: str, health: dict[str, Any]) -> str:
+    run_id = str(uuid.uuid4())
+    row = {
+        "id": run_id,
+        "user_id": user_id,
+        "active_plan_count": int(health.get("active_plan_count") or 0),
+        "stale_plan_count": int(health.get("stale_plan_count") or 0),
+        "open_alert_count": int(health.get("open_alert_count") or 0),
+        "failed_check_count": int(health.get("failed_check_count") or 0),
+        "health_json": json.dumps(health, default=str),
+        "created_at_utc": datetime.utcnow().isoformat(),
+    }
+    if using_postgres():
+        with pg_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO monitoring_runs (
+                      id, user_id, active_plan_count, stale_plan_count, open_alert_count,
+                      failed_check_count, health_json, created_at_utc
+                    ) VALUES (
+                      %(id)s, %(user_id)s, %(active_plan_count)s, %(stale_plan_count)s, %(open_alert_count)s,
+                      %(failed_check_count)s, %(health_json)s, %(created_at_utc)s
+                    )
+                    """,
+                    row,
+                )
+            conn.commit()
+        return run_id
+
+    with DB_LOCK:
+        conn = sqlite_conn()
+        try:
+            conn.execute(
+                """
+                INSERT INTO monitoring_runs (
+                  id, user_id, active_plan_count, stale_plan_count, open_alert_count,
+                  failed_check_count, health_json, created_at_utc
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    row["id"],
+                    row["user_id"],
+                    row["active_plan_count"],
+                    row["stale_plan_count"],
+                    row["open_alert_count"],
+                    row["failed_check_count"],
+                    row["health_json"],
+                    row["created_at_utc"],
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    return run_id
+
+
 def run_praetor_learning_update(user_id: str) -> dict[str, Any]:
     plans = trade_plan_repo().list_plans(user_id, limit=1000)
     stats = calculate_playbook_stats(plans)
@@ -764,33 +965,8 @@ def run_praetor_journal_update(user_id: str) -> dict[str, Any]:
 
 
 def run_praetor_monitoring(user_id: str, market_prices: dict[str, Any] | None = None) -> dict[str, Any]:
-    plans = trade_plan_repo().list_plans(user_id, limit=1000)
-    learning = run_praetor_learning_update(user_id)
-    memory = memory_repo().list_memory(user_id)
-    discoveries = discovery_repo().list_discoveries(user_id)
-    playbook_context = learning.get("stats") or {}
-    risk_context = learning.get("risk") or {}
-    events = monitor_trade_plans(plans, market_prices or {})
-
-    created_alerts = []
-    for event in events:
-        smart = build_smart_alert(
-            event,
-            playbook_context=playbook_context,
-            memory_context=memory,
-            discovery_context=discoveries,
-            risk_context=risk_context,
-        )
-        alert_id = alert_repo().create_alert(user_id=user_id, **smart_alert_to_repo_kwargs(smart))
-        created_alerts.append({**smart.__dict__, "id": alert_id})
-
-    return {
-        "ok": True,
-        "events": events,
-        "created_alerts": created_alerts,
-        "alert_count": len(created_alerts),
-        "risk": risk_context,
-    }
+    prefs = get_notification_preferences(user_id)
+    return praetor_orchestrator().monitoring_cycle(user_id, market_prices=market_prices or {**{}}, notification_preferences=prefs)
 
 
 def build_briefing_context(user_id: str) -> dict[str, Any]:
@@ -812,41 +988,16 @@ def build_briefing_context(user_id: str) -> dict[str, Any]:
 
 
 def generate_and_save_briefing(user_id: str, briefing_type: str) -> dict[str, Any]:
-    context = build_briefing_context(user_id)
-    briefing = build_briefing(briefing_type, context)
-    briefing_id = briefing_repo().save_briefing(user_id, briefing, source_context=context)
-    return {"ok": True, "briefing": briefing, "briefing_id": briefing_id}
+    return praetor_orchestrator().briefing(user_id, briefing_type)
 
 
 def run_and_save_committee(user_id: str, committee_type: str = "general") -> dict[str, Any]:
-    context = build_briefing_context(user_id)
-    context["briefings"] = briefing_repo().list_briefings(user_id, limit=10)
-    context["committee_type"] = committee_type
-    committee = run_investment_committee(context)
-    committee_id = committee_repo().save_run(user_id, committee, source_context=context)
-    return {"ok": True, "committee": committee, "committee_id": committee_id}
+    return praetor_orchestrator().committee(user_id, committee_type)
 
 
 def build_command_center_context(user_id: str) -> dict[str, Any]:
-    learning = run_praetor_learning_update(user_id)
-    journal = run_praetor_journal_update(user_id)
-    alerts = alert_repo().list_alerts(user_id, limit=100)
-    discoveries = discovery_repo().list_discoveries(user_id, limit=100)
-    briefings = briefing_repo().list_briefings(user_id, limit=20)
-    committee_runs = committee_repo().list_runs(user_id, limit=10)
-    plans = trade_plan_repo().list_plans(user_id, limit=1000)
-    memory = memory_repo().list_memory(user_id, limit=100)
-    data = {
-        "learning": learning,
-        "journal": journal.get("journal"),
-        "alerts": alerts,
-        "discoveries": discoveries,
-        "briefings": briefings,
-        "committee_runs": committee_runs,
-        "trade_plans": plans,
-        "memory": memory,
-        "risk": learning.get("risk"),
-    }
+    orchestrator = praetor_orchestrator()
+    data = orchestrator.build_context(user_id)
     return {"sources": data, "command_center": build_command_center(data)}
 
 
@@ -3265,6 +3416,54 @@ async def api_praetor_monitor_run(request: Request):
     payload = await request.json()
     try:
         return run_praetor_monitoring(auth_user["id"], market_prices=payload.get("market_prices") or {})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=400)
+
+
+@app.get("/api/praetor/monitor/health")
+def api_praetor_monitor_health(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    try:
+        health = praetor_orchestrator().monitoring_health(auth_user["id"])
+        run_id = save_monitoring_run(auth_user["id"], health)
+        return {"ok": True, "health": health, "monitoring_run_id": run_id}
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=500)
+
+
+@app.post("/api/praetor/monitor/run-v2")
+async def api_praetor_monitor_run_v2(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    payload = await request.json()
+    try:
+        result = run_praetor_monitoring(auth_user["id"], market_prices=payload.get("market_prices") or {})
+        run_id = save_monitoring_run(auth_user["id"], result.get("health") or {})
+        result["monitoring_run_id"] = run_id
+        return result
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=400)
+
+
+@app.get("/api/praetor/notification-preferences")
+def api_praetor_notification_preferences(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    return {"ok": True, "preferences": get_notification_preferences(auth_user["id"])}
+
+
+@app.patch("/api/praetor/notification-preferences")
+async def api_praetor_update_notification_preferences(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    payload = await request.json()
+    try:
+        return {"ok": True, "preferences": save_notification_preferences(auth_user["id"], payload)}
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=400)
 
