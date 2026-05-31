@@ -1108,6 +1108,7 @@
   </aside>
 
 <script>
+  const APP_BUILD_VERSION = "research-opinion-v2-debug-2026-05-31";
   const $ = (id) => document.getElementById(id);
   const state = {
     user:null,
@@ -1122,6 +1123,7 @@
     scanned:null,
     results:{ SQUEEZE:[], MOMENTUM:[] },
     researchProfile:null,
+    lastResearchDebug:null,
     resultLimit:5,
     copilotHistory:[],
     commandSnapshot:null
@@ -1618,6 +1620,20 @@
       body:JSON.stringify({ticker, range, report_type:reportType, objective})
     }).catch(()=>null);
     const report = reportResp ? await safeJson(reportResp) : {ok:false,error:"Could not generate report."};
+    state.lastResearchDebug = report.research_debug || null;
+    if(state.user?.plan_code === "founder"){
+      const inst = report.report?.institutional || {};
+      console.log("[Research QA Debug] response", {
+        build: APP_BUILD_VERSION,
+        ok: report.ok,
+        ticker,
+        institutional_opinion_exists: !!inst.opinion,
+        opinion_keys: Object.keys(inst.opinion || {}),
+        backend_debug: report.research_debug || null,
+        sections_keys: Object.keys(inst.sections || {}),
+        ui_version_endpoint: "/__ui_version"
+      });
+    }
     renderResearchReport(report.ok ? report.report : null, report.error);
     loadResearchAI();
   }
@@ -1642,6 +1658,19 @@
       return;
     }
     renderResearch(data.profile);
+    state.lastResearchDebug = data.research_debug || null;
+    if(state.user?.plan_code === "founder"){
+      const inst = data.deterministic_report?.institutional || {};
+      console.log("[Research QA Debug] AI deterministic response", {
+        build: APP_BUILD_VERSION,
+        ticker,
+        institutional_opinion_exists: !!inst.opinion,
+        opinion_keys: Object.keys(inst.opinion || {}),
+        backend_debug: data.research_debug || null,
+        sections_keys: Object.keys(inst.sections || {}),
+        render_path_expected: "renderResearchReport:opinion-v2"
+      });
+    }
     renderResearchReport(data.deterministic_report, null);
     $("researchAiReport").innerHTML = `
       <div class="reportSection">
@@ -1719,6 +1748,22 @@
     const coverage = inst.data_coverage || {};
     const sectorFramework = inst.sector_framework || {};
     const opinion = inst.opinion || {};
+    const opinionExists = !!inst.opinion;
+    const opinionKeys = Object.keys(opinion);
+    const renderPath = "renderResearchReport:opinion-v2";
+    if(state.user?.plan_code === "founder"){
+      console.log("[Research QA Debug] render path reached", {
+        build: APP_BUILD_VERSION,
+        render_path: renderPath,
+        institutional_opinion_exists: opinionExists,
+        opinion_keys: opinionKeys,
+        has_final_recommendation: !!opinion.final_recommendation,
+        has_today_action: !!opinion.what_praetor_would_do_today,
+        has_score_conflicts: Array.isArray(opinion.score_conflicts),
+        has_opportunity_ranking: Array.isArray(opinion.opportunity_ranking),
+        static_cache_check: "/__ui_version"
+      });
+    }
     const scoreCards = Object.values(scores).map(s => metricCard(s.name || "Score", `${s.score ?? "-"} ${s.label ? "(" + s.label + ")" : ""}`)).join("");
     const scenarios = (inst.scenarios || []).map(s => `
       <div class="reportSection"><h3>${s.name} <span class="scoreBadge">${fmtPct(s.probability)}</span></h3>
@@ -1745,7 +1790,27 @@
     const rankingRows = (opinion.opportunity_ranking || []).map(r => `
       <tr><td>${r.rank}</td><td><b>${escHtml(r.ticker || "")}</b></td><td>${r.rank_score ?? "-"}</td><td>${escHtml(r.stance || "")}</td><td>${r.conviction_score ?? "-"}</td><td>${escHtml(r.valuation_rating || "n/a")} (${r.valuation_score ?? "-"})</td><td>${r.data_coverage_score ?? "-"}</td><td>${escHtml(r.explanation || "")}</td></tr>
     `).join("");
+    const founderDebug = state.user?.plan_code === "founder" ? `
+      <details class="explainer" open>
+        <summary>Founder Research QA Debug</summary>
+        <p><b>Frontend build:</b> ${escHtml(APP_BUILD_VERSION)}</p>
+        <p><b>Render path reached:</b> ${escHtml(renderPath)}</p>
+        <p><b>Backend debug path:</b> ${escHtml(state.lastResearchDebug?.backend_path || "not returned")}</p>
+        <p><b>institutional.opinion exists:</b> ${opinionExists ? "true" : "false"}</p>
+        <p><b>Opinion keys returned:</b> ${opinionKeys.map(escHtml).join(", ") || "none"}</p>
+        <p><b>Backend opinion exists:</b> ${state.lastResearchDebug?.institutional_opinion_exists === true ? "true" : state.lastResearchDebug ? "false" : "not returned"}</p>
+        <p><b>Backend opinion keys:</b> ${(state.lastResearchDebug?.opinion_keys || []).map(escHtml).join(", ") || "none/not returned"}</p>
+        <p><b>Required v2 fields:</b>
+          final_recommendation=${opinion.final_recommendation ? "true" : "false"};
+          what_praetor_would_do_today=${opinion.what_praetor_would_do_today ? "true" : "false"};
+          score_conflicts=${Array.isArray(opinion.score_conflicts) ? "true" : "false"};
+          opportunity_ranking=${Array.isArray(opinion.opportunity_ranking) ? "true" : "false"}
+        </p>
+        <p class="fineprint">Cache check: open <code>/__ui_version</code> and hard refresh if this build/version is not visible.</p>
+      </details>
+    ` : "";
     $("researchReport").innerHTML = `
+      ${founderDebug}
       <div class="reportSection"><h3>Praetor Final Recommendation <span class="scoreBadge">${escHtml(opinion.final_recommendation?.label || opinion.final_stance || inst.verdict || "Needs Confirmation")}</span></h3><p>${escHtml(opinion.final_recommendation?.body || opinion.final_stance_body || sections.executive_view?.body || "No executive view available.")}</p></div>
       <div class="metricGrid">${scoreCards}</div>
       <div class="researchGrid">

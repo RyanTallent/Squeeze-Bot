@@ -1230,6 +1230,21 @@ def get_wealth_analysis(user_id: str, available_cash: float = 0, objective: str 
     return {"ok": True, "wealth": wealth, "portfolio": portfolio_result.get("analysis"), "research_report_count": len(reports)}
 
 
+def _research_opinion_debug(report: dict[str, Any]) -> dict[str, Any]:
+    institutional = (report or {}).get("institutional") or {}
+    opinion = institutional.get("opinion") or {}
+    return {
+        "backend_path": "api_research_report:opinion-v2",
+        "institutional_opinion_exists": bool(institutional.get("opinion")),
+        "opinion_keys": sorted(opinion.keys()),
+        "has_final_recommendation": bool(opinion.get("final_recommendation")),
+        "has_what_praetor_would_do_today": bool(opinion.get("what_praetor_would_do_today")),
+        "has_score_conflicts": isinstance(opinion.get("score_conflicts"), list),
+        "has_opportunity_ranking": isinstance(opinion.get("opportunity_ranking"), list),
+        "static_cache_check": "/__ui_version",
+    }
+
+
 def build_command_center_context(user_id: str) -> dict[str, Any]:
     orchestrator = praetor_orchestrator()
     data = orchestrator.build_context(user_id)
@@ -3390,7 +3405,10 @@ async def api_research_report(request: Request):
         opportunity_context = [r.get("report_json") or {} for r in research_repo().list_reports(auth_user["id"], limit=12)]
         report = generate_research_report(profile, report_type, objective, fundamentals=fundamentals, opportunity_context=opportunity_context)
         research_repo().save_report(auth_user["id"], report.get("institutional") or {}, profile=profile)
-        return {"ok": True, "report": report}
+        response = {"ok": True, "report": report}
+        if (auth_user.get("plan_code") or "") == "founder":
+            response["research_debug"] = _research_opinion_debug(report)
+        return response
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=500)
 
@@ -3424,13 +3442,16 @@ async def api_praetor_ai_research(request: Request):
             },
         )
         research_repo().save_report(auth_user["id"], institutional, profile=profile, ai=ai)
-        return {
+        response = {
             "ok": True,
             "profile": profile,
             "deterministic_report": deterministic_report,
             "institutional_report": institutional,
             "ai": ai,
         }
+        if (auth_user.get("plan_code") or "") == "founder":
+            response["research_debug"] = _research_opinion_debug(deterministic_report)
+        return response
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=500)
 
