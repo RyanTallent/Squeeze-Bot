@@ -520,9 +520,25 @@
             <p>Praetor grades live setups, evaluates trade-plan quality, detects mistake risk, ranks the top setups, and summarizes what it would trade today.</p>
             <div class="toolbar">
               <button class="btn primary" id="refreshTradingBtn" type="button">Refresh Trading Intelligence</button>
+              <button class="btn success" id="seedActiveSetupsBtn" type="button">Monitor Top 5</button>
+              <button class="btn" id="refreshActiveSetupsBtn" type="button">Refresh Active Setups</button>
               <button class="btn" data-jump="Scanner" type="button">Open Scanner</button>
               <button class="btn" data-jump="Playbook" type="button">Open Playbook</button>
             </div>
+          </div>
+          <div class="card">
+            <h3>Top 5 Active Setups Dashboard</h3>
+            <div id="activeSetupDashboard" class="fineprint">Run a scan, then click Monitor Top 5.</div>
+          </div>
+          <div class="researchGrid">
+            <div class="card"><h3>Active Highest Conviction</h3><div id="activeHighest" class="fineprint">No active setup.</div></div>
+            <div class="card"><h3>Active Best R/R</h3><div id="activeBestRR" class="fineprint">No active setup.</div></div>
+            <div class="card"><h3>Active Most Dangerous</h3><div id="activeDangerous" class="fineprint">No active setup.</div></div>
+            <div class="card"><h3>Conviction Changes</h3><div id="activeConvictionChanges" class="fineprint">No changes yet.</div></div>
+          </div>
+          <div class="card">
+            <h3>Monitoring Events</h3>
+            <div id="activeSetupEvents" class="fineprint">No monitoring events yet.</div>
           </div>
           <div class="researchGrid">
             <div class="card"><h3>Highest Conviction Setup</h3><div id="tradingHighest" class="fineprint">No setup loaded.</div></div>
@@ -1153,7 +1169,8 @@
     researchProfile:null,
     resultLimit:5,
     copilotHistory:[],
-    commandSnapshot:null
+    commandSnapshot:null,
+    activeSetupTimer:null
   };
 
   async function loadAiStatus(){
@@ -1336,6 +1353,7 @@
     state.usage = null;
     state.results = {SQUEEZE:[], MOMENTUM:[]};
     if(state.es){ try{state.es.close();}catch(e){} state.es=null; }
+    if(state.activeSetupTimer){ clearInterval(state.activeSetupTimer); state.activeSetupTimer = null; }
     renderAll();
   }
 
@@ -1434,7 +1452,19 @@
     if(name === "Committee") loadCommittee();
     if(name === "Portfolio") loadPortfolio();
     if(name === "Wealth") loadWealth();
-    if(name === "Trading") loadTradingIntelligence();
+    if(state.activeSetupTimer && name !== "Trading"){
+      clearInterval(state.activeSetupTimer);
+      state.activeSetupTimer = null;
+    }
+    if(name === "Trading"){
+      loadTradingIntelligence();
+      loadActiveSetups();
+      if(!state.activeSetupTimer){
+        state.activeSetupTimer = setInterval(() => {
+          if(activePageName() === "Trading") refreshActiveSetups();
+        }, 60000);
+      }
+    }
     if(name === "Dashboard") loadCommandCenter();
     if(name === "Risk") loadRiskAI();
     if(name === "ResearchValidation") loadResearchValidation();
@@ -2305,6 +2335,17 @@
       <span class="muted">${escHtml(setup.why || "")}</span>`;
   }
 
+  function activeMonitorLine(m){
+    if(!m) return "No active setup.";
+    const s = m.state_json || {};
+    const levels = m.levels || {};
+    return `<b>${escHtml(m.ticker || "")}</b> ${escHtml(m.setup_grade || "")} / Conv ${m.conviction ?? "-"}<br>
+      State: <b>${escHtml(m.current_state || "")}</b><br>
+      Entry ${fmtDollar(levels.entry_trigger)} | Stop ${fmtDollar(levels.stop_level)} | Target ${fmtDollar(levels.target_1)}<br>
+      Price ${fmtDollar(s.current_price)} | R/R ${fmtNum(s.risk_reward,2)}<br>
+      <span class="muted">${escHtml(s.status_summary || "")}</span>`;
+  }
+
   async function loadTradingIntelligence(){
     if(!state.user) return;
     const resp = await fetch("/api/praetor/trading-intelligence").catch(()=>null);
@@ -2334,6 +2375,51 @@
       title:x.ticker || "Setup",
       description:(x.mistakes || []).map(m => `${m.type}: ${m.evidence}`).join("; ")
     })), "No mistake flags yet.");
+  }
+
+  async function seedActiveSetups(){
+    if(!state.user) return;
+    const resp = await fetch("/api/praetor/active-setups/seed", {
+      method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({limit:5})
+    }).catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false,error:"Could not seed active setups."};
+    if(!data.ok){ $("activeSetupDashboard").textContent = data.error || "Could not seed active setups."; return; }
+    await loadActiveSetups();
+  }
+
+  async function refreshActiveSetups(){
+    if(!state.user) return;
+    const resp = await fetch("/api/praetor/active-setups/refresh", {
+      method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({market_prices:{}})
+    }).catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false,error:"Could not refresh active setups."};
+    if(!data.ok){ $("activeSetupDashboard").textContent = data.error || "Could not refresh active setups."; return; }
+    renderActiveSetups(data);
+  }
+
+  async function loadActiveSetups(){
+    if(!state.user) return;
+    const resp = await fetch("/api/praetor/active-setups").catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false,error:"Active setup monitor unavailable."};
+    if(!data.ok){ $("activeSetupDashboard").textContent = data.error || "Active setup monitor unavailable."; return; }
+    renderActiveSetups(data);
+  }
+
+  function renderActiveSetups(data){
+    const monitors = data.monitors || [];
+    const summary = data.trader_summary || {};
+    $("activeSetupDashboard").innerHTML = `
+      <div class="tableWrap"><table><thead><tr><th>Ticker</th><th>Grade</th><th>Conviction</th><th>Playbook</th><th>State</th><th>Entry</th><th>Stop</th><th>Target</th><th>Price</th><th>R/R</th><th>Status</th></tr></thead>
+      <tbody>${monitors.map(m => {
+        const s = m.state_json || {}, l = m.levels || {};
+        return `<tr><td><b>${escHtml(m.ticker || "")}</b></td><td>${escHtml(m.setup_grade || "")}</td><td>${m.conviction ?? "-"}</td><td>${m.playbook_match_pct ?? "-"}%</td><td>${escHtml(m.current_state || "")}</td><td>${fmtDollar(l.entry_trigger)}</td><td>${fmtDollar(l.stop_level)}</td><td>${fmtDollar(l.target_1)}</td><td>${fmtDollar(s.current_price)}</td><td>${fmtNum(s.risk_reward,2)}</td><td>${escHtml(s.status_summary || "")}</td></tr>`;
+      }).join("") || `<tr><td colspan="11">No active monitored setups.</td></tr>`}</tbody></table></div>
+    `;
+    $("activeHighest").innerHTML = activeMonitorLine(summary.highest_conviction_setup);
+    $("activeBestRR").innerHTML = activeMonitorLine(summary.best_risk_reward_setup);
+    $("activeDangerous").innerHTML = activeMonitorLine(summary.most_dangerous_setup);
+    $("activeConvictionChanges").innerHTML = `${activeMonitorLine(summary.most_improved_setup)}<hr>${activeMonitorLine(summary.setup_losing_conviction_fastest)}`;
+    $("activeSetupEvents").innerHTML = simpleList((data.recent_events || data.events || []).slice(0,25).map(e => ({title:`${e.ticker} ${e.event_type}`, description:`${e.old_state || "-"} → ${e.new_state || "-"}: ${e.message || ""}`})), "No monitoring events yet.");
   }
 
   function showPraetorResponse(text){
@@ -2986,6 +3072,8 @@
     $("refreshCommitteeBtn").addEventListener("click", loadCommittee);
     $("refreshCommandCenterBtn").addEventListener("click", loadCommandCenter);
     $("refreshTradingBtn").addEventListener("click", loadTradingIntelligence);
+    $("seedActiveSetupsBtn").addEventListener("click", seedActiveSetups);
+    $("refreshActiveSetupsBtn").addEventListener("click", refreshActiveSetups);
     $("commandAskBtn").addEventListener("click", askCommandPraetor);
     $("researchRunBtn").addEventListener("click", loadResearch);
     $("researchAiBtn").addEventListener("click", loadResearchAI);

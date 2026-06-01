@@ -36,6 +36,7 @@ from journal_engine import build_journal_memory_updates, build_journal_report
 from risk_engine import build_risk_report
 from trading_intelligence_engine import build_trading_intelligence, compare_setups
 from monitoring_engine import monitor_trade_plans
+from active_setup_monitoring_engine import create_monitor_from_setup, evaluate_active_setup, trader_summary
 from alert_engine import build_smart_alert, smart_alert_to_repo_kwargs
 from briefing_engine import build_briefing
 from committee_engine import run_investment_committee
@@ -571,6 +572,44 @@ def db_init():
     );
     """
 
+    active_setup_monitors_sql = """
+    CREATE TABLE IF NOT EXISTS active_setup_monitors (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      ticker TEXT NOT NULL,
+      scan_id TEXT,
+      setup_type TEXT,
+      scanner_bucket TEXT,
+      setup_grade TEXT,
+      conviction REAL,
+      current_state TEXT,
+      status TEXT NOT NULL DEFAULT 'ACTIVE',
+      trade_plan_id TEXT,
+      setup_json TEXT NOT NULL,
+      state_json TEXT NOT NULL,
+      levels_json TEXT NOT NULL,
+      playbook_json TEXT,
+      trade_plan_json TEXT,
+      created_at_utc TEXT NOT NULL,
+      updated_at_utc TEXT NOT NULL
+    );
+    """
+
+    active_setup_events_sql = """
+    CREATE TABLE IF NOT EXISTS active_setup_events (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      monitor_id TEXT NOT NULL,
+      ticker TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      old_state TEXT,
+      new_state TEXT,
+      message TEXT NOT NULL,
+      evidence_json TEXT,
+      created_at_utc TEXT NOT NULL
+    );
+    """
+
     notification_preferences_sql = """
     CREATE TABLE IF NOT EXISTS notification_preferences (
       user_id TEXT PRIMARY KEY,
@@ -678,6 +717,8 @@ def db_init():
                 cur.execute(briefing_runs_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ"))
                 cur.execute(committee_runs_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ"))
                 cur.execute(monitoring_runs_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ"))
+                cur.execute(active_setup_monitors_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ").replace("updated_at_utc TEXT", "updated_at_utc TIMESTAMPTZ"))
+                cur.execute(active_setup_events_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ"))
                 cur.execute(notification_preferences_sql.replace("updated_at_utc TEXT", "updated_at_utc TIMESTAMPTZ"))
                 cur.execute(portfolios_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ").replace("updated_at_utc TEXT", "updated_at_utc TIMESTAMPTZ"))
                 cur.execute(portfolio_holdings_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ").replace("updated_at_utc TEXT", "updated_at_utc TIMESTAMPTZ"))
@@ -706,6 +747,8 @@ def db_init():
                 conn.execute(briefing_runs_sql)
                 conn.execute(committee_runs_sql)
                 conn.execute(monitoring_runs_sql)
+                conn.execute(active_setup_monitors_sql)
+                conn.execute(active_setup_events_sql)
                 conn.execute(notification_preferences_sql)
                 conn.execute(portfolios_sql)
                 conn.execute(portfolio_holdings_sql)
@@ -1185,6 +1228,262 @@ def run_praetor_monitoring(user_id: str, market_prices: dict[str, Any] | None = 
 def latest_scanner_rows(limit: int = 100) -> list[dict[str, Any]]:
     with STATE_LOCK:
         return list(STATE["rows"])[-limit:]
+
+
+def _top_scanner_setups(limit: int = 5) -> list[dict[str, Any]]:
+    rows = latest_scanner_rows(100)
+    return sorted(rows, key=lambda r: float((r.get("intelligence") or {}).get("confluence_score") or r.get("confidence") or 0), reverse=True)[:limit]
+
+
+def _latest_trade_plan_by_ticker(user_id: str) -> dict[str, dict[str, Any]]:
+    out: dict[str, dict[str, Any]] = {}
+    for plan in trade_plan_repo().list_plans(user_id, limit=1000):
+        ticker = str(plan.get("ticker") or "").upper()
+        if ticker and ticker not in out:
+            out[ticker] = plan
+    return out
+
+
+def _monitor_row_from_engine(user_id: str, monitor: dict[str, Any]) -> dict[str, Any]:
+    now = datetime.utcnow().isoformat()
+    return {
+        "id": monitor["id"],
+        "user_id": user_id,
+        "ticker": monitor.get("ticker"),
+        "scan_id": monitor.get("scan_id"),
+        "setup_type": monitor.get("setup_type"),
+        "scanner_bucket": monitor.get("scanner_bucket"),
+        "setup_grade": monitor.get("setup_grade"),
+        "conviction": monitor.get("conviction"),
+        "current_state": monitor.get("current_state"),
+        "status": monitor.get("status") or "ACTIVE",
+        "trade_plan_id": monitor.get("trade_plan_id"),
+        "setup_json": json.dumps(monitor.get("setup_json") or {}, default=str),
+        "state_json": json.dumps(monitor.get("state_json") or {}, default=str),
+        "levels_json": json.dumps(monitor.get("levels") or {}, default=str),
+        "playbook_json": json.dumps(
+            {
+                "playbook_match_pct": monitor.get("playbook_match_pct"),
+                "historical_win_rate": monitor.get("historical_win_rate"),
+                "average_gain": monitor.get("average_gain"),
+                "average_loss": monitor.get("average_loss"),
+                "similar_historical_setups": monitor.get("similar_historical_setups") or [],
+            },
+            default=str,
+        ),
+        "trade_plan_json": json.dumps(monitor.get("trade_plan_snapshot") or {}, default=str),
+        "created_at_utc": monitor.get("created_at_utc") or now,
+        "updated_at_utc": now,
+    }
+
+
+def _parse_monitor_row(row: dict[str, Any]) -> dict[str, Any]:
+    for key in ("setup_json", "state_json", "levels_json", "playbook_json", "trade_plan_json"):
+        try:
+            row[key] = json.loads(row.get(key) or "{}")
+        except Exception:
+            row[key] = {}
+    playbook = row.get("playbook_json") or {}
+    return {
+        "id": row.get("id"),
+        "ticker": row.get("ticker"),
+        "scan_id": row.get("scan_id"),
+        "setup_type": row.get("setup_type"),
+        "scanner_bucket": row.get("scanner_bucket"),
+        "setup_grade": row.get("setup_grade"),
+        "conviction": row.get("conviction"),
+        "current_state": row.get("current_state"),
+        "status": row.get("status"),
+        "trade_plan_id": row.get("trade_plan_id"),
+        "setup_json": row.get("setup_json") or {},
+        "state_json": row.get("state_json") or {},
+        "levels": row.get("levels_json") or {},
+        "playbook_match_pct": playbook.get("playbook_match_pct"),
+        "historical_win_rate": playbook.get("historical_win_rate"),
+        "average_gain": playbook.get("average_gain"),
+        "average_loss": playbook.get("average_loss"),
+        "similar_historical_setups": playbook.get("similar_historical_setups") or [],
+        "trade_plan_snapshot": row.get("trade_plan_json") or {},
+        "created_at_utc": row.get("created_at_utc"),
+        "updated_at_utc": row.get("updated_at_utc"),
+    }
+
+
+def upsert_active_monitor(user_id: str, monitor: dict[str, Any]) -> str:
+    row = _monitor_row_from_engine(user_id, monitor)
+    keys = list(row.keys())
+    if using_postgres():
+        with pg_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    INSERT INTO active_setup_monitors ({', '.join(keys)})
+                    VALUES ({', '.join('%(' + k + ')s' for k in keys)})
+                    ON CONFLICT (id) DO UPDATE SET
+                      setup_grade=EXCLUDED.setup_grade,
+                      conviction=EXCLUDED.conviction,
+                      current_state=EXCLUDED.current_state,
+                      status=EXCLUDED.status,
+                      setup_json=EXCLUDED.setup_json,
+                      state_json=EXCLUDED.state_json,
+                      levels_json=EXCLUDED.levels_json,
+                      playbook_json=EXCLUDED.playbook_json,
+                      trade_plan_json=EXCLUDED.trade_plan_json,
+                      updated_at_utc=EXCLUDED.updated_at_utc
+                    """,
+                    row,
+                )
+            conn.commit()
+        return row["id"]
+    with DB_LOCK:
+        conn = sqlite_conn()
+        try:
+            conn.execute(
+                f"INSERT OR REPLACE INTO active_setup_monitors ({', '.join(keys)}) VALUES ({', '.join('?' for _ in keys)})",
+                tuple(row[k] for k in keys),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    return row["id"]
+
+
+def list_active_monitors(user_id: str, include_closed: bool = False, limit: int = 25) -> list[dict[str, Any]]:
+    sql = "SELECT * FROM active_setup_monitors WHERE user_id=%s"
+    params: list[Any] = [user_id]
+    if not include_closed:
+        sql += " AND status='ACTIVE'"
+    sql += f" ORDER BY updated_at_utc DESC LIMIT {int(limit)}"
+    if using_postgres():
+        with pg_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, params)
+                rows = [dict(r) for r in cur.fetchall()]
+    else:
+        conn = sqlite_conn()
+        try:
+            cur = conn.cursor()
+            cur.execute(sql.replace("%s", "?"), params)
+            rows = [dict(r) for r in cur.fetchall()]
+        finally:
+            conn.close()
+    return [_parse_monitor_row(r) for r in rows]
+
+
+def close_existing_active_monitors(user_id: str) -> None:
+    now = datetime.utcnow().isoformat()
+    if using_postgres():
+        with pg_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("UPDATE active_setup_monitors SET status='CLOSED', current_state='Closed', updated_at_utc=%s WHERE user_id=%s AND status='ACTIVE'", (now, user_id))
+            conn.commit()
+        return
+    with DB_LOCK:
+        conn = sqlite_conn()
+        try:
+            conn.execute("UPDATE active_setup_monitors SET status='CLOSED', current_state='Closed', updated_at_utc=? WHERE user_id=? AND status='ACTIVE'", (now, user_id))
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def save_active_setup_events(user_id: str, events: list[dict[str, Any]]) -> None:
+    if not events:
+        return
+    rows = [
+        {
+            "id": e.get("id") or str(uuid.uuid4()),
+            "user_id": user_id,
+            "monitor_id": e.get("monitor_id"),
+            "ticker": e.get("ticker"),
+            "event_type": e.get("event_type"),
+            "old_state": e.get("old_state"),
+            "new_state": e.get("new_state"),
+            "message": e.get("message") or "",
+            "evidence_json": json.dumps(e.get("evidence") or {}, default=str),
+            "created_at_utc": e.get("created_at_utc") or datetime.utcnow().isoformat(),
+        }
+        for e in events
+    ]
+    keys = list(rows[0].keys())
+    if using_postgres():
+        with pg_conn() as conn:
+            with conn.cursor() as cur:
+                for row in rows:
+                    cur.execute(f"INSERT INTO active_setup_events ({', '.join(keys)}) VALUES ({', '.join('%(' + k + ')s' for k in keys)}) ON CONFLICT (id) DO NOTHING", row)
+            conn.commit()
+        return
+    with DB_LOCK:
+        conn = sqlite_conn()
+        try:
+            for row in rows:
+                conn.execute(f"INSERT OR IGNORE INTO active_setup_events ({', '.join(keys)}) VALUES ({', '.join('?' for _ in keys)})", tuple(row[k] for k in keys))
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def list_active_setup_events(user_id: str, limit: int = 100) -> list[dict[str, Any]]:
+    sql = f"SELECT * FROM active_setup_events WHERE user_id=%s ORDER BY created_at_utc DESC LIMIT {int(limit)}"
+    if using_postgres():
+        with pg_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, (user_id,))
+                rows = [dict(r) for r in cur.fetchall()]
+    else:
+        conn = sqlite_conn()
+        try:
+            cur = conn.cursor()
+            cur.execute(sql.replace("%s", "?"), (user_id,))
+            rows = [dict(r) for r in cur.fetchall()]
+        finally:
+            conn.close()
+    for row in rows:
+        try:
+            row["evidence_json"] = json.loads(row.get("evidence_json") or "{}")
+        except Exception:
+            row["evidence_json"] = {}
+    return rows
+
+
+def seed_active_monitoring_from_top_setups(user_id: str, limit: int = 5) -> dict[str, Any]:
+    learning = run_praetor_learning_update(user_id)
+    plans_by_ticker = _latest_trade_plan_by_ticker(user_id)
+    close_existing_active_monitors(user_id)
+    seeded = []
+    for row in _top_scanner_setups(limit):
+        ticker = str(row.get("ticker") or "").upper()
+        monitor = create_monitor_from_setup(row, learning.get("stats") or {}, plans_by_ticker.get(ticker), scan_id=STATE.get("scan_id"))
+        upsert_active_monitor(user_id, monitor)
+        seeded.append(monitor)
+    return {"ok": True, "seeded_count": len(seeded), "monitors": seeded}
+
+
+def refresh_active_setup_monitoring(user_id: str, market_prices: dict[str, Any] | None = None) -> dict[str, Any]:
+    learning = run_praetor_learning_update(user_id)
+    plans_by_ticker = _latest_trade_plan_by_ticker(user_id)
+    current_rows = {str(r.get("ticker") or "").upper(): r for r in latest_scanner_rows(100)}
+    market_prices = {str(k).upper(): v for k, v in (market_prices or {}).items()}
+    updated = []
+    all_events = []
+    for monitor in list_active_monitors(user_id, include_closed=False, limit=25):
+        ticker = str(monitor.get("ticker") or "").upper()
+        row = current_rows.get(ticker)
+        price = market_prices.get(ticker)
+        new_monitor, events = evaluate_active_setup(monitor, current_row=row, market_price=price, playbook_stats=learning.get("stats") or {}, trade_plan=plans_by_ticker.get(ticker))
+        upsert_active_monitor(user_id, new_monitor)
+        all_events.extend(events)
+        updated.append(new_monitor)
+    save_active_setup_events(user_id, all_events)
+    return {
+        "ok": True,
+        "monitors": updated,
+        "events": all_events,
+        "event_count": len(all_events),
+        "trader_summary": trader_summary(updated),
+        "recent_events": list_active_setup_events(user_id, limit=50),
+        "generated_at_utc": datetime.utcnow().isoformat(),
+    }
 
 
 def get_trading_intelligence(user_id: str) -> dict[str, Any]:
@@ -2979,6 +3278,13 @@ def _scan_worker(
         except Exception as e:
             push_log(f"[SIGNALS ERROR] {type(e).__name__}: {str(e)[:140]}")
 
+        if user_id and picked_rows:
+            try:
+                seeded = seed_active_monitoring_from_top_setups(user_id, limit=5)
+                push_log(f"[MONITORING] Active monitoring list seeded with {seeded.get('seeded_count', 0)} top setup(s).")
+            except Exception as e:
+                push_log(f"[MONITORING WARNING] Could not seed active monitoring: {type(e).__name__}: {str(e)[:140]}")
+
         if html_path:
             push_log(f"Saved HTML: {html_path}")
         else:
@@ -3984,6 +4290,47 @@ def api_praetor_trading_intelligence(request: Request):
         return get_trading_intelligence(auth_user["id"])
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=500)
+
+
+@app.get("/api/praetor/active-setups")
+def api_praetor_active_setups(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    try:
+        monitors = list_active_monitors(auth_user["id"], include_closed=False, limit=25)
+        return {
+            "ok": True,
+            "monitors": monitors,
+            "trader_summary": trader_summary(monitors),
+            "recent_events": list_active_setup_events(auth_user["id"], limit=50),
+        }
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=500)
+
+
+@app.post("/api/praetor/active-setups/seed")
+async def api_praetor_seed_active_setups(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    payload = await request.json()
+    try:
+        return seed_active_monitoring_from_top_setups(auth_user["id"], limit=int(payload.get("limit") or 5))
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=400)
+
+
+@app.post("/api/praetor/active-setups/refresh")
+async def api_praetor_refresh_active_setups(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    payload = await request.json()
+    try:
+        return refresh_active_setup_monitoring(auth_user["id"], market_prices=payload.get("market_prices") or {})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=400)
 
 
 @app.post("/api/praetor/trading-intelligence/compare")
