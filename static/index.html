@@ -762,6 +762,29 @@
               <span class="pill" id="noteMeta">-</span>
             </div>
             <div class="fineprint" id="tradeSaveStatus"></div>
+            <details class="explainer" open>
+              <summary>Trader Mission Profile</summary>
+              <div class="portfolioForm">
+                <div class="field"><label>30-day goal</label><input id="mission30" /></div>
+                <div class="field"><label>60-day goal</label><input id="mission60" /></div>
+                <div class="field"><label>90-day goal</label><input id="mission90" /></div>
+                <div class="field"><label>Account growth goal</label><input id="missionGrowth" /></div>
+                <div class="field"><label>Account size</label><input id="missionAccount" type="number" step="1" /></div>
+                <div class="field"><label>Max risk / trade</label><input id="missionRisk" placeholder="0.01" /></div>
+                <div class="field"><label>Max daily loss</label><input id="missionDailyLoss" /></div>
+                <div class="field"><label>Preferred setups</label><input id="missionSetups" placeholder="short squeeze, VWAP reclaim..." /></div>
+                <div class="field"><label>Trading style</label><input id="missionStyle" /></div>
+                <div class="field"><label>Behavioral goals</label><input id="missionBehavior" placeholder="no chasing, no revenge..." /></div>
+              </div>
+              <div class="field"><label>Personal trading rules</label><textarea id="missionRules" placeholder="No chasing; Minimum 2:1 R/R; Max 1% account risk"></textarea></div>
+              <div class="toolbar"><button class="btn primary" id="saveMissionBtn" type="button">Save Mission Profile</button><span class="pill" id="missionStatus">Not loaded</span></div>
+            </details>
+            <details class="explainer">
+              <summary>CSV Past Trade Import</summary>
+              <p class="fineprint">CSV fields: ticker, entry date/time, exit date/time, entry price, exit price, shares, setup type, notes, mistake tags, emotion tags</p>
+              <textarea id="journalCsvText" placeholder="ticker,entry date/time,exit date/time,entry price,exit price,shares,setup type,notes,mistake tags,emotion tags"></textarea>
+              <div class="toolbar"><button class="btn" id="importCsvBtn" type="button">Import CSV</button><span class="pill" id="csvImportStatus">Idle</span></div>
+            </details>
             <div class="usageGrid" style="margin-bottom:14px">
               <div class="usageBox"><b id="sumTrades">-</b><span>Trades</span></div>
               <div class="usageBox"><b id="sumWinrate">-</b><span>Win rate</span></div>
@@ -775,6 +798,8 @@
                 <div class="usageBox"><b id="journalExecutionScore">-</b><span>Execution Score</span></div>
                 <div class="usageBox"><b id="journalDisciplineScore">-</b><span>Discipline Score</span></div>
                 <div class="usageBox"><b id="journalProcessScore">-</b><span>Process Score</span></div>
+                <div class="usageBox"><b id="journalBehaviorScore">-</b><span>Behavior Score</span></div>
+                <div class="usageBox"><b id="journalGoalScore">-</b><span>Goal Adherence</span></div>
                 <div class="usageBox"><b id="journalEvidenceCount">-</b><span>Reviewed Trades</span></div>
               </div>
               <div class="researchGrid">
@@ -794,12 +819,34 @@
                   <h3>Behavioral Observations</h3>
                   <div id="journalBehavior" class="fineprint">No behavioral observations yet.</div>
                 </div>
+                <div class="card">
+                  <h3>Weekly Review</h3>
+                  <div id="journalWeekly" class="fineprint">No weekly review yet.</div>
+                </div>
+                <div class="card">
+                  <h3>Setup Performance</h3>
+                  <div id="journalSetupPerformance" class="fineprint">No setup breakdown yet.</div>
+                </div>
+                <div class="card">
+                  <h3>Coaching Action Plan</h3>
+                  <div id="journalActionPlan" class="fineprint">No action plan yet.</div>
+                </div>
+                <div class="card">
+                  <h3>Rule Violations / Successes</h3>
+                  <div id="journalRules" class="fineprint">No rule scoring yet.</div>
+                </div>
               </div>
               <div class="toolbar">
                 <button class="btn" id="journalAiCoachBtn" type="button">Generate Praetor Coaching Notes</button>
                 <button class="btn" data-explain-page="Journal" type="button">Explain This</button>
               </div>
               <div class="praetorBox hidden" id="journalAiCoaching"></div>
+              <div class="card" style="margin-top:14px">
+                <h3>Ask Journal Praetor</h3>
+                <textarea id="journalChatInput" placeholder="Why am I losing money? What is my biggest weakness? How do I improve next week?"></textarea>
+                <div class="toolbar"><button class="btn primary" id="journalChatBtn" type="button">Ask Journal Coach</button></div>
+                <div class="praetorBox hidden" id="journalChatResponse"></div>
+              </div>
             </div>
             <div class="tableWrap">
               <table>
@@ -2505,6 +2552,7 @@
 
   async function loadNotebook(){
     if(!state.user) return;
+    loadMissionProfile();
     const view = $("noteView") ? $("noteView").value : "all";
     const resp = await fetch(`/api/trades?view=${encodeURIComponent(view)}`).catch(()=>null);
     if(!resp) return;
@@ -2576,6 +2624,8 @@
     setText("journalExecutionScore", report.execution_score == null ? "-" : fmtNum(report.execution_score,0));
     setText("journalDisciplineScore", report.discipline_score == null ? "-" : fmtNum(report.discipline_score,0));
     setText("journalProcessScore", report.process_score == null ? "-" : fmtNum(report.process_score,0));
+    setText("journalBehaviorScore", report.behavioral_score == null ? "-" : fmtNum(report.behavioral_score,0));
+    setText("journalGoalScore", report.goal_adherence_score == null ? "-" : fmtNum(report.goal_adherence_score,0));
     setText("journalEvidenceCount", String(report.sample_size || 0));
     const lessons = [];
     (report.recent_reviews || []).slice(-5).forEach(r => (r.lessons || []).forEach(x => lessons.push({title:r.ticker, description:x, confidence:report.confidence, evidence_count:1})));
@@ -2583,6 +2633,82 @@
     renderLearningList("journalMistakes", report.recurring_mistakes || [], "No recurring mistakes yet.");
     renderLearningList("journalStrengths", report.recurring_strengths || [], "No recurring strengths yet.");
     renderLearningList("journalBehavior", report.behavioral_observations || [], "No behavioral observations yet.");
+    const weekly = report.weekly_review || {};
+    $("journalWeekly").innerHTML = simpleList([
+      {title:"Best trade", description:weekly.best_trade?.ticker ? `${weekly.best_trade.ticker} ${fmtMoney(weekly.best_trade.pnl_dollars)}` : "n/a"},
+      {title:"Worst trade", description:weekly.worst_trade?.ticker ? `${weekly.worst_trade.ticker} ${fmtMoney(weekly.worst_trade.pnl_dollars)}` : "n/a"},
+      {title:"Biggest mistake", description:weekly.biggest_mistake || "n/a"},
+      {title:"Next week focus", description:weekly.next_week_focus || "n/a"}
+    ], "No weekly review yet.");
+    $("journalSetupPerformance").innerHTML = simpleList((report.setup_performance || []).map(x => ({title:x.setup_type, description:`Win ${fmtPct(x.win_rate)} | Avg gain ${fmtMoney(x.average_gain)} | Avg loss ${fmtMoney(x.average_loss)} | Exp ${fmtMoney(x.expectancy)} | Total ${fmtMoney(x.total_pnl)}`})), "No setup breakdown yet.");
+    const plan = report.coaching_action_plan || {};
+    $("journalActionPlan").innerHTML = simpleList([
+      {title:"Stop doing", description:plan.stop_doing || "n/a"},
+      {title:"Keep doing", description:plan.keep_doing || "n/a"},
+      {title:"Improve tomorrow", description:plan.improve_tomorrow || "n/a"},
+      {title:"This week's rule", description:plan.weekly_rule_focus || "n/a"}
+    ], "No action plan yet.");
+    const violations = [];
+    (report.recent_reviews || []).forEach(r => (r.rule_violations || []).forEach(v => violations.push({title:`${r.ticker}: ${v.rule}`, description:v.evidence})));
+    $("journalRules").innerHTML = simpleList(violations.slice(0,8), "No rule violations in recent reviewed trades.");
+  }
+
+  async function loadMissionProfile(){
+    const resp = await fetch("/api/journal/mission").catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false};
+    if(!data.ok) return;
+    const m = data.mission || {};
+    $("mission30").value = m.thirty_day_goal || "";
+    $("mission60").value = m.sixty_day_goal || "";
+    $("mission90").value = m.ninety_day_goal || "";
+    $("missionGrowth").value = m.account_growth_goal || "";
+    $("missionAccount").value = m.account_size || "";
+    $("missionRisk").value = m.max_risk_per_trade ?? "";
+    $("missionDailyLoss").value = m.max_daily_loss || "";
+    $("missionSetups").value = (m.preferred_setups || []).join(", ");
+    $("missionStyle").value = m.trading_style || "";
+    $("missionBehavior").value = (m.behavioral_goals || []).join(", ");
+    $("missionRules").value = (m.personal_trading_rules || []).join("; ");
+    $("missionStatus").textContent = "Mission loaded";
+  }
+
+  async function saveMissionProfile(){
+    const payload = {
+      thirty_day_goal:$("mission30").value,
+      sixty_day_goal:$("mission60").value,
+      ninety_day_goal:$("mission90").value,
+      account_growth_goal:$("missionGrowth").value,
+      account_size:$("missionAccount").value ? Number($("missionAccount").value) : null,
+      max_risk_per_trade:$("missionRisk").value ? Number($("missionRisk").value) : null,
+      max_daily_loss:$("missionDailyLoss").value,
+      preferred_setups:$("missionSetups").value,
+      trading_style:$("missionStyle").value,
+      behavioral_goals:$("missionBehavior").value,
+      personal_trading_rules:$("missionRules").value
+    };
+    const resp = await fetch("/api/journal/mission", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload)}).catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false,error:"Mission save failed"};
+    $("missionStatus").textContent = data.ok ? "Mission saved" : (data.error || "Mission save failed");
+    if(data.ok) loadJournalAI();
+  }
+
+  async function importJournalCsv(){
+    $("csvImportStatus").textContent = "Importing...";
+    const resp = await fetch("/api/journal/import-csv", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({csv_text:$("journalCsvText").value})}).catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false,error:"Import failed"};
+    $("csvImportStatus").textContent = data.ok ? `Imported ${data.inserted_count}` : `Imported ${data.inserted_count || 0}, errors ${data.error_count || 0}`;
+    await loadNotebook();
+    await loadPlaybook();
+  }
+
+  async function askJournalCoach(){
+    const q = ($("journalChatInput").value || "").trim();
+    if(!q) return;
+    $("journalChatResponse").classList.remove("hidden");
+    $("journalChatResponse").textContent = "Praetor is reviewing your journal...";
+    const resp = await fetch("/api/journal/chat", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({question:q})}).catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false,error:"Journal chat failed"};
+    $("journalChatResponse").textContent = data.ok ? data.answer : (data.error || "Journal chat failed");
   }
 
   function renderJournalSummary(rows){
@@ -3083,6 +3209,9 @@
     });
     $("noteView").addEventListener("change", loadNotebook);
     $("addPastBtn").addEventListener("click", addPastTrade);
+    $("saveMissionBtn").addEventListener("click", saveMissionProfile);
+    $("importCsvBtn").addEventListener("click", importJournalCsv);
+    $("journalChatBtn").addEventListener("click", askJournalCoach);
     $("refreshPlaybookBtn").addEventListener("click", loadPlaybook);
     $("createAlertBtn").addEventListener("click", createManualAlert);
     $("runMonitorBtn").addEventListener("click", runMonitorCheck);

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import alerts
 import base64
+import csv
 import hashlib
 import hmac
+import io
 import json
 import math
 import os
@@ -33,7 +35,7 @@ from playbook_engine import calculate_playbook_stats
 from memory_engine import build_memory_updates
 from discovery_engine import build_discovery_candidates, build_journal_discovery_candidates
 from discovery_engine_v2 import build_discovery_v2_candidates, summarize_discoveries
-from journal_engine import build_journal_memory_updates, build_journal_report
+from journal_engine import DEFAULT_RULES, answer_journal_question, build_journal_memory_updates, build_journal_report
 from risk_engine import build_risk_report
 from trading_intelligence_engine import build_trading_intelligence, compare_setups
 from monitoring_engine import monitor_trade_plans
@@ -694,6 +696,37 @@ def db_init():
     );
     """
 
+    trader_mission_profiles_sql = """
+    CREATE TABLE IF NOT EXISTS trader_mission_profiles (
+      user_id TEXT PRIMARY KEY,
+      profile_json TEXT NOT NULL,
+      created_at_utc TEXT NOT NULL,
+      updated_at_utc TEXT NOT NULL
+    );
+    """
+
+    trading_rules_sql = """
+    CREATE TABLE IF NOT EXISTS trading_rules (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      rule_json TEXT NOT NULL,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at_utc TEXT NOT NULL,
+      updated_at_utc TEXT NOT NULL
+    );
+    """
+
+    journal_chat_memory_sql = """
+    CREATE TABLE IF NOT EXISTS journal_chat_memory (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      question TEXT NOT NULL,
+      answer TEXT NOT NULL,
+      context_json TEXT,
+      created_at_utc TEXT NOT NULL
+    );
+    """
+
     if using_postgres():
         with pg_conn() as conn:
             with conn.cursor() as cur:
@@ -730,6 +763,9 @@ def db_init():
                 cur.execute(
                     provider_cache_sql.replace("fetched_at_utc TEXT", "fetched_at_utc TIMESTAMPTZ").replace("expires_at_utc TEXT", "expires_at_utc TIMESTAMPTZ")
                 )
+                cur.execute(trader_mission_profiles_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ").replace("updated_at_utc TEXT", "updated_at_utc TIMESTAMPTZ"))
+                cur.execute(trading_rules_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ").replace("updated_at_utc TEXT", "updated_at_utc TIMESTAMPTZ"))
+                cur.execute(journal_chat_memory_sql.replace("created_at_utc TEXT", "created_at_utc TIMESTAMPTZ"))
             conn.commit()
     else:
         with DB_LOCK:
@@ -758,6 +794,9 @@ def db_init():
                 conn.execute(portfolio_snapshots_sql)
                 conn.execute(research_reports_sql)
                 conn.execute(provider_cache_sql)
+                conn.execute(trader_mission_profiles_sql)
+                conn.execute(trading_rules_sql)
+                conn.execute(journal_chat_memory_sql)
                 conn.commit()
             finally:
                 conn.close()
@@ -1192,6 +1231,187 @@ def run_praetor_learning_update(user_id: str) -> dict[str, Any]:
     }
 
 
+DEFAULT_MISSION_PROFILE = {
+    "thirty_day_goal": "",
+    "sixty_day_goal": "",
+    "ninety_day_goal": "",
+    "account_growth_goal": "",
+    "account_size": None,
+    "max_risk_per_trade": 0.01,
+    "max_daily_loss": "",
+    "preferred_setups": [],
+    "trading_style": "",
+    "behavioral_goals": [],
+    "personal_trading_rules": ["No chasing", "Minimum 2:1 reward/risk", "Maximum 1% account risk", "No revenge trading"],
+}
+
+
+def get_trader_mission_profile(user_id: str) -> dict[str, Any]:
+    sql = "SELECT profile_json FROM trader_mission_profiles WHERE user_id=%s"
+    row = None
+    if using_postgres():
+        with pg_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, (user_id,))
+                row = cur.fetchone()
+    else:
+        conn = sqlite_conn()
+        try:
+            cur = conn.cursor()
+            cur.execute(sql.replace("%s", "?"), (user_id,))
+            row = cur.fetchone()
+        finally:
+            conn.close()
+    if not row:
+        return dict(DEFAULT_MISSION_PROFILE)
+    try:
+        data = json.loads(dict(row).get("profile_json") if not isinstance(row, tuple) else row[0])
+    except Exception:
+        data = {}
+    return {**DEFAULT_MISSION_PROFILE, **(data or {})}
+
+
+def save_trader_mission_profile(user_id: str, profile: dict[str, Any]) -> dict[str, Any]:
+    now = datetime.utcnow().isoformat()
+    clean = {**DEFAULT_MISSION_PROFILE, **(profile or {})}
+    for key in ("preferred_setups", "behavioral_goals", "personal_trading_rules"):
+        value = clean.get(key)
+        if isinstance(value, str):
+            clean[key] = [x.strip() for x in value.replace(";", ",").split(",") if x.strip()]
+        elif not isinstance(value, list):
+            clean[key] = []
+    payload = json.dumps(clean, default=str)
+    if using_postgres():
+        with pg_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO trader_mission_profiles (user_id, profile_json, created_at_utc, updated_at_utc)
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (user_id) DO UPDATE SET profile_json=EXCLUDED.profile_json, updated_at_utc=EXCLUDED.updated_at_utc
+                    """,
+                    (user_id, payload, now, now),
+                )
+            conn.commit()
+    else:
+        with DB_LOCK:
+            conn = sqlite_conn()
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO trader_mission_profiles (user_id, profile_json, created_at_utc, updated_at_utc)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(user_id) DO UPDATE SET profile_json=excluded.profile_json, updated_at_utc=excluded.updated_at_utc
+                    """,
+                    (user_id, payload, now, now),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+    return clean
+
+
+def ensure_default_trading_rules(user_id: str) -> None:
+    if list_trading_rules(user_id, include_inactive=True):
+        return
+    for rule in DEFAULT_RULES:
+        save_trading_rule(user_id, rule)
+
+
+def save_trading_rule(user_id: str, rule: dict[str, Any]) -> str:
+    rule_id = rule.get("id") or str(uuid.uuid4())
+    now = datetime.utcnow().isoformat()
+    payload = {**rule, "id": rule_id}
+    row = {"id": rule_id, "user_id": user_id, "rule_json": json.dumps(payload, default=str), "active": 1 if payload.get("active", True) else 0, "created_at_utc": now, "updated_at_utc": now}
+    if using_postgres():
+        with pg_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO trading_rules (id, user_id, rule_json, active, created_at_utc, updated_at_utc)
+                    VALUES (%(id)s, %(user_id)s, %(rule_json)s, %(active)s, %(created_at_utc)s, %(updated_at_utc)s)
+                    ON CONFLICT (id) DO UPDATE SET rule_json=EXCLUDED.rule_json, active=EXCLUDED.active, updated_at_utc=EXCLUDED.updated_at_utc
+                    """,
+                    row,
+                )
+            conn.commit()
+    else:
+        with DB_LOCK:
+            conn = sqlite_conn()
+            try:
+                conn.execute(
+                    "INSERT OR REPLACE INTO trading_rules (id, user_id, rule_json, active, created_at_utc, updated_at_utc) VALUES (?, ?, ?, ?, ?, ?)",
+                    (row["id"], row["user_id"], row["rule_json"], row["active"], row["created_at_utc"], row["updated_at_utc"]),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+    return rule_id
+
+
+def list_trading_rules(user_id: str, include_inactive: bool = False) -> list[dict[str, Any]]:
+    where = "WHERE user_id=%s" + ("" if include_inactive else " AND active=1")
+    sql = f"SELECT * FROM trading_rules {where} ORDER BY created_at_utc ASC"
+    if using_postgres():
+        with pg_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, (user_id,))
+                rows = [dict(r) for r in cur.fetchall()]
+    else:
+        conn = sqlite_conn()
+        try:
+            cur = conn.cursor()
+            cur.execute(sql.replace("%s", "?"), (user_id,))
+            rows = [dict(r) for r in cur.fetchall()]
+        finally:
+            conn.close()
+    out = []
+    for row in rows:
+        try:
+            item = json.loads(row.get("rule_json") or "{}")
+        except Exception:
+            item = {}
+        item["id"] = row.get("id")
+        item["active"] = bool(row.get("active"))
+        out.append(item)
+    return out
+
+
+def save_journal_chat_memory(user_id: str, question: str, answer: str, context: dict[str, Any]) -> str:
+    row = {"id": str(uuid.uuid4()), "user_id": user_id, "question": question, "answer": answer, "context_json": json.dumps(context, default=str), "created_at_utc": datetime.utcnow().isoformat()}
+    keys = list(row.keys())
+    if using_postgres():
+        with pg_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(f"INSERT INTO journal_chat_memory ({', '.join(keys)}) VALUES ({', '.join('%(' + k + ')s' for k in keys)})", row)
+            conn.commit()
+    else:
+        with DB_LOCK:
+            conn = sqlite_conn()
+            try:
+                conn.execute(f"INSERT INTO journal_chat_memory ({', '.join(keys)}) VALUES ({', '.join('?' for _ in keys)})", tuple(row[k] for k in keys))
+                conn.commit()
+            finally:
+                conn.close()
+    return row["id"]
+
+
+def list_journal_chat_memory(user_id: str, limit: int = 20) -> list[dict[str, Any]]:
+    sql = f"SELECT * FROM journal_chat_memory WHERE user_id=%s ORDER BY created_at_utc DESC LIMIT {int(limit)}"
+    if using_postgres():
+        with pg_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, (user_id,))
+                return [dict(r) for r in cur.fetchall()]
+    conn = sqlite_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(sql.replace("%s", "?"), (user_id,))
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
 def run_praetor_journal_update(user_id: str) -> dict[str, Any]:
     maybe_import_founder_past_trades(user_by_id(user_id) or {"id": user_id})
     trades = trades_select(view="all", user_id=user_id)
@@ -1199,7 +1419,10 @@ def run_praetor_journal_update(user_id: str) -> dict[str, Any]:
     learning = run_praetor_learning_update(user_id)
     memory = memory_repo().list_memory(user_id)
     discoveries = discovery_repo().list_discoveries(user_id)
-    journal_report = build_journal_report(trades, plans, learning["stats"], memory, discoveries, learning["risk"])
+    mission = get_trader_mission_profile(user_id)
+    rules = list_trading_rules(user_id)
+    chat_memory = list_journal_chat_memory(user_id, limit=20)
+    journal_report = build_journal_report(trades, plans, learning["stats"], memory, discoveries, learning["risk"], mission_profile=mission, trading_rules=rules, chat_memory=chat_memory)
 
     memory_ids: list[str] = []
     for item in build_journal_memory_updates(journal_report):
@@ -2708,6 +2931,51 @@ def build_manual_trade_row(user_id: str, payload: dict[str, Any], state_date: st
         "shares": shares,
         "review_flags": json.dumps(payload.get("review_flags") or [{"icon": "M", "label": "Manual past trade"}]),
     }
+
+
+def _csv_value(row: dict[str, Any], *keys: str) -> Any:
+    lowered = {str(k).strip().lower(): v for k, v in row.items()}
+    for key in keys:
+        if key in row:
+            return row.get(key)
+        lk = key.lower()
+        if lk in lowered:
+            return lowered.get(lk)
+    return None
+
+
+def import_manual_trades_csv(user_id: str, csv_text: str) -> dict[str, Any]:
+    rows = list(csv.DictReader(io.StringIO(csv_text or "")))
+    inserted = []
+    errors = []
+    for idx, raw in enumerate(rows, start=2):
+        try:
+            notes = _csv_value(raw, "notes") or ""
+            mistake_tags = _csv_value(raw, "mistake tags", "mistake_tags") or ""
+            emotion_tags = _csv_value(raw, "emotion tags", "emotion_tags") or ""
+            payload = {
+                "ticker": _csv_value(raw, "ticker"),
+                "scan_date_ct": str(_csv_value(raw, "entry date/time", "entry_date_time", "entry date", "entry_date") or "")[:10],
+                "created_at_utc": _csv_value(raw, "entry date/time", "entry_date_time"),
+                "exit_time_ct": _csv_value(raw, "exit date/time", "exit_date_time"),
+                "entry_price": _csv_value(raw, "entry price", "entry_price"),
+                "exit_price": _csv_value(raw, "exit price", "exit_price"),
+                "shares": _csv_value(raw, "shares"),
+                "subtype": _csv_value(raw, "setup type", "setup_type") or "csv import",
+                "bucket": "CSV_IMPORT",
+                "plan": notes,
+                "review_flags": [
+                    {"icon": "CSV", "label": "CSV import"},
+                    *[{"icon": "M", "label": x.strip()} for x in str(mistake_tags).replace(";", ",").split(",") if x.strip()],
+                    *[{"icon": "E", "label": x.strip()} for x in str(emotion_tags).replace(";", ",").split(",") if x.strip()],
+                ],
+            }
+            row = build_manual_trade_row(user_id, payload)
+            trade_insert(row)
+            inserted.append(row["id"])
+        except Exception as e:
+            errors.append({"row": idx, "error": str(e)[:200]})
+    return {"ok": not errors, "inserted_count": len(inserted), "error_count": len(errors), "inserted_ids": inserted, "errors": errors}
 
 
 PAST_TRADE_SEED: list[dict[str, Any]] = [
@@ -4714,6 +4982,73 @@ def api_get_trades(request: Request, view: str = "all"):
         return {"ok": True, "trades": rows}
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=500)
+
+
+@app.get("/api/journal/mission")
+def api_get_journal_mission(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    ensure_default_trading_rules(auth_user["id"])
+    return {"ok": True, "mission": get_trader_mission_profile(auth_user["id"]), "rules": list_trading_rules(auth_user["id"])}
+
+
+@app.post("/api/journal/mission")
+async def api_save_journal_mission(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    payload = await request.json()
+    mission = save_trader_mission_profile(auth_user["id"], payload)
+    return {"ok": True, "mission": mission}
+
+
+@app.post("/api/journal/rules")
+async def api_save_journal_rule(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    payload = await request.json()
+    rule_id = save_trading_rule(auth_user["id"], payload)
+    return {"ok": True, "id": rule_id, "rules": list_trading_rules(auth_user["id"], include_inactive=True)}
+
+
+@app.post("/api/journal/import-csv")
+async def api_import_journal_csv(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    payload = await request.json()
+    result = import_manual_trades_csv(auth_user["id"], payload.get("csv_text") or "")
+    learning = run_praetor_learning_update(auth_user["id"])
+    journal = run_praetor_journal_update(auth_user["id"])
+    return {**result, "learning": learning, "journal": journal.get("journal")}
+
+
+@app.get("/api/journal/review")
+def api_journal_review_v2(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    return run_praetor_journal_update(auth_user["id"])
+
+
+@app.post("/api/journal/chat")
+async def api_journal_chat(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    payload = await request.json()
+    question = (payload.get("question") or "").strip()
+    if not question:
+        return JSONResponse({"ok": False, "error": "Question is required"}, status_code=400)
+    journal = run_praetor_journal_update(auth_user["id"])
+    learning = run_praetor_learning_update(auth_user["id"])
+    mission = get_trader_mission_profile(auth_user["id"])
+    chat_memory = list_journal_chat_memory(auth_user["id"], limit=20)
+    answer = answer_journal_question(question, journal.get("journal") or {}, learning.get("stats") or {}, mission, chat_memory)
+    chat_id = save_journal_chat_memory(auth_user["id"], question, answer, {"mission": mission, "journal_summary": journal.get("journal") or {}})
+    return {"ok": True, "answer": answer, "chat_id": chat_id, "memory": list_journal_chat_memory(auth_user["id"], limit=10)}
 
 
 @app.post("/api/trades")
