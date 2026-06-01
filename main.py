@@ -2586,6 +2586,17 @@ def _validate_trade_date(value: Any) -> str:
     return raw
 
 
+def _parse_optional_timestamp(value: Any, field_name: str) -> str | None:
+    if value in (None, ""):
+        return None
+    raw = str(value).strip()
+    try:
+        datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except Exception:
+        raise ValueError(f"Invalid {field_name}")
+    return raw
+
+
 def build_manual_trade_row(user_id: str, payload: dict[str, Any], state_date: str | None = None) -> dict[str, Any]:
     ticker = (payload.get("ticker") or "").upper().strip()
     if not re.match(r"^[A-Z0-9.\-]{1,12}$", ticker):
@@ -2603,7 +2614,9 @@ def build_manual_trade_row(user_id: str, payload: dict[str, Any], state_date: st
     confidence = _parse_optional_float(payload.get("confidence"), "confidence")
     if confidence is not None and not (0 <= confidence <= 100):
         raise ValueError("Invalid confidence")
-    created_at = payload.get("created_at_utc") or f"{scan_date_ct}T16:00:00+00:00"
+    created_at = _parse_optional_timestamp(payload.get("created_at_utc"), "created timestamp") or f"{scan_date_ct}T16:00:00+00:00"
+    entry_time_ct = _parse_optional_timestamp(payload.get("entry_time_ct"), "entry time")
+    exit_time_ct = _parse_optional_timestamp(payload.get("exit_time_ct"), "exit time")
     return {
         "id": str(uuid.uuid4()),
         "user_id": user_id,
@@ -2627,9 +2640,9 @@ def build_manual_trade_row(user_id: str, payload: dict[str, Any], state_date: st
         "ctb": _parse_optional_float(payload.get("ctb"), "cost to borrow"),
         "avail": _parse_optional_float(payload.get("avail"), "availability"),
         "entry_price": entry_price,
-        "entry_time_ct": payload.get("entry_time_ct") or "Manual",
+        "entry_time_ct": entry_time_ct,
         "exit_price": exit_price,
-        "exit_time_ct": payload.get("exit_time_ct") or ("Manual" if exit_price is not None else None),
+        "exit_time_ct": exit_time_ct,
         "shares": shares,
         "review_flags": json.dumps(payload.get("review_flags") or [{"icon": "M", "label": "Manual past trade"}]),
     }
@@ -2733,9 +2746,9 @@ def import_past_trade_seed(user_id: str) -> dict[str, Any]:
             "ctb": None,
             "avail": None,
             "entry_price": float(t["entry_price"]),
-            "entry_time_ct": "Imported",
+            "entry_time_ct": None,
             "exit_price": float(t["exit_price"]),
-            "exit_time_ct": "Imported",
+            "exit_time_ct": None,
             "shares": float(t["shares"]),
             "review_flags": json.dumps([{"icon": "I", "label": "Imported past trade"}]),
         }
@@ -4662,7 +4675,10 @@ async def api_close_trade(trade_id: str, request: Request):
     if exit_price is None:
         return JSONResponse({"ok": False, "error": "exit_price is required"}, status_code=400)
 
-    exit_time_ct = payload.get("exit_time_ct") or now_ct_str()
+    try:
+        exit_time_ct = _parse_optional_timestamp(payload.get("exit_time_ct"), "exit time") or datetime.utcnow().isoformat()
+    except ValueError as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
 
     try:
         trade_close(trade_id, float(exit_price), exit_time_ct, user_id=auth_user["id"])
