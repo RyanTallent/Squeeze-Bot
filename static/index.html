@@ -761,6 +761,7 @@
               <button class="btn" id="addPastBtn" type="button">Add past trade</button>
               <span class="pill" id="noteMeta">-</span>
             </div>
+            <div class="fineprint" id="tradeSaveStatus"></div>
             <div class="usageGrid" style="margin-bottom:14px">
               <div class="usageBox"><b id="sumTrades">-</b><span>Trades</span></div>
               <div class="usageBox"><b id="sumWinrate">-</b><span>Win rate</span></div>
@@ -2602,16 +2603,29 @@
   }
 
   async function addPastTrade(){
+    const status = $("tradeSaveStatus");
+    const setStatus = (msg, ok=false) => {
+      if(status){
+        status.textContent = msg;
+        status.className = `fineprint ${ok ? "good" : "bad"}`;
+      }
+    };
     const ticker = prompt("Ticker?", "");
-    if(!ticker) return;
+    if(!ticker){ setStatus("Missing ticker"); return; }
     const date_ct = prompt("Date (YYYY-MM-DD)?", "");
+    if(date_ct && !/^\d{4}-\d{2}-\d{2}$/.test(date_ct)){ setStatus("Invalid date"); return; }
     const setup = prompt("Setup?", "manual");
     const entry = prompt("Entry price?", "");
     if(entry === null) return;
+    if(!entry || !Number.isFinite(Number(entry)) || Number(entry) <= 0){ setStatus("Missing entry price"); return; }
     const exit = prompt("Exit price? Leave blank if open.", "");
+    if(exit && (!Number.isFinite(Number(exit)) || Number(exit) < 0)){ setStatus("Invalid exit price"); return; }
     const shares = prompt("Shares?", "100");
+    if(!shares || !Number.isFinite(Number(shares)) || Number(shares) <= 0){ setStatus("Missing shares"); return; }
     const conf = prompt("Confidence 1-10? Optional.", "");
-    await fetch("/api/trades", {
+    if(conf && (!Number.isFinite(Number(conf)) || Number(conf) < 0)){ setStatus("Invalid confidence"); return; }
+    setStatus("Saving trade...", true);
+    const resp = await fetch("/api/trades", {
       method:"POST",
       headers:{"Content-Type":"application/json"},
       body:JSON.stringify({
@@ -2624,8 +2638,16 @@
         exit_price:exit ? Number(exit) : null,
         shares:shares ? Number(shares) : null
       })
-    }).catch(()=>{});
-    loadNotebook();
+    }).catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false,error:"Failed to save trade"};
+    if(!data.ok){
+      setStatus(data.error || "Failed to save trade");
+      return;
+    }
+    setStatus("Trade saved", true);
+    await loadNotebook();
+    await loadPlaybook();
+    await loadCommandCenter();
   }
 
   async function loadPlaybook(){

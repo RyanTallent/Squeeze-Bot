@@ -97,6 +97,7 @@ _REJECT_DEBUG_COUNT = 0
 # ============================================================
 REJECT_STATS: Dict[str, int] = {}
 _REF_CACHE: Dict[str, Optional[Dict[str, Any]]] = {}
+_NEWS_CACHE: Dict[str, Dict[str, Any]] = {}
 _ORTEX_CACHE: Dict[Tuple[str, str], Dict[str, Any]] = {}
 _ORTEX_USAGE: Dict[str, Any] = {
     "current_scan": {},
@@ -494,18 +495,33 @@ def polygon_reference(ticker: str, log_fn=None) -> Optional[Dict[str, Any]]:
         return None
 
 
-def polygon_news(ticker: str, log_fn=None, limit: int = 3) -> List[Dict[str, Any]]:
+def polygon_news(ticker: str, log_fn=None, limit: int = 3) -> Dict[str, Any]:
+    ticker = ticker.upper().strip()
+    cache_key = f"{ct_date_str(now_ct())}:{ticker}"
     try:
-        data = polygon_get(
+        if not POLYGON_KEY:
+            raise RuntimeError("POLYGON_API_KEY environment variable is not set")
+        data = SESSION.get(
             "https://api.polygon.io/v2/reference/news",
-            {"ticker": ticker.upper().strip(), "limit": limit, "sort": "published_utc", "order": "desc"},
-            log_fn=log_fn,
+            params={"ticker": ticker, "limit": limit, "sort": "published_utc", "order": "desc", "apiKey": POLYGON_KEY},
+            timeout=4,
         )
-        return data.get("results", []) or []
+        if data.status_code >= 400:
+            raise RuntimeError(f"Polygon news {data.status_code}: {data.text[:120]}")
+        payload = data.json()
+        rows = payload.get("results", []) or []
+        result = {"items": rows, "status": "live", "error": None, "cached": False}
+        _NEWS_CACHE[cache_key] = result
+        return result
     except Exception as e:
+        cached = _NEWS_CACHE.get(cache_key)
+        if cached:
+            if log_fn:
+                log_fn(f"[NEWS] {ticker}: live endpoint unavailable, using cached news ({type(e).__name__})")
+            return {**cached, "status": "cached", "cached": True, "error": f"{type(e).__name__}: {str(e)[:140]}"}
         if log_fn:
-            log_fn(f"[NEWS] {ticker}: unavailable ({type(e).__name__})")
-        return []
+            log_fn(f"[NEWS] {ticker}: temporarily unavailable ({type(e).__name__})")
+        return {"items": [], "status": "unavailable", "error": f"{type(e).__name__}: {str(e)[:140]}", "cached": False}
 
 
 def classify_catalyst(news_items: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -544,8 +560,12 @@ def enrich_selected_rows(rows: List[Dict[str, Any]], window: str, log_fn=None) -
         r = dict(row)
         ticker = (r.get("ticker") or "").upper().strip()
         ref = polygon_reference(ticker, log_fn=log_fn) or {}
-        news = polygon_news(ticker, log_fn=log_fn, limit=3)
-        catalyst = classify_catalyst(news)
+        news_result = polygon_news(ticker, log_fn=log_fn, limit=3)
+        news = news_result.get("items") or []
+        if news_result.get("status") == "unavailable":
+            catalyst = {"label": "News temporarily unavailable", "summary": "News temporarily unavailable", "confidence": "low"}
+        else:
+            catalyst = classify_catalyst(news)
 
         r["company_name"] = ref.get("name") or ticker
         r["sector"] = ref.get("sector") or ref.get("sic_description") or "Unknown Sector"
@@ -558,6 +578,9 @@ def enrich_selected_rows(rows: List[Dict[str, Any]], window: str, log_fn=None) -
         r["latest_news_url"] = catalyst.get("article_url")
         r["latest_news_published_utc"] = catalyst.get("published_utc")
         r["news_count"] = len(news)
+        r["news_status"] = news_result.get("status")
+        r["news_cached"] = bool(news_result.get("cached"))
+        r["news_error"] = news_result.get("error")
         r["intelligence"] = scanner_intelligence.enrich_row(r)
         enriched.append(r)
     return enriched

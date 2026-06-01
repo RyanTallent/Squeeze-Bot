@@ -5,6 +5,7 @@ import base64
 import hashlib
 import hmac
 import json
+import math
 import os
 import re
 import secrets
@@ -15,7 +16,7 @@ import time
 import traceback
 import uuid
 from collections import deque
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, Generator, Optional
 
@@ -2557,6 +2558,83 @@ def trade_insert(row: dict):
             conn.close()
 
 
+def _parse_optional_float(value: Any, field_name: str) -> float | None:
+    if value in (None, ""):
+        return None
+    try:
+        val = float(value)
+    except Exception:
+        raise ValueError(f"Invalid {field_name}")
+    if not math.isfinite(val):
+        raise ValueError(f"Invalid {field_name}")
+    return val
+
+
+def _parse_required_float(value: Any, field_name: str) -> float:
+    val = _parse_optional_float(value, field_name)
+    if val is None:
+        raise ValueError(f"Missing {field_name}")
+    return val
+
+
+def _validate_trade_date(value: Any) -> str:
+    raw = (str(value or "").strip() or ct_date())
+    try:
+        date.fromisoformat(raw)
+    except Exception:
+        raise ValueError("Invalid date")
+    return raw
+
+
+def build_manual_trade_row(user_id: str, payload: dict[str, Any], state_date: str | None = None) -> dict[str, Any]:
+    ticker = (payload.get("ticker") or "").upper().strip()
+    if not re.match(r"^[A-Z0-9.\-]{1,12}$", ticker):
+        raise ValueError("Missing ticker")
+    scan_date_ct = _validate_trade_date(payload.get("scan_date_ct") or state_date or ct_date())
+    entry_price = _parse_required_float(payload.get("entry_price"), "entry price")
+    shares = _parse_required_float(payload.get("shares"), "shares")
+    if entry_price <= 0:
+        raise ValueError("Entry price must be greater than 0")
+    if shares <= 0:
+        raise ValueError("Shares must be greater than 0")
+    exit_price = _parse_optional_float(payload.get("exit_price"), "exit price")
+    if exit_price is not None and exit_price < 0:
+        raise ValueError("Exit price cannot be negative")
+    confidence = _parse_optional_float(payload.get("confidence"), "confidence")
+    if confidence is not None and not (0 <= confidence <= 100):
+        raise ValueError("Invalid confidence")
+    created_at = payload.get("created_at_utc") or f"{scan_date_ct}T16:00:00+00:00"
+    return {
+        "id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "created_at_utc": created_at,
+        "scan_id": payload.get("scan_id"),
+        "scan_date_ct": scan_date_ct,
+        "ticker": ticker,
+        "bucket": payload.get("bucket") or "MANUAL",
+        "subtype": payload.get("subtype") or "manual past trade",
+        "confidence": confidence,
+        "plan": payload.get("plan") or "Manual past trade entry.",
+        "trigger": _parse_optional_float(payload.get("trigger"), "trigger"),
+        "stop": _parse_optional_float(payload.get("stop"), "stop"),
+        "scan_close": _parse_optional_float(payload.get("scan_close"), "scan close"),
+        "move_pct": _parse_optional_float(payload.get("move_pct"), "move percent"),
+        "dollar_vol": _parse_optional_float(payload.get("dollar_vol"), "dollar volume"),
+        "range_pct": _parse_optional_float(payload.get("range_pct"), "range percent"),
+        "hold_pct": _parse_optional_float(payload.get("hold_pct"), "hold percent"),
+        "rel_vol": _parse_optional_float(payload.get("rel_vol"), "relative volume"),
+        "si_pct_ff": _parse_optional_float(payload.get("si_pct_ff"), "short interest percent"),
+        "ctb": _parse_optional_float(payload.get("ctb"), "cost to borrow"),
+        "avail": _parse_optional_float(payload.get("avail"), "availability"),
+        "entry_price": entry_price,
+        "entry_time_ct": payload.get("entry_time_ct") or "Manual",
+        "exit_price": exit_price,
+        "exit_time_ct": payload.get("exit_time_ct") or ("Manual" if exit_price is not None else None),
+        "shares": shares,
+        "review_flags": json.dumps(payload.get("review_flags") or [{"icon": "M", "label": "Manual past trade"}]),
+    }
+
+
 PAST_TRADE_SEED: list[dict[str, Any]] = [
     {"date": "2026-01-22", "ticker": "NAMM", "entry_price": 2.16, "exit_price": 3.69, "shares": 46},
     {"date": "2026-01-22", "ticker": "MRNA", "entry_price": 49.53, "exit_price": 55.02, "shares": 3.5153},
@@ -4559,52 +4637,16 @@ async def api_create_trade(request: Request):
     if isinstance(auth_user, JSONResponse):
         return auth_user
 
-    payload = await request.json()
-
-    user_id = auth_user["id"]
-    trade_id = str(uuid.uuid4())
-
-    scan_date_ct = payload.get("scan_date_ct") or (STATE.get("meta", {}).get("date") if STATE else None) or ct_date()
-    entry_time_ct = payload.get("entry_time_ct") or now_ct_str()
-    exit_time_ct = payload.get("exit_time_ct")
-    exit_price = payload.get("exit_price")
-
-    entry_price = payload.get("entry_price")
-    shares = payload.get("shares")
-
-    row = {
-        "id": trade_id,
-        "user_id": user_id,
-        "created_at_utc": datetime.utcnow().isoformat(),
-        "scan_id": payload.get("scan_id"),
-        "scan_date_ct": scan_date_ct,
-        "ticker": (payload.get("ticker") or "").upper().strip(),
-        "bucket": payload.get("bucket"),
-        "subtype": payload.get("subtype"),
-        "confidence": payload.get("confidence"),
-        "plan": payload.get("plan"),
-        "trigger": payload.get("trigger"),
-        "stop": payload.get("stop"),
-        "scan_close": payload.get("scan_close"),
-        "move_pct": payload.get("move_pct"),
-        "dollar_vol": payload.get("dollar_vol"),
-        "range_pct": payload.get("range_pct"),
-        "hold_pct": payload.get("hold_pct"),
-        "rel_vol": payload.get("rel_vol"),
-        "si_pct_ff": payload.get("si_pct_ff"),
-        "ctb": payload.get("ctb"),
-        "avail": payload.get("avail"),
-        "entry_price": float(entry_price) if entry_price not in (None, "") else None,
-        "entry_time_ct": entry_time_ct,
-        "exit_price": float(exit_price) if exit_price not in (None, "") else None,
-        "exit_time_ct": exit_time_ct,
-        "shares": float(shares) if shares not in (None, "") else None,
-        "review_flags": json.dumps(payload.get("review_flags") or []),
-    }
-
     try:
+        payload = await request.json()
+        row = build_manual_trade_row(auth_user["id"], payload, state_date=(STATE.get("meta", {}).get("date") if STATE else None))
         trade_insert(row)
-        return {"ok": True, "id": trade_id, "user_id": user_id}
+        saved = next((t for t in trades_select(view="all", user_id=auth_user["id"]) if t.get("id") == row["id"]), row)
+        learning = run_praetor_learning_update(auth_user["id"])
+        journal = run_praetor_journal_update(auth_user["id"])
+        return {"ok": True, "id": row["id"], "user_id": auth_user["id"], "trade": saved, "learning": learning, "journal": journal.get("journal")}
+    except ValueError as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=500)
 
