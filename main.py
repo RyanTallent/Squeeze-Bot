@@ -1398,6 +1398,14 @@ def _cookie_secure() -> bool:
     return (os.getenv("PUBLIC_BASE_URL") or "").strip().lower().startswith("https://")
 
 
+def _env_flag(name: str) -> bool:
+    return (os.getenv(name) or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _research_debug_enabled() -> bool:
+    return _env_flag("DEBUG_RESEARCH_UI") or _env_flag("FOUNDER_DEBUG_MODE")
+
+
 def _week_start_ct_str(dt: datetime | None = None) -> str:
     dt = dt or now_ct()
     d = dt.date() - timedelta(days=dt.weekday())
@@ -1419,6 +1427,9 @@ def _public_user(user: dict[str, Any]) -> dict[str, Any]:
         "plan_name": plan["name"],
         "subscription_status": user.get("subscription_status") or "trial",
         "lifetime_scans_used": int(user.get("lifetime_scans_used") or 0),
+        "debug_flags": {
+            "research_ui": bool(plan["code"] == "founder" and _research_debug_enabled()),
+        },
     }
 
 
@@ -3424,7 +3435,7 @@ async def api_research_report(request: Request):
         report = generate_research_report(profile, report_type, objective, fundamentals=fundamentals, opportunity_context=opportunity_context)
         research_repo().save_report(auth_user["id"], report.get("institutional") or {}, profile=profile)
         response = {"ok": True, "report": report}
-        if (auth_user.get("plan_code") or "") == "founder":
+        if (auth_user.get("plan_code") or "") == "founder" and _research_debug_enabled():
             response["research_debug"] = _research_opinion_debug(report)
         return response
     except Exception as e:
@@ -3470,7 +3481,7 @@ async def api_praetor_ai_research(request: Request):
             "institutional_report": institutional,
             "ai": ai,
         }
-        if (auth_user.get("plan_code") or "") == "founder":
+        if (auth_user.get("plan_code") or "") == "founder" and _research_debug_enabled():
             response["research_debug"] = _research_opinion_debug(deterministic_report)
             response["research_consistency_debug"] = _research_ai_consistency_debug(ai)
         return response
