@@ -61,6 +61,17 @@ def _rating_score(rating: str | None, unavailable_default: float = 45) -> float:
     return unavailable_default
 
 
+def _balance_sheet_quality_score(balance_section: dict[str, Any]) -> float:
+    rating = balance_section.get("rating")
+    if rating in ("High", "Medium", "Low"):
+        return 100 - _rating_score(rating, unavailable_default=55)
+    return 45
+
+
+def _weighted_score(parts: dict[str, tuple[float, float]]) -> float:
+    return sum(score * weight for score, weight in parts.values()) / sum(weight for _, weight in parts.values())
+
+
 def build_research_scores(profile: dict[str, Any], deterministic_report: dict[str, Any] | None = None, fundamentals: dict[str, Any] | None = None) -> dict[str, Any]:
     m = profile.get("metrics") or {}
     latest_close = _num(m.get("latest_close"))
@@ -119,18 +130,40 @@ def build_research_scores(profile: dict[str, Any], deterministic_report: dict[st
             vol_risk_score -= 10
 
     f_sections = _fundamental_sections(fundamentals)
+    revenue = f_sections.get("revenue_business") or {}
     earnings = f_sections.get("earnings_quality") or {}
+    margin = f_sections.get("margin_analysis") or {}
     balance = f_sections.get("balance_sheet") or {}
     analyst = f_sections.get("analyst_expectations") or {}
     valuation = f_sections.get("valuation_analysis") or {}
     peer = f_sections.get("peer_benchmarking") or {}
-    fundamental_score = _rating_score(earnings.get("rating"))
-    balance_score = 100 - _rating_score(balance.get("rating"), unavailable_default=55) if balance.get("rating") in ("High", "Medium", "Low") else 45
+    fundamental_components = {
+        "Revenue Business": (_num(revenue.get("score"), _rating_score(revenue.get("rating"))), 0.25),
+        "Earnings Quality": (_num(earnings.get("score"), _rating_score(earnings.get("rating"))), 0.30),
+        "Margin Analysis": (_num(margin.get("score"), _rating_score(margin.get("rating"))), 0.25),
+        "Balance Sheet": (_balance_sheet_quality_score(balance), 0.20),
+    }
+    fundamental_score = _weighted_score(fundamental_components)
+    balance_score = _balance_sheet_quality_score(balance)
     valuation_score = _num(valuation.get("score"), _rating_score(analyst.get("rating")))
     peer_score = _num(peer.get("score"), _rating_score(peer.get("rating")))
-    fundamental_evidence = (earnings.get("items") or [])[:4] or ["Fundamental data unavailable."]
+    fundamental_evidence = [
+        "Fundamental Quality composition: "
+        + ", ".join(f"{name} {score:.0f} @ {weight * 100:.0f}%" for name, (score, weight) in fundamental_components.items())
+    ]
+    fundamental_evidence.extend((revenue.get("items") or [])[:1])
+    fundamental_evidence.extend((earnings.get("items") or [])[:2])
+    fundamental_evidence.extend((margin.get("items") or [])[:1])
+    if not fundamental_evidence:
+        fundamental_evidence = ["Fundamental data unavailable."]
     valuation_evidence = (valuation.get("items") or analyst.get("items") or [])[:4] or ["Analyst/valuation data unavailable."]
     peer_evidence = (peer.get("items") or [])[:4] or ["Peer benchmarking data unavailable."]
+    fundamental_confidences = [
+        _num(section.get("confidence"), 0.35)
+        for section in (revenue, earnings, margin, balance)
+        if section
+    ]
+    fundamental_confidence = sum(fundamental_confidences) / len(fundamental_confidences) if fundamental_confidences else None
 
     thesis_strength = (trend_score * 0.20 + momentum_score * 0.17 + liquidity_score * 0.12 + vol_risk_score * 0.14 + fundamental_score * 0.15 + valuation_score * 0.12 + peer_score * 0.10)
     portfolio_fit = (liquidity_score * 0.22 + vol_risk_score * 0.30 + trend_score * 0.20 + fundamental_score * 0.18 + balance_score * 0.10)
@@ -140,7 +173,19 @@ def build_research_scores(profile: dict[str, Any], deterministic_report: dict[st
         "momentum_quality": _score("Momentum Quality", momentum_score, "Evaluates return profile and relative strength versus SPY.", momentum_evidence or ["Momentum evidence is limited."]),
         "liquidity_quality": _score("Liquidity Quality", liquidity_score, "Evaluates tradability using average volume as a first-pass proxy.", liquidity_evidence),
         "volatility_risk": _score("Volatility Risk", vol_risk_score, "Higher score means cleaner/manageable volatility risk.", vol_evidence or ["Volatility evidence is unavailable."]),
-        "fundamental_quality": _score("Fundamental Quality", fundamental_score, "Uses FMP earnings quality, cash-flow support, and margin evidence when available.", fundamental_evidence, earnings.get("confidence")),
+        "fundamental_quality": {
+            **_score(
+                "Fundamental Quality",
+                fundamental_score,
+                "Weighted blend of revenue/business quality, earnings quality, margin analysis, and balance-sheet quality.",
+                fundamental_evidence,
+                fundamental_confidence,
+            ),
+            "composition": {
+                name: {"score": round(score), "weight": weight}
+                for name, (score, weight) in fundamental_components.items()
+            },
+        },
         "valuation_quality": _score("Valuation", valuation_score, "Uses FMP valuation multiples and peer averages when available.", valuation_evidence, valuation.get("confidence") or analyst.get("confidence")),
         "peer_quality": _score("Peer Benchmarking", peer_score, "Compares company valuation/profitability metrics against FMP peers.", peer_evidence, peer.get("confidence")),
         "thesis_strength": _score("Thesis Strength", thesis_strength, "Composite of trend, momentum, liquidity, volatility risk, fundamentals, valuation, and peer benchmarking.", ["Technical/market evidence available.", "FMP fundamental, valuation, and peer context included when available."]),
@@ -211,6 +256,35 @@ def build_framework_sections(profile: dict[str, Any], fundamentals: dict[str, An
                 "P/E, Forward P/E, EV/Sales, EV/EBITDA, Price/Sales, and PEG require FMP metrics/ratios and analyst estimates.",
             ],
             "data_requirements": ["FMP key metrics", "FMP ratios", "FMP analyst estimates"],
+        },
+    }
+
+
+def build_research_diagnostics(scores: dict[str, Any], fundamentals: dict[str, Any] | None, sector_framework: dict[str, Any]) -> dict[str, Any]:
+    sections = _fundamental_sections(fundamentals)
+    peer = sections.get("peer_benchmarking") or {}
+    return {
+        "score_composition": {
+            "fundamental_quality": (scores.get("fundamental_quality") or {}).get("composition") or {},
+            "thesis_strength": {
+                "description": "Weighted composite of trend, momentum, liquidity, volatility risk, fundamentals, valuation, and peer benchmarking.",
+                "score": (scores.get("thesis_strength") or {}).get("score"),
+            },
+        },
+        "peer_retrieval": {
+            "score": peer.get("score"),
+            "rating": peer.get("rating"),
+            "confidence": peer.get("confidence"),
+            "diagnostics": peer.get("diagnostics") or {},
+            "data_requirements": peer.get("data_requirements") or [],
+        },
+        "framework_routing": {
+            "key": sector_framework.get("key"),
+            "name": sector_framework.get("name"),
+            "routing_reason": sector_framework.get("routing_reason"),
+            "fallback_peers": sector_framework.get("fallback_peers") or [],
+            "valuation_metrics": sector_framework.get("valuation_metrics") or [],
+            "quality_metrics": sector_framework.get("quality_metrics") or [],
         },
     }
 
@@ -301,6 +375,7 @@ def build_institutional_research(
         "opinion": opinion,
         "data_coverage": data_coverage,
         "sector_framework": sector_framework,
+        "diagnostics": build_research_diagnostics(scores, fundamentals, sector_framework),
         "scenarios": scenarios,
         "sections": {
             "executive_view": {

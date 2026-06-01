@@ -34,6 +34,7 @@ from discovery_engine import build_discovery_candidates, build_journal_discovery
 from discovery_engine_v2 import build_discovery_v2_candidates, summarize_discoveries
 from journal_engine import build_journal_memory_updates, build_journal_report
 from risk_engine import build_risk_report
+from trading_intelligence_engine import build_trading_intelligence, compare_setups
 from monitoring_engine import monitor_trade_plans
 from alert_engine import build_smart_alert, smart_alert_to_repo_kwargs
 from briefing_engine import build_briefing
@@ -1179,6 +1180,29 @@ def run_praetor_journal_update(user_id: str) -> dict[str, Any]:
 def run_praetor_monitoring(user_id: str, market_prices: dict[str, Any] | None = None) -> dict[str, Any]:
     prefs = get_notification_preferences(user_id)
     return praetor_orchestrator().monitoring_cycle(user_id, market_prices=market_prices or {**{}}, notification_preferences=prefs)
+
+
+def latest_scanner_rows(limit: int = 100) -> list[dict[str, Any]]:
+    with STATE_LOCK:
+        return list(STATE["rows"])[-limit:]
+
+
+def get_trading_intelligence(user_id: str) -> dict[str, Any]:
+    learning = run_praetor_learning_update(user_id)
+    journal = run_praetor_journal_update(user_id)
+    plans = trade_plan_repo().list_plans(user_id, limit=1000)
+    memory = memory_repo().list_memory(user_id, limit=100)
+    discoveries = discovery_repo().list_discoveries(user_id, limit=100)
+    intelligence = build_trading_intelligence(
+        scanner_rows=latest_scanner_rows(),
+        trade_plans=plans,
+        playbook_stats=learning.get("stats") or {},
+        journal=journal.get("journal") or {},
+        risk=learning.get("risk") or {},
+        memory=memory,
+        discoveries=discoveries,
+    )
+    return {"ok": True, "trading": intelligence}
 
 
 def build_briefing_context(user_id: str) -> dict[str, Any]:
@@ -2727,6 +2751,7 @@ def _research_validation_row(row: dict[str, Any]) -> dict[str, Any]:
         "confidence_level": conviction.get("confidence"),
         "conviction_score": conviction.get("score"),
         "conviction_rating": conviction.get("rating"),
+        "diagnostics": report.get("diagnostics") or {},
     }
 
 
@@ -3721,6 +3746,8 @@ async def api_praetor_ask(request: Request):
         context.extra["portfolio"] = get_portfolio_analysis(auth_user["id"])["analysis"]
     if page == "wealth":
         context.extra["wealth"] = get_wealth_analysis(auth_user["id"])["wealth"]
+    if page == "trading":
+        context.extra["trading"] = get_trading_intelligence(auth_user["id"])["trading"]
     service = PraetorService()
     result = service.ask(question or "Help me understand this page.", context)
     return response_to_dict(result)
@@ -3946,6 +3973,33 @@ def api_praetor_trade_plans(request: Request, status: str | None = None):
         return {"ok": True, "trade_plans": trade_plan_repo().list_plans(auth_user["id"], status=status)}
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=500)
+
+
+@app.get("/api/praetor/trading-intelligence")
+def api_praetor_trading_intelligence(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    try:
+        return get_trading_intelligence(auth_user["id"])
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=500)
+
+
+@app.post("/api/praetor/trading-intelligence/compare")
+async def api_praetor_trading_compare(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    payload = await request.json()
+    try:
+        learning = run_praetor_learning_update(auth_user["id"])
+        return {
+            "ok": True,
+            "comparison": compare_setups(payload.get("ticker_a") or {}, payload.get("ticker_b") or {}, learning.get("stats") or {}),
+        }
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:240]}, status_code=400)
 
 
 @app.patch("/api/praetor/trade-plans/{plan_id}/decision")
