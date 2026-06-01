@@ -6,6 +6,7 @@ import os
 import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -96,6 +97,163 @@ _REJECT_DEBUG_COUNT = 0
 # ============================================================
 REJECT_STATS: Dict[str, int] = {}
 _REF_CACHE: Dict[str, Optional[Dict[str, Any]]] = {}
+_ORTEX_CACHE: Dict[Tuple[str, str], Dict[str, Any]] = {}
+_ORTEX_USAGE: Dict[str, Any] = {
+    "current_scan": {},
+    "by_day": {},
+    "by_month": {},
+}
+
+
+def _empty_ortex_usage_bucket() -> Dict[str, Any]:
+    return {
+        "http_calls": 0,
+        "ticker_requests": 0,
+        "cache_hits": 0,
+        "cache_misses": 0,
+        "duplicate_ticker_requests": 0,
+        "rate_limit_hits": 0,
+        "quota_or_auth_errors": 0,
+        "error_count": 0,
+        "endpoint_counts": {},
+        "ticker_counts": {},
+        "status_counts": {},
+        "cached_tickers": [],
+        "requested_tickers": [],
+        "duplicate_tickers": [],
+    }
+
+
+def _usage_key_day(dt: datetime | None = None) -> str:
+    return ct_date_str(dt or now_ct())
+
+
+def _usage_key_month(dt: datetime | None = None) -> str:
+    return (dt or now_ct()).strftime("%Y-%m")
+
+
+def reset_ortex_scan_usage() -> None:
+    _ORTEX_USAGE["current_scan"] = _empty_ortex_usage_bucket()
+
+
+def _usage_bucket(scope: str) -> Dict[str, Any]:
+    if scope == "current_scan":
+        if not _ORTEX_USAGE.get("current_scan"):
+            _ORTEX_USAGE["current_scan"] = _empty_ortex_usage_bucket()
+        return _ORTEX_USAGE["current_scan"]
+    if scope == "day":
+        key = _usage_key_day()
+        _ORTEX_USAGE["by_day"].setdefault(key, _empty_ortex_usage_bucket())
+        return _ORTEX_USAGE["by_day"][key]
+    if scope == "month":
+        key = _usage_key_month()
+        _ORTEX_USAGE["by_month"].setdefault(key, _empty_ortex_usage_bucket())
+        return _ORTEX_USAGE["by_month"][key]
+    raise ValueError("unknown ORTEX usage scope")
+
+
+def _record_ortex_map(bucket: Dict[str, Any], map_name: str, key: str) -> None:
+    bucket.setdefault(map_name, {})
+    bucket[map_name][key] = int(bucket[map_name].get(key) or 0) + 1
+
+
+def _append_unique(bucket: Dict[str, Any], list_name: str, value: str) -> None:
+    bucket.setdefault(list_name, [])
+    if value and value not in bucket[list_name]:
+        bucket[list_name].append(value)
+
+
+def _ortex_endpoint_from_url(url: str) -> str:
+    try:
+        marker = "/api/v1/stock/"
+        rest = url.split(marker, 1)[1]
+        parts = rest.split("/")
+        return "/".join(parts[2:])
+    except Exception:
+        return "unknown"
+
+
+def _record_ortex_http_call(url: str, status: int | None, error: str | None) -> None:
+    endpoint = _ortex_endpoint_from_url(url)
+    for scope in ("current_scan", "day", "month"):
+        bucket = _usage_bucket(scope)
+        bucket["http_calls"] = int(bucket.get("http_calls") or 0) + 1
+        _record_ortex_map(bucket, "endpoint_counts", endpoint)
+        _record_ortex_map(bucket, "status_counts", str(status or "exception"))
+        if status == 429:
+            bucket["rate_limit_hits"] = int(bucket.get("rate_limit_hits") or 0) + 1
+        if status in (401, 402, 403):
+            bucket["quota_or_auth_errors"] = int(bucket.get("quota_or_auth_errors") or 0) + 1
+        if error:
+            bucket["error_count"] = int(bucket.get("error_count") or 0) + 1
+
+
+def _record_ortex_ticker_request(ticker: str, cache_hit: bool) -> None:
+    ticker = ticker.upper().strip()
+    for scope in ("current_scan", "day", "month"):
+        bucket = _usage_bucket(scope)
+        bucket["ticker_requests"] = int(bucket.get("ticker_requests") or 0) + 1
+        if cache_hit:
+            bucket["cache_hits"] = int(bucket.get("cache_hits") or 0) + 1
+            _append_unique(bucket, "cached_tickers", ticker)
+        else:
+            bucket["cache_misses"] = int(bucket.get("cache_misses") or 0) + 1
+        _record_ortex_map(bucket, "ticker_counts", ticker)
+        _append_unique(bucket, "requested_tickers", ticker)
+        if int(bucket["ticker_counts"].get(ticker) or 0) > 1:
+            bucket["duplicate_ticker_requests"] = int(bucket.get("duplicate_ticker_requests") or 0) + 1
+            _append_unique(bucket, "duplicate_tickers", ticker)
+
+
+def _serialize_usage_bucket(bucket: Dict[str, Any]) -> Dict[str, Any]:
+    out = dict(bucket or _empty_ortex_usage_bucket())
+    out["endpoint_counts"] = dict(out.get("endpoint_counts") or {})
+    out["ticker_counts"] = dict(out.get("ticker_counts") or {})
+    out["status_counts"] = dict(out.get("status_counts") or {})
+    out["cached_tickers"] = list(out.get("cached_tickers") or [])
+    out["requested_tickers"] = list(out.get("requested_tickers") or [])
+    out["duplicate_tickers"] = list(out.get("duplicate_tickers") or [])
+    return out
+
+
+def ortex_usage_snapshot() -> Dict[str, Any]:
+    day_key = _usage_key_day()
+    month_key = _usage_key_month()
+    current = _serialize_usage_bucket(_usage_bucket("current_scan"))
+    day = _serialize_usage_bucket(_ORTEX_USAGE.get("by_day", {}).get(day_key) or _empty_ortex_usage_bucket())
+    month = _serialize_usage_bucket(_ORTEX_USAGE.get("by_month", {}).get(month_key) or _empty_ortex_usage_bucket())
+    return {
+        "ok": True,
+        "cache_enabled": True,
+        "cache_duration": "1 trading day",
+        "cache_entries": len(_ORTEX_CACHE),
+        "endpoints_used": ["short_interest", "ctb/all", "ctb/new", "availability"],
+        "exchange_symbols": list(ORTEX_EXCHANGE_SYMBOLS),
+        "audit_summary": {
+            "ortex_calls_per_scan": current.get("http_calls", 0),
+            "ortex_calls_per_day": day.get("http_calls", 0),
+            "ortex_calls_per_month": month.get("http_calls", 0),
+            "duplicate_requests_current_scan": current.get("duplicate_ticker_requests", 0),
+            "duplicate_tickers_current_scan": current.get("duplicate_tickers", []),
+            "rate_limit_hits_current_scan": current.get("rate_limit_hits", 0),
+            "quota_or_auth_errors_current_scan": current.get("quota_or_auth_errors", 0),
+            "monthly_quota_limit_known": False,
+            "monthly_quota_note": "ORTEX quota limit is not exposed by the current API response; 401/402/403 and 429 responses are tracked as quota/auth/rate-limit signals.",
+        },
+        "current_scan": current,
+        "day_key": day_key,
+        "day": day,
+        "month_key": month_key,
+        "month": month,
+        "rate_limit_or_quota_flags": {
+            "current_scan_rate_limits": current.get("rate_limit_hits", 0),
+            "day_rate_limits": day.get("rate_limit_hits", 0),
+            "month_rate_limits": month.get("rate_limit_hits", 0),
+            "current_scan_quota_or_auth_errors": current.get("quota_or_auth_errors", 0),
+            "day_quota_or_auth_errors": day.get("quota_or_auth_errors", 0),
+            "month_quota_or_auth_errors": month.get("quota_or_auth_errors", 0),
+        },
+    }
 
 
 def reject(reason: str) -> None:
@@ -409,6 +567,8 @@ def ortex_get_with_status(url: str) -> Tuple[Optional[Dict[str, Any]], int | Non
     if not ORTEX_KEY:
         return None, None, "ORTEX_API_KEY not set"
 
+    status: int | None = None
+    error: str | None = None
     try:
         r = SESSION.get(
             url,
@@ -417,15 +577,24 @@ def ortex_get_with_status(url: str) -> Tuple[Optional[Dict[str, Any]], int | Non
             timeout=30,
         )
     except requests.RequestException as e:
-        return None, None, f"{type(e).__name__}: {str(e)[:140]}"
+        error = f"{type(e).__name__}: {str(e)[:140]}"
+        _record_ortex_http_call(url, status, error)
+        return None, None, error
 
+    status = r.status_code
     if r.status_code >= 400:
-        return None, r.status_code, r.text[:180]
+        error = r.text[:180]
+        _record_ortex_http_call(url, status, error)
+        return None, r.status_code, error
 
     try:
-        return r.json(), r.status_code, None
+        data = r.json()
+        _record_ortex_http_call(url, status, None)
+        return data, r.status_code, None
     except Exception:
-        return None, r.status_code, "Invalid JSON response"
+        error = "Invalid JSON response"
+        _record_ortex_http_call(url, status, error)
+        return None, r.status_code, error
 
 
 def ortex_get(url: str, log_fn=None) -> Optional[Dict[str, Any]]:
@@ -494,7 +663,7 @@ def _ortex_exchange_urls(
     ticker = ticker.upper().strip()
     return [
         (exchange, f"https://api.ortex.com/api/v1/stock/{exchange}/{ticker}/{suffix}")
-        for exchange in ORTEX_EXCHANGE_SYMBOLS
+        for exchange in exchange_symbols
     ]
 
 
@@ -588,6 +757,34 @@ def ortex_availability_latest(ticker: str, log_fn=None) -> Optional[float]:
             "avail",
         ),
     )
+
+
+def ortex_features_for_ticker(ticker: str, log_fn=None) -> Dict[str, Any]:
+    ticker = ticker.upper().strip()
+    cache_key = (_usage_key_day(), ticker)
+    cached = _ORTEX_CACHE.get(cache_key)
+    if cached is not None:
+        _record_ortex_ticker_request(ticker, cache_hit=True)
+        if log_fn:
+            log_fn(f"[ORTEX CACHE] {ticker}: reused ORTEX data fetched earlier this trading day")
+        return dict(cached)
+
+    _record_ortex_ticker_request(ticker, cache_hit=False)
+    si = ortex_short_interest_features(ticker, log_fn=log_fn) or {}
+    ctb = ortex_ctb_latest(ticker, log_fn=log_fn)
+    avail = ortex_availability_latest(ticker, log_fn=log_fn)
+    result = {
+        "si_pct_ff": si.get("si_pct_ff"),
+        "si_pct_chg": si.get("si_pct_chg"),
+        "si_shares": si.get("si_shares"),
+        "ctb": ctb,
+        "avail": avail,
+        "ortex_exchange": si.get("ortex_exchange"),
+        "fetched_at_utc": datetime.utcnow().isoformat(),
+        "cache_key": f"{cache_key[0]}:{ticker}",
+    }
+    _ORTEX_CACHE[cache_key] = dict(result)
+    return result
 
 
 def ortex_debug_ticker(ticker: str) -> Dict[str, Any]:
@@ -1150,6 +1347,7 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "off") ->
     _REJECT_DEBUG_COUNT = 0
     REJECT_STATS.clear()
     _REF_CACHE.clear()
+    reset_ortex_scan_usage()
 
     mode2 = (mode or "day").lower().strip()
     if mode2 not in ("day", "night"):
@@ -1276,7 +1474,7 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "off") ->
 
     # ORTEX enrich on a small finalist set
     if ortex_on and ortex_finalists > 0:
-        finalists = sorted(
+        finalist_candidates = sorted(
             analyzed,
             key=lambda r: (
                 r.get("base_score", 0),
@@ -1286,22 +1484,36 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "off") ->
                 (r.get("dollar_vol") or 0),
             ),
             reverse=True,
-        )[:ortex_finalists]
+        )
+        finalists = []
+        seen_finalist_tickers = set()
+        for row in finalist_candidates:
+            ticker = (row.get("ticker") or "").upper()
+            if ticker in seen_finalist_tickers:
+                continue
+            seen_finalist_tickers.add(ticker)
+            finalists.append(row)
+            if len(finalists) >= ortex_finalists:
+                break
 
         if log_fn:
             log_fn(f"ORTEX enrich: {len(finalists)} finalists selected.")
 
-        ortex_stats = {"checked": 0, "has_borrow": 0, "true_squeeze": 0, "missing_data": 0}
+        ortex_stats = {"checked": 0, "has_borrow": 0, "true_squeeze": 0, "missing_data": 0, "cache_hits": 0}
 
         for r in finalists:
             t = r["ticker"]
             try:
                 ortex_stats["checked"] += 1
-                si = ortex_short_interest_features(t, log_fn=log_fn) or {}
-                r["si_pct_ff"] = si.get("si_pct_ff")
-                r["si_pct_chg"] = si.get("si_pct_chg")
-                r["ctb"] = ortex_ctb_latest(t, log_fn=log_fn)
-                r["avail"] = ortex_availability_latest(t, log_fn=log_fn)
+                before_hits = _usage_bucket("current_scan").get("cache_hits", 0)
+                ortex_features = ortex_features_for_ticker(t, log_fn=log_fn)
+                after_hits = _usage_bucket("current_scan").get("cache_hits", 0)
+                if after_hits > before_hits:
+                    ortex_stats["cache_hits"] += 1
+                r["si_pct_ff"] = ortex_features.get("si_pct_ff")
+                r["si_pct_chg"] = ortex_features.get("si_pct_chg")
+                r["ctb"] = ortex_features.get("ctb")
+                r["avail"] = ortex_features.get("avail")
 
                 feat = dict(r)
                 feat["window"] = window
@@ -1339,13 +1551,24 @@ def run_scan(log_fn=None, row_fn=None, mode: str = "day", ortex: str = "off") ->
                 continue
 
         if log_fn:
+            usage = ortex_usage_snapshot()["current_scan"]
             log_fn(
                 "[ORTEX] Summary: "
                 f"checked={ortex_stats['checked']} | "
+                f"http_calls={usage.get('http_calls', 0)} | "
+                f"cache_hits={usage.get('cache_hits', 0)} | "
+                f"cache_misses={usage.get('cache_misses', 0)} | "
+                f"duplicates={usage.get('duplicate_ticker_requests', 0)} | "
                 f"borrow_data={ortex_stats['has_borrow']} | "
                 f"missing_borrow_data={ortex_stats['missing_data']} | "
                 f"true_squeeze={ortex_stats['true_squeeze']}"
             )
+            if usage.get("rate_limit_hits") or usage.get("quota_or_auth_errors"):
+                log_fn(
+                    "[ORTEX] Rate/quota warning: "
+                    f"429s={usage.get('rate_limit_hits', 0)} | "
+                    f"quota/auth={usage.get('quota_or_auth_errors', 0)}"
+                )
     elif log_fn:
         if ortex_on:
             log_fn("[ORTEX] Enabled, but no finalists were selected for ORTEX enrichment.")
