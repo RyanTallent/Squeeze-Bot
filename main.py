@@ -3990,6 +3990,16 @@ def api_usage(request: Request):
     return {"ok": True, "usage": usage_summary(auth_user), "user": _public_user(auth_user)}
 
 
+@app.get("/api/debug/ortex/usage")
+def api_debug_ortex_usage(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    if (auth_user.get("plan_code") or "") != "founder":
+        return JSONResponse({"ok": False, "error": "Founder access required"}, status_code=403)
+    return scanner.ortex_usage_snapshot()
+
+
 @app.get("/api/debug/ortex/{ticker}")
 def api_debug_ortex(ticker: str, request: Request):
     auth_user = require_user(request)
@@ -3997,9 +4007,8 @@ def api_debug_ortex(ticker: str, request: Request):
         return auth_user
     if (auth_user.get("plan_code") or "") != "founder":
         return JSONResponse({"ok": False, "error": "Founder access required"}, status_code=403)
-
     try:
-        return scanner.ortex_debug_ticker(ticker)
+        return {**scanner.ortex_debug_ticker(ticker), "usage": scanner.ortex_usage_snapshot()}
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)[:200]}, status_code=500)
 
