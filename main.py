@@ -189,6 +189,8 @@ def _ensure_schema_migrations():
                 with conn.cursor() as cur:
                     for col, typ in nullable_trade_cols.items():
                         cur.execute(f"ALTER TABLE trades ADD COLUMN IF NOT EXISTS {col} {typ};")
+                    cur.execute("ALTER TABLE trades ALTER COLUMN entry_time_ct DROP NOT NULL;")
+                    cur.execute("ALTER TABLE trades ALTER COLUMN exit_time_ct DROP NOT NULL;")
                 conn.commit()
         except Exception:
             pass
@@ -1585,6 +1587,66 @@ def _research_ai_consistency_debug(ai: dict[str, Any]) -> dict[str, Any]:
         "consistency_corrected": (ai or {}).get("consistency_corrected"),
         "issues": consistency.get("issues") or [],
     }
+
+
+def trade_time_nullability_diagnostics() -> dict[str, Any]:
+    columns = ("entry_time_ct", "exit_time_ct")
+    if using_postgres():
+        rows: dict[str, Any] = {}
+        try:
+            with pg_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        SELECT column_name, is_nullable, data_type, udt_name
+                        FROM information_schema.columns
+                        WHERE table_name = 'trades'
+                          AND column_name = ANY(%s)
+                        """,
+                        (list(columns),),
+                    )
+                    for row in cur.fetchall():
+                        r = dict(row)
+                        rows[r["column_name"]] = {
+                            "nullable": str(r.get("is_nullable")).upper() == "YES",
+                            "is_nullable": r.get("is_nullable"),
+                            "data_type": r.get("data_type"),
+                            "udt_name": r.get("udt_name"),
+                        }
+        except Exception as e:
+            return {"ok": False, "storage": "postgres", "error": str(e)[:240]}
+        return {
+            "ok": True,
+            "storage": "postgres",
+            "columns": rows,
+            "entry_time_ct_nullable": bool((rows.get("entry_time_ct") or {}).get("nullable")),
+            "exit_time_ct_nullable": bool((rows.get("exit_time_ct") or {}).get("nullable")),
+        }
+
+    conn = sqlite_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("PRAGMA table_info(trades)")
+        rows = {}
+        for r in cur.fetchall():
+            name = r[1]
+            if name in columns:
+                rows[name] = {
+                    "nullable": not bool(r[3]),
+                    "notnull": bool(r[3]),
+                    "type": r[2],
+                }
+        return {
+            "ok": True,
+            "storage": "sqlite",
+            "columns": rows,
+            "entry_time_ct_nullable": bool((rows.get("entry_time_ct") or {}).get("nullable", True)),
+            "exit_time_ct_nullable": bool((rows.get("exit_time_ct") or {}).get("nullable", True)),
+        }
+    except Exception as e:
+        return {"ok": False, "storage": "sqlite", "error": str(e)[:240]}
+    finally:
+        conn.close()
 
 
 def build_command_center_context(user_id: str) -> dict[str, Any]:
@@ -3069,6 +3131,16 @@ def debug_keys():
         "POLYGON_API_KEY_set": bool(os.getenv("POLYGON_API_KEY")),
         "ORTEX_API_KEY_set": bool(os.getenv("ORTEX_API_KEY")),
     }
+
+
+@app.get("/api/debug/schema/trades/time-nullability")
+def api_debug_trade_time_nullability(request: Request):
+    auth_user = require_user(request)
+    if isinstance(auth_user, JSONResponse):
+        return auth_user
+    if (auth_user.get("plan_code") or "") != "founder":
+        return JSONResponse({"ok": False, "error": "Founder access required"}, status_code=403)
+    return trade_time_nullability_diagnostics()
 
 
 @app.get("/api/fundamentals/status")
