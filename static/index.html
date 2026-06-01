@@ -258,6 +258,7 @@
         <nav class="nav hidden" id="appNav">
           <button type="button" data-page="Dashboard" class="active">Dashboard</button>
           <button type="button" data-page="Scanner">Scanner</button>
+          <button type="button" data-page="Trading">Trading</button>
           <button type="button" data-page="Research">Research</button>
           <button type="button" data-page="Wealth">Wealth</button>
           <button type="button" data-page="ResearchValidation" class="founderOnly hidden">Research QA</button>
@@ -378,6 +379,7 @@
       <aside class="sidebar">
         <button class="sideBtn active" data-page="Dashboard">Dashboard</button>
         <button class="sideBtn" data-page="Scanner">Scanner</button>
+        <button class="sideBtn" data-page="Trading">Trading</button>
         <button class="sideBtn" data-page="Signals">Signals</button>
         <button class="sideBtn" data-page="Research">Research</button>
         <button class="sideBtn" data-page="Portfolio">Portfolio</button>
@@ -508,6 +510,33 @@
                 <div class="planBox hidden" id="planBox"></div>
               </div>
             </div>
+          </div>
+        </div>
+
+        <div class="page" id="pageTrading">
+          <div class="card">
+            <div class="eyebrow">Trading Intelligence</div>
+            <h2>Trading desk and coach.</h2>
+            <p>Praetor grades live setups, evaluates trade-plan quality, detects mistake risk, ranks the top setups, and summarizes what it would trade today.</p>
+            <div class="toolbar">
+              <button class="btn primary" id="refreshTradingBtn" type="button">Refresh Trading Intelligence</button>
+              <button class="btn" data-jump="Scanner" type="button">Open Scanner</button>
+              <button class="btn" data-jump="Playbook" type="button">Open Playbook</button>
+            </div>
+          </div>
+          <div class="researchGrid">
+            <div class="card"><h3>Highest Conviction Setup</h3><div id="tradingHighest" class="fineprint">No setup loaded.</div></div>
+            <div class="card"><h3>Best Risk/Reward</h3><div id="tradingBestRR" class="fineprint">No setup loaded.</div></div>
+            <div class="card"><h3>Most Dangerous Setup</h3><div id="tradingDangerous" class="fineprint">No setup loaded.</div></div>
+            <div class="card"><h3>Best Momentum / Squeeze</h3><div id="tradingMomentumSqueeze" class="fineprint">No setup loaded.</div></div>
+          </div>
+          <div class="card">
+            <h3>Top 5 Setups</h3>
+            <div id="tradingTopSetups" class="fineprint">No ranked setups yet. Run a scan first.</div>
+          </div>
+          <div class="researchGrid">
+            <div class="card"><h3>Trade Plan Quality</h3><div id="tradingPlanQuality" class="fineprint">No saved trade plans yet.</div></div>
+            <div class="card"><h3>Mistake Detection</h3><div id="tradingMistakes" class="fineprint">No mistake flags yet.</div></div>
           </div>
         </div>
 
@@ -1405,6 +1434,7 @@
     if(name === "Committee") loadCommittee();
     if(name === "Portfolio") loadPortfolio();
     if(name === "Wealth") loadWealth();
+    if(name === "Trading") loadTradingIntelligence();
     if(name === "Dashboard") loadCommandCenter();
     if(name === "Risk") loadRiskAI();
     if(name === "ResearchValidation") loadResearchValidation();
@@ -1420,6 +1450,7 @@
   const COPILOT_PROMPTS = {
     Dashboard:["What is the most important thing I need to know right now?","What risk should I address first?","What did Praetor learn recently?"],
     Scanner:["Analyze this setup.","Am I chasing?","Build a trade plan.","Compare this to my playbook."],
+    Trading:["What would Praetor trade today?","Which setup is best?","Which setup is most dangerous?","Am I chasing?"],
     Research:["Build a hedge-fund thesis.","Explain the bull/base/bear case.","What are the key risks?","Simplify this research."],
     Journal:["Review my recent trades.","What mistakes am I repeating?","What should I improve next?"],
     Portfolio:["Where am I concentrated?","What is my biggest risk?","Does this portfolio fit my goals?","What position is oversized?","What should I review first?"],
@@ -1437,6 +1468,7 @@
   const COPILOT_ACTIONS = {
     Dashboard:["Open Alerts","Run Committee","Generate Morning Briefing"],
     Scanner:["Build Trade Plan","Save to Playbook","Set Alert"],
+    Trading:["Refresh Trading Intelligence","Open Scanner","Open Playbook"],
     Research:["Generate Thesis","Run Committee","Simplify"],
     Journal:["Review Trade","Find Mistakes","Update Playbook"],
     Portfolio:["Analyze Exposure","Check Allocation","Stress Test"],
@@ -2266,6 +2298,44 @@
     $("planBox").querySelector("[data-praetor-plan]")?.addEventListener("click", () => savePraetorTradePlan(r));
   }
 
+  function tradingSetupLine(setup){
+    if(!setup) return "No setup available.";
+    return `<b>${escHtml(setup.ticker || "")}</b> ${escHtml(setup.grade || "")} / ${setup.score ?? setup.rank_score ?? "-"}<br>
+      ${escHtml(setup.setup_type || "")}<br>
+      <span class="muted">${escHtml(setup.why || "")}</span>`;
+  }
+
+  async function loadTradingIntelligence(){
+    if(!state.user) return;
+    const resp = await fetch("/api/praetor/trading-intelligence").catch(()=>null);
+    const data = resp ? await safeJson(resp) : {ok:false,error:"Trading Intelligence unavailable."};
+    if(!data.ok){
+      $("tradingHighest").textContent = data.error || "Trading Intelligence unavailable.";
+      return;
+    }
+    renderTradingIntelligence(data.trading || {});
+  }
+
+  function renderTradingIntelligence(trading){
+    const view = trading.daily_trader_view || {};
+    $("tradingHighest").innerHTML = tradingSetupLine(view.highest_conviction_setup);
+    $("tradingBestRR").innerHTML = tradingSetupLine(view.best_risk_reward);
+    $("tradingDangerous").innerHTML = tradingSetupLine(view.most_dangerous_setup);
+    $("tradingMomentumSqueeze").innerHTML = `<h4>Momentum</h4>${tradingSetupLine(view.best_momentum_setup)}<h4>Squeeze</h4>${tradingSetupLine(view.best_short_squeeze_setup)}`;
+    $("tradingTopSetups").innerHTML = simpleList((trading.top_5_setups || []).map(x => ({
+      title:`#${x.rank} ${x.ticker} ${x.grade} (${x.rank_score}/100)`,
+      description:`${x.setup_type}. Strong: ${(x.strongest_factors || []).slice(0,2).join("; ")} Weak: ${(x.weakest_factors || []).slice(0,2).join("; ")}`
+    })), "No ranked setups yet. Run a scan first.");
+    $("tradingPlanQuality").innerHTML = simpleList((trading.trade_plan_quality || []).slice(0,8).map(x => ({
+      title:`${x.ticker} ${x.plan_style || ""} (${x.overall_quality}/100)`,
+      description:`Entry ${x.entry_quality}, stop ${x.stop_quality}, target ${x.target_quality}, R/R ${fmtNum(x.risk_reward,2)}, probability ${x.probability_of_success}/100, size ${x.position_size}.`
+    })), "No saved trade plans yet.");
+    $("tradingMistakes").innerHTML = simpleList((trading.mistake_detection || []).map(x => ({
+      title:x.ticker || "Setup",
+      description:(x.mistakes || []).map(m => `${m.type}: ${m.evidence}`).join("; ")
+    })), "No mistake flags yet.");
+  }
+
   function showPraetorResponse(text){
     const box = $("praetorResponseBox");
     if(!box) return;
@@ -2915,6 +2985,7 @@
     $("runCommitteeBtn").addEventListener("click", runCommittee);
     $("refreshCommitteeBtn").addEventListener("click", loadCommittee);
     $("refreshCommandCenterBtn").addEventListener("click", loadCommandCenter);
+    $("refreshTradingBtn").addEventListener("click", loadTradingIntelligence);
     $("commandAskBtn").addEventListener("click", askCommandPraetor);
     $("researchRunBtn").addEventListener("click", loadResearch);
     $("researchAiBtn").addEventListener("click", loadResearchAI);

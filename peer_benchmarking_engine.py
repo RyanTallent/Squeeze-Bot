@@ -83,14 +83,16 @@ def _rank_symbols(metric_values: dict[str, float], lower_is_better: bool) -> dic
 def build_peer_benchmarking(bundle: dict[str, Any], profile: dict[str, Any] | None = None) -> dict[str, Any]:
     ticker = str((bundle or {}).get("ticker") or "").upper()
     peer_records = _rows(bundle, "peer_metrics")
+    peer_endpoint = ((bundle or {}).get("endpoints") or {}).get("peer_metrics") or {}
+    peer_diagnostics = peer_endpoint.get("diagnostics") or {}
     company_metrics = _company_metric_set(bundle, profile)
     peer_metrics = {str(p.get("symbol") or "").upper(): _peer_metric_set(p) for p in peer_records if p.get("symbol")}
 
     if not peer_metrics:
         return {
-            "rating": "Data Unavailable",
-            "score": 20,
-            "items": ["Peer metrics unavailable. FMP peer list may be empty or peer metric calls may not have returned usable rows."],
+            "rating": "Medium",
+            "score": 45,
+            "items": ["Peer metrics unavailable or incomplete. Peer confidence is reduced, but the peer framework remains active using framework fallback peer definitions."],
             "peer_averages": {},
             "strongest_metrics": [],
             "weakest_metrics": [],
@@ -101,7 +103,13 @@ def build_peer_benchmarking(bundle: dict[str, Any], profile: dict[str, Any] | No
             "data_requirements": ["FMP stock peers", "FMP peer key metrics", "FMP peer ratios"],
             "provider_ok": False,
             "provider_error": None,
-            "calculation": {"formula": "Company metrics ranked against peer metric rows.", "inputs": {"peer_count": 0}},
+            "diagnostics": {
+                "reason": "no_peer_metric_rows",
+                "fmp_peer_symbols": peer_diagnostics.get("fmp_peer_symbols") or [],
+                "fallback_peer_symbols": peer_diagnostics.get("fallback_peer_symbols") or [],
+                "used_peer_symbols": peer_diagnostics.get("used_peer_symbols") or [],
+            },
+            "calculation": {"formula": "Company metrics ranked against peer metric rows.", "inputs": {"peer_count": 0, "confidence_adjustment": "low due missing peer metrics"}},
         }
 
     comparisons = []
@@ -159,7 +167,7 @@ def build_peer_benchmarking(bundle: dict[str, Any], profile: dict[str, Any] | No
     company_score = next((r["score"] for r in ranking if r["symbol"] == ticker), 0)
     rank_out_of = len(ranking)
     if company_rank is None:
-        rating, score = "Data Unavailable", 20
+        rating, score = "Medium", 45
     else:
         percentile = 1 - ((company_rank - 1) / max(1, rank_out_of - 1))
         score = round(25 + percentile * 65)
@@ -189,6 +197,15 @@ def build_peer_benchmarking(bundle: dict[str, Any], profile: dict[str, Any] | No
         "data_requirements": [] if comparisons else ["FMP peer key metrics", "FMP peer ratios"],
         "provider_ok": bool(comparisons),
         "provider_error": None,
+        "diagnostics": {
+            "reason": None if comparisons else "peer_rows_available_but_no_comparable_metrics",
+            "fmp_peer_symbols": peer_diagnostics.get("fmp_peer_symbols") or [],
+            "fallback_peer_symbols": peer_diagnostics.get("fallback_peer_symbols") or [],
+            "used_peer_symbols": peer_diagnostics.get("used_peer_symbols") or list(peer_metrics.keys()),
+            "peer_metric_symbols": list(peer_metrics.keys()),
+            "comparison_count": len(comparisons),
+            "missing_metric_symbols": [symbol for symbol, metrics in peer_metrics.items() if not any(v is not None for v in metrics.values())],
+        },
         "calculation": {
             "formula": "Rank company and peer metrics; lower valuation multiples are better, profitability metrics are higher-is-better.",
             "inputs": {"peer_count": len(peer_metrics), "metric_count": len(comparisons), "company_rank": company_rank, "rank_out_of": rank_out_of},

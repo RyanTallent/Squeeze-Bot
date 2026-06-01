@@ -7,6 +7,7 @@ from urllib.parse import urlencode
 
 import requests
 
+from sector_frameworks import fallback_peers_for_ticker
 from ticker_normalization import normalize_ticker_for_provider, ticker_normalization_metadata
 
 
@@ -186,7 +187,17 @@ class FMPProvider:
         results: dict[str, Any] = {}
         for name, (endpoint, params, ttl) in endpoints.items():
             results[name] = self.get(endpoint, params, ttl_hours=ttl)
-        peer_symbols = self._peer_symbols(results.get("peers") or {}, symbol)
+        fmp_peer_symbols = self._peer_symbols(results.get("peers") or {}, symbol)
+        fallback_peer_symbols = [
+            normalize_ticker_for_provider(peer, "fmp")
+            for peer in fallback_peers_for_ticker(display_symbol)
+        ]
+        peer_symbols = []
+        for peer in [*fmp_peer_symbols, *fallback_peer_symbols]:
+            if peer and peer != symbol and peer not in peer_symbols:
+                peer_symbols.append(peer)
+            if len(peer_symbols) >= 6:
+                break
         peer_metrics = []
         for peer in peer_symbols:
             key_metrics = self.get("/stable/key-metrics", {"symbol": peer, "limit": 1}, ttl_hours=48)
@@ -200,6 +211,7 @@ class FMPProvider:
                         "key_metrics": {k: key_metrics.get(k) for k in ("ok", "cached", "error", "url", "fetched_at")},
                         "financial_ratios": {k: ratios.get(k) for k in ("ok", "cached", "error", "url", "fetched_at")},
                     },
+                    "source_type": "fmp_peer" if peer in fmp_peer_symbols else "framework_fallback",
                 }
             )
         results["peer_metrics"] = {
@@ -214,9 +226,14 @@ class FMPProvider:
             else False,
             "fetched_at": datetime.utcnow().isoformat(),
             "endpoint": "peer metric enrichment",
-            "params": {"symbol": symbol, "peers": peer_symbols, "limit": 1},
+            "params": {"symbol": symbol, "peers": peer_symbols, "fmp_peers": fmp_peer_symbols, "fallback_peers": fallback_peer_symbols, "limit": 1},
             "url": "multiple cached FMP peer metric requests",
             "data": peer_metrics,
+            "diagnostics": {
+                "fmp_peer_symbols": fmp_peer_symbols,
+                "fallback_peer_symbols": fallback_peer_symbols,
+                "used_peer_symbols": peer_symbols,
+            },
         }
         return {
             "ok": any(v.get("ok") for v in results.values()),
